@@ -4,7 +4,7 @@
    another tab doesn't re-read the account, and party summaries go out at most every 12 s with the latest one always arriving.
 
      npm i playwright firebase-tools@13 firebase@10.12.2
-     npx firebase emulators:exec --only firestore,auth --project demo-spheres "node tests/save-check.js"
+     npx firebase emulators:exec --config firebase.emulators.json --only firestore,auth --project demo-spheres "node tests/save-check.js"
 
    Takes about 2 minutes (it waits for the real delays). Exit code 0 = every check passed. */
 const http = require('http'), fs = require('fs'), path = require('path');

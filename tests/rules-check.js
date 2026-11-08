@@ -61,6 +61,7 @@ const CODE = 'PlayerCode-0123456789', GMCODE = 'GmCode-0123456789abcd', z = Byte
   console.log('Joining');
   const key = 'pl1_c1';
   await check('a player joins with the invite code', assertSucceeds(setDoc(doc(pl, 'parties/gm1_P1/members/' + key), { owner: 'pl1', code: CODE, charId: 'c1', name: 'Tova', hp: { cur: 30, max: 40 } })));
+  await check('joining with a character that isn’t saved in the account is refused', assertFails(setDoc(doc(pl, 'parties/gm1_P1/members/pl1_c5'), { owner: 'pl1', code: CODE, charId: 'c5', name: 'Ghost' })));
   await check('joining with a wrong code is refused', assertFails(setDoc(doc(other, 'parties/gm1_P1/members/pl2_c9'), { owner: 'pl2', code: 'WrongCode-0123456789', name: 'X', charId: 'c9' })));
   await check('can’t join under someone else’s id', assertFails(setDoc(doc(other, 'parties/gm1_P1/members/pl1_c7'), { owner: 'pl2', code: CODE, charId: 'c7' })));
   await check('can’t join a party that doesn’t exist', assertFails(setDoc(doc(pl, 'parties/gm1_NOPE/members/pl1_c1'), { owner: 'pl1', code: CODE, charId: 'c1' })));

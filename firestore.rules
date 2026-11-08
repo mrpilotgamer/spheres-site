@@ -81,10 +81,12 @@ service cloud.firestore {
       // The document id is "<player uid>_<character id>".
       match /members/{key} {
         allow get, list: if isGM();
+        // Only for a character saved in the player's own account, so one invite code can't make endless member records.
         allow create: if signedIn() && key.matches(request.auth.uid + '_.+')
           && request.resource.data.owner == request.auth.uid
           && request.resource.data.code == party().code
-          && memberOk(request.resource.data, key);
+          && memberOk(request.resource.data, key)
+          && exists(/databases/$(database)/documents/users/$(request.auth.uid)/characters/$(request.resource.data.charId));
         allow update: if signedIn() && resource.data.owner == request.auth.uid
           && request.resource.data.owner == request.auth.uid
           && request.resource.data.code == resource.data.code

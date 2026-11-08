@@ -2,7 +2,7 @@
    Four browsers: a GM, a player, someone with only a share link, and a second GM. Nothing touches the real database.
 
      npm i playwright firebase-tools@13 firebase@10.12.2
-     npx firebase emulators:exec --only firestore,auth --project demo-spheres "node tests/party-check.js"
+     npx firebase emulators:exec --config firebase.emulators.json --only firestore,auth --project demo-spheres "node tests/party-check.js"
 
    (Firestore emulator on 8080 and Auth on 9099, the defaults; the emulator needs Java.) The page is served locally and its
    Firebase code comes from the npm "firebase" package instead of gstatic.com. Exit code 0 = every check passed. */

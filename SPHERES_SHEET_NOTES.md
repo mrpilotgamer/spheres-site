@@ -75,7 +75,7 @@ so every `firebase deploy` (Cloud Shell or GitHub) first checks the description 
 Normal sheet updates don't need this step; the `talents/` folder stays as it is.
 
 **Checks before deploying (optional):** `tests/check.js` opens the sheet in a headless browser, loads
-both example characters and runs 233 checks against values worked out by hand (HP, AC, saves,
+both example characters and runs 259 checks against values worked out by hand (HP, AC, saves,
 DCs, spell points, talents, skill ranks, attacks, toggles, the theme, free sphere ranks, blast augments, Roll20 macros,
 raised undead, temporary talents, cohorts, Workshop, wiki descriptions, adding talents from the wiki and more). It sits outside `public/`, so it is never deployed. Run it with:
 ```
@@ -86,10 +86,16 @@ When you change an example on purpose, update its expected numbers in the script
 `tests/talents-check.js` (30 checks, no browser, a second) checks the description files in `public/talents/`:
 `node tests/talents-check.js`. The wiki-description part of `check.js` reads those files too, so build them first.
 
-The other three tests (`rules-check.js` 69 checks, `party-check.js` 31, `save-check.js` 12) test the database rules and
-cloud saving. They need the Firebase emulator, which needs Java, and are run through
-`npx firebase emulators:exec --only firestore --project demo-spheres "node tests/<name>.js"`.
-Last full run: 2026-11-06 (phase 2), `check.js` 233 passed, `talents-check.js` 30 passed, 0 failed.
+The other three tests (`rules-check.js` 70 checks, `party-check.js` 31, `save-check.js` 12) test the database rules and
+cloud saving. They need the Firebase emulator, which needs Java (Claude's cloud sessions have it). Install the tools once
+with `npm i --no-save firebase-tools@13 firebase@10.12.2 @firebase/rules-unit-testing@3` (not Playwright: a second copy
+won't match the installed browser), then:
+`npx firebase emulators:exec --only firestore --project demo-spheres "node tests/rules-check.js"` and, for the two that
+also need the sign-in emulator, `npx firebase emulators:exec --config firebase.emulators.json --only firestore,auth
+--project demo-spheres "node tests/party-check.js"` (same for `save-check.js`). `firebase.emulators.json` is
+`firebase.json` plus the auth and emulator settings; it's only for tests. GitHub doesn't run these three.
+Last full run: 2026-11-08 (playtest batch), `check.js` 259, `talents-check.js` 30, `rules-check.js` 70, `party-check.js` 31,
+`save-check.js` 12: all passed.
 
 **Rollback:** Firebase console → Hosting → release history → roll back. With GitHub: also revert the commit (the
 commit's page → "Revert"), or the next push puts the broken version back.
@@ -297,13 +303,16 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
   Renaming a sphere moves its entry.
 - **Engine:** `sphRanks(c)` → skill id → [{sphere, v}]. In `deriveCore`, `skR()` combines bought and sphere
   ranks: sphere ranks first (capped at HD), bought ranks fill what's left, and the rest are `retrain`.
-  Two spheres on one skill: a competence bonus of ½ character level (min +1), passed to `tot()` as an
-  `extra` line so it stacks properly. `D.skills[id]` = {ranks (effective), bought, sph, retrain, ...};
+  **Two spheres (or packages) on one skill (changed 2026-11-08, owner's reading):** only the highest one's ranks count
+  (Tinker: a competence bonus "instead of gaining additional ranks"; core rule: "do not gain more ranks than their usual
+  maximum"; nothing online settles it), plus a competence bonus of ½ character level (min +1), passed to `tot()` as an
+  `extra` line so it stacks properly. Before, the ranks were added up to the Hit Dice cap. `D.skills[id]` = {ranks (effective), bought, sph, retrain, ...};
   `D.skRetrain` lists the ones to retrain.
 - **UI:** an "Associated skill" row on each such sphere card (`assocRow`, `data-assoc` selects, ×
   `assocDel`); "+N sphere" and "must retrain N" under the Ranks input on the Skills tab (`skSph`), and
   a "Must retrain" warning at the top (`retrainNote`). No retrain button: players lower the bought ranks
-  themselves (user's choice). The level-up skill step caps each skill at the new level minus its sphere ranks.
+  themselves (user's choice). The level-up skill step caps each skill at the new level minus its sphere ranks; since
+  2026-11-08 it comes after the talents step and counts the spheres picked there (`SPN = sphRanks(build().c2)`).
 - The Beastmastery tamed-animal cap now uses effective Handle Animal ranks.
 
 **Spheres of Guile (skill expertise):** each tier gives "Any" and [utility] talents.
@@ -1065,11 +1074,39 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
     to the Characters screen with a message (`renderFailed`) instead of a blank page. Undo never changes share/party state.
     Importing a character already in the list makes a separate copy. The theme preview survives repaints (`UI.themeDlg`).
     Print shows action effects, drawbacks, boons and sphere drawbacks. Dice fields have accessible names.
-  - **Not changed (noted):** focus after changing an associated skill; an empty breakdown button on maneuver rows; card-note
-    textareas labelled by placeholder only; the level-up skill step can't see talents chosen later in the same level-up; two
-    spheres sharing a skill add their ranks before the Hit Dice cap (core-rule reading; Tinker's text suggests the higher
-    instead); Athletics Leap + Run (same skill) give no competence bonus; History doesn't record drawbacks; one invite code
-    allows many member documents (each is small; a GM can remove them and change the code).
+  - **Not changed (noted):** an empty breakdown button on maneuver rows. (Fixed 2026-11-08, see "Playtest batch": focus
+    after changing an associated skill, unlabelled text boxes, the level-up skill step and new talents, spheres sharing a
+    skill, Athletics Leap + Run, History and drawbacks, one invite code making many member records.)
+- **Playtest batch (2026-11-08).** Requests from the table, plus the small fixes left on the list.
+  - **Trade overlap +4** (Vocation sphere, "Trade Talents": an overlapping class skill from two (trade) talents that you don't
+    swap out gives +4 instead of +3; swaps are limited to 1 per 2 trade talents). `traditions.trade.plus4` = [skill ids], ticked
+    in "Overlapping class skills" on the trade card (only skills the tradition makes class skills; only while it replaces
+    class skills). `deriveCore` builds `cs4` next to `cs`; class skill lines read "Class skill (trade overlap)" +4, Craft/Perform
+    lines follow their base skill; `D.csFrom` says "(overlap, +4)". The swap limit is shown as text, not enforced.
+  - **A skill using another ability:** `ch.skillAbil = {skill id: {a, why, sit}}` (in `blankChar`; `sanitizeChar` keeps only
+    valid abilities, `why` ≤ 200). The Skills tab's Ability cell is a button (`skAbCell`) opening `A.skAbil` (ability, why, "only
+    sometimes", "Back to X"). Always: the skill uses that ability, the line reads "Str (instead of Cha: why)", the cell is marked
+    *. Only sometimes: the total doesn't change; `skAbSit(D, …)` adds a situational line "+4 Str instead of Cha (why)" shown
+    under the skill (and in Roll20 cards with the other situational bonuses). Works for extra Craft/Perform/… lines too;
+    custom skills already pick their ability.
+  - **Extra Magic / Combat / Skill Talent feats** count toward "Talents you get" by themselves (`xtalFeats`: feat picks
+    named "Extra … Talent", "Times taken" counts; `D.xtal`). Old workarounds are pointed out on the Build tab:
+    a class's Bonus talents above 0 ("Lower Bonus talents by N", `xtalFix`) and free talents (Bonus talent / free base sphere)
+    whose name or notes mention an Extra Talent feat ("Count them as normal talents", `xtalFree`). Tova's example now counts
+    Bluster and Frightening Threat as normal talents (14 / 14).
+  - **Shared associated skill:** highest sphere wins (see "Free skill ranks from spheres"). **Athletics** may list Acrobatics
+    twice (Leap and Run packages: `SSK.athletics.dup = {acro: 2}`), which gives the shared-skill competence bonus.
+  - **Level-up order:** Class, Hit points, Feats & talents, Skills, Review (the skills step sees the new spheres).
+  - **Focus:** after choosing or removing an associated skill the keyboard stays on that skill's box (or the "add" box),
+    without scrolling (`UI.focusSel`, checked first in `restoreUI`).
+  - **Labels:** card notes, the import box, the class-list search and the level-up hit points box have accessible names.
+  - **History** records drawbacks and boons (`db:` / `bn:` keys; ids added by `ensureIds`). A history started earlier takes
+    the ones already there as known once (`ch.histDb`), so they aren't listed as new.
+  - **Party members (database rule):** a member record can only be created for a character saved in the player's account
+    (`exists(users/{uid}/characters/{charId})`), so one invite code can't make endless records. Joining saves the character
+    to the account first. **Deploy the rules by hand** (`firebase deploy --only firestore`): GitHub only deploys the site.
+    The site change works with the old rules too, so the order doesn't matter.
+  - **GitHub workflow:** `actions/checkout@v5`, `actions/setup-node@v5` (the v4 ones ran on Node 20, which GitHub is retiring).
 - **Sheet tab layout (2026-11-01):** the Companions card moved from the right column to the left, under Spheres, to balance the columns.
   - Ilyra's four blast actions became one "Destructive blast" with augments (Fire Blast on by default).
 - **Roll20 export (2026-11-01).** A "Roll20 macros" card on Save & print (`roll20Card`, `roll20Macros`). Free accounts only:

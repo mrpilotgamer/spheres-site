@@ -152,14 +152,14 @@ function check(what, got, want) {
   await page.locator('#sph-boxing [data-a="sphDbAdd"]').click(); await page.waitForTimeout(250);
   const bn = page.locator('#sph-boxing .sphdbedit input[data-f$=".name"]').last();
   await bn.fill('Test Drawback'); await bn.dispatchEvent('change'); await page.waitForTimeout(250);
-  check('a combat sphere drawback adds a talent', await tile('Talents used'), '12 / 13');
+  check('a combat sphere drawback adds a talent', await tile('Talents used'), '14 / 15');
   check('its card says it gives a combat talent', (await page.locator('#sph-boxing .sphdbedit').innerText()).includes('bonus combat talent'), 'true');
   await page.click('[data-a="undo"]'); await page.waitForTimeout(200); await page.click('[data-a="undo"]'); await page.waitForTimeout(250);
-  check('undo removes it', await tile('Talents used'), '12 / 12');
+  check('undo removes it', await tile('Talents used'), '14 / 14');
   /* and a skill sphere drawback a skill talent */
   await page.locator('#sph-bluster details.basehead > summary').click(); await page.waitForTimeout(150);
   await page.locator('#sph-bluster [data-a="sphDbAdd"]').click(); await page.waitForTimeout(250);
-  check('a skill sphere drawback adds a talent', await tile('Talents used'), '12 / 13');
+  check('a skill sphere drawback adds a talent', await tile('Talents used'), '14 / 15');
   check('its card says it gives a skill talent', (await page.locator('#sph-bluster .sphdbedit').innerText()).includes('bonus skill talent'), 'true');
   await page.click('[data-a="undo"]'); await page.waitForTimeout(250);
   await go('Advanced', 'Save');
@@ -179,7 +179,7 @@ function check(what, got, want) {
   check('Roll20: skills list (usable skills only)', (skm.match(/\{\{Check=/g) || []).length, '18');
   check('Roll20: skills list Intimidate', skm.includes('Intimidate (+16),Intimidate&#125;&#125; {{Check=[[1d20+16'), 'true');
   await go('Character', 'Talents');
-  check('talents used', await tile('Talents used'), '12 / 12');
+  check('talents used (Extra Skill Talent ×2 counts itself since 2026-11-08)', await tile('Talents used'), '14 / 14');
   await go('Character', 'Skills');
   check('skill ranks', (await page.locator('.cardhead .note').first().innerText()).trim(), 'Ranks 48 of 48');
   check('Acrobatics (2 bought + 10 from Athletics)', await skillTotal('Acrobatics'), '+17');
@@ -661,7 +661,7 @@ function check(what, got, want) {
   const dlg = () => page.locator('.dlg-back').last();
   await dlg().locator('button', { hasText: 'Next' }).click(); await page.waitForTimeout(300);
   await dlg().locator('input[name="hp"]').fill('4'); await dlg().locator('button', { hasText: 'Next' }).click(); await page.waitForTimeout(300);
-  await dlg().locator('button', { hasText: 'Next' }).click(); await page.waitForTimeout(300);
+  /* the talents step now comes before the skills step (2026-11-08) */
   const tr = dlg().locator('.talrow').first();
   await tr.locator('.tr-nm').click(); await tr.locator('.tr-nm').type('gravetong', { delay: 20 }); await page.waitForTimeout(500);
   check('level-up: the talent box searches the wiki', (await tr.locator('[data-wkchoose]').first().innerText()).replace(/\s+/g, ' '), 'Gravetongue · Death');
@@ -672,10 +672,96 @@ function check(what, got, want) {
   const rows = dlg().locator('.talrow'), last = rows.last();
   check('level-up: “Add a row for the base sphere” adds one', [await last.locator('.tr-sph').inputValue(), await last.locator('.tr-base').isChecked()].join(' '), 'Death true');
   await dlg().locator('button', { hasText: 'Next' }).click(); await page.waitForTimeout(300);
+  check('level-up: the skills step comes after the talents', /4 · Skills/.test(await dlg().locator('.steps .cur').innerText()), 'true');
+  await dlg().locator('button', { hasText: 'Next' }).click(); await page.waitForTimeout(300);
   await dlg().locator('button', { hasText: 'Level up' }).click(); await page.waitForTimeout(500);
   const lvl13 = await page.evaluate(() => { const c = JSON.parse(localStorage.getItem('spheres-sheet-v1:' + JSON.parse(localStorage.getItem('spheres-sheet-v1:last')))); const l = c.levels[c.levels.length - 1]; return [c.levels.length].concat(l.picks.filter(p => p.kind === 'talent').map(p => [p.name, p.sphere, p.role || '', p.tkind || ''].join('/'))).join(' | '); });
   check('level-up: saved with the wiki’s type and [utility] role', lvl13, '13 | Gravetongue/Death/utility/magic | Death sphere/Death/sphere/magic');
   await page.unroute(SITE + '**');
+
+  /* ---------- playtest batch (2026-11-08): trade +4, skill abilities, Extra Talent feats, shared skills, History, level-up ---------- */
+  console.log('Playtest batch');
+  await page.evaluate(() => { const id = 'zz-play';
+    const lv = () => ({ cls: 'c1', hp: 5, picks: [] }), levels = Array.from({ length: 12 }, lv);
+    levels[0].picks = [
+      { id: 'q1', kind: 'talent', name: 'Bluster sphere', sphere: 'Bluster', role: 'sphere', tkind: 'skill' },
+      { id: 'q2', kind: 'talent', name: 'Test Bluster Talent', sphere: 'Bluster', tkind: 'skill' },
+      { id: 'q3', kind: 'talent', name: 'Gladiator sphere', sphere: 'Gladiator', role: 'sphere', tkind: 'combat' },
+      { id: 'q4', kind: 'talent', name: 'Athletics sphere', sphere: 'Athletics', role: 'sphere', tkind: 'combat' },
+      { id: 'q5', kind: 'feat', name: 'Extra Magic Talent', n: 2 },
+      { id: 'q6', kind: 'feat', name: 'Extra Combat Talent' },
+      { id: 'q7', kind: 'talent', name: 'Brute Test Talent', sphere: 'Brute', role: 'bonus', tkind: 'combat', notes: 'From Extra Combat Talent' }];
+    localStorage.setItem('spheres-sheet-v1:' + id, JSON.stringify({ app: 'spheres-sheet', v: 1, id, name: 'Playtest', levels,
+      classes: { c1: { name: 'Tester', hd: 8, bab: '3/4', good: ['will'], skills: 4, classSkills: [], cast: 'none', martial: 'none', skill: 'none', talents: '1', bonusTalents: 2 } },
+      abil: { str: 16, dex: 12, con: 10, int: 10, wis: 10, cha: 8 }, skillRanks: { handle: 3 },
+      sphSkills: { Bluster: ['intim'], Gladiator: ['intim'], Athletics: ['acro', 'acro'] },
+      traditions: { mode: 'separate', casting: { on: true, name: 'Test', drawbacks: [{ name: 'Consciousness Linked', kind: 'general', weight: 1 }], boons: [] },
+        trade: { on: true, name: 'Aerialist', rank: 'competent', replace: true, skills: ['handle', 'bluff', 'intim'], plus4: ['handle'] } },
+      histSnap: {} }));
+    localStorage.setItem('spheres-sheet-v1:last', JSON.stringify(id)); });
+  await page.reload(); await page.waitForTimeout(500);
+  const stP = async () => page.evaluate(() => JSON.parse(localStorage.getItem('spheres-sheet-v1:zz-play')));
+  await go('Character', 'Skills');
+  check('two spheres on one skill: the higher one’s ranks count, plus the competence bonus (10 − 1 + 3 + 6)', await skillTotal('Intimidate'), '+18');
+  const whySk = async id => { await page.click(`[data-a="why"][data-k="skill.${id}"]`); await page.waitForTimeout(200); const tx = (await page.locator('.dlg-back').last().innerText()).replace(/\s+/g, ' '); await page.keyboard.press('Escape'); await page.waitForTimeout(150); return tx; };
+  check('…and the breakdown says which sphere', /Ranks from the Bluster sphere \(the highest of/.test(await whySk('intim')), 'true');
+  check('trade overlap: +4 instead of +3 (3 − 1 + 4)', await skillTotal('Handle Animal'), '+6');
+  check('…shown in the breakdown', /Class skill \(trade overlap\)/.test(await whySk('handle')), 'true');
+  check('Athletics Leap + Run: Acrobatics once, plus the shared-skill bonus (5 + 1 + 6)', await skillTotal('Acrobatics'), '+12');
+  check('…named as two packages', /Shared associated skill \(Athletics, two packages\)/.test(await whySk('acro')), 'true');
+  /* a skill using another ability */
+  const abDlg = async () => { await page.click('[data-a="skAbil"][data-k="intim"]'); await page.waitForTimeout(200); return page.locator('.dlg-back').last(); };
+  let ad = await abDlg(); await ad.locator('select[name="a"]').selectOption('str'); await ad.locator('input[name="why"]').fill('Intimidating Prowess');
+  await ad.locator('button', { hasText: 'Save' }).click(); await page.waitForTimeout(300);
+  check('a skill can use another ability (Str +3 instead of Cha −1)', await skillTotal('Intimidate'), '+22');
+  const abCell = async () => (await page.locator('tr', { has: page.locator('td:first-child', { hasText: /^Intimidate/ }) }).first().locator('td').nth(3).innerText()).replace(/\s+/g, ' ');
+  check('…the Ability cell shows it, marked', await abCell(), 'Str +3 *');
+  check('…and the breakdown says why', /Str \(instead of Cha: Intimidating Prowess\)/.test(await whySk('intim')), 'true');
+  ad = await abDlg(); await ad.locator('input[name="sit"]').check(); await ad.locator('button', { hasText: 'Save' }).click(); await page.waitForTimeout(300);
+  check('“only sometimes” keeps the normal total', await skillTotal('Intimidate'), '+18');
+  check('…and shows the other one under the skill', /\+4 Str instead of Cha \(Intimidating Prowess\)/.test((await page.locator('tr', { has: page.locator('td:first-child', { hasText: /^Intimidate/ }) }).first().innerText()).replace(/\s+/g, ' ')) + ' ' + /or Str \+3/.test(await abCell()), 'true true');
+  await page.reload(); await page.waitForTimeout(400); await go('Character', 'Skills');
+  check('the ability choice is saved', JSON.stringify((await stP()).skillAbil.intim), '{"a":"str","why":"Intimidating Prowess","sit":true}');
+  ad = await abDlg(); await ad.locator('button', { hasText: 'Back to Cha' }).click(); await page.waitForTimeout(300);
+  check('“Back to Cha” undoes it', String((await stP()).skillAbil.intim) + ' ' + await skillTotal('Intimidate'), 'undefined +18');
+  /* Extra Talent feats */
+  await go('Character', 'Talents');
+  await page.click('[data-a="why"][data-k="talents"]'); await page.waitForTimeout(200);
+  const tb = (await page.locator('.dlg-back').last().innerText()).replace(/\s+/g, ' '); await page.keyboard.press('Escape'); await page.waitForTimeout(150);
+  check('Extra Talent feats count toward talents, with “Times taken”', /Extra Magic Talent ×2 \(feat\) \+2/.test(tb) + ' ' + /Extra Combat Talent \(feat\) \+1/.test(tb), 'true true');
+  await go('Character', 'Build');
+  check('Build warns about Bonus talents raised for them', await page.locator('[data-a="xtalFix"]').innerText(), 'Lower Bonus talents by 2');
+  await page.click('[data-a="xtalFix"]'); await page.waitForTimeout(300);
+  check('…and one click lowers it', String((await stP()).classes.c1.bonusTalents) + ' ' + await page.locator('[data-a="xtalFix"]').count(), '0 0');
+  check('a talent marked free “from Extra Combat Talent” is pointed out', /Brute Test Talent is marked free but came from one/.test(await page.locator('p.warn', { has: page.locator('[data-a="xtalFree"]') }).innerText()), 'true');
+  await page.click('[data-a="xtalFree"]'); await page.waitForTimeout(300);
+  check('…and one click counts it as a normal talent', (await stP()).levels[0].picks.find(p => p.id === 'q7').role, 'talent');
+  /* associated skills: Acrobatics a third time is refused, another skill is added, and the keyboard stays on the new box */
+  await go('Character', 'Talents');
+  await page.selectOption('select[data-assoc="Athletics|new"]', 'climb'); await page.waitForTimeout(400);
+  check('adding an associated skill keeps the keyboard on its new box', JSON.stringify((await stP()).sphSkills.Athletics) + ' ' + await page.evaluate(() => document.activeElement && document.activeElement.dataset.assoc), '["acro","acro","climb"] Athletics|2');
+  await page.selectOption('select[data-assoc="Athletics|new"]', 'acro'); await page.waitForTimeout(400);
+  check('…Acrobatics can’t go in a third time', JSON.stringify((await stP()).sphSkills.Athletics), '["acro","acro","climb"]');
+  /* History: drawbacks and boons are recorded; the ones already there aren't listed as new */
+  await go('Character', 'Traditions');
+  await page.click('[data-a="tradAdd"][data-p="traditions.casting.boons"]'); await page.waitForTimeout(300);
+  await page.fill('[data-f="traditions.casting.boons.0.name"]', 'Easy Focus'); await page.press('[data-f="traditions.casting.boons.0.name"]', 'Tab'); await page.waitForTimeout(4800);
+  const hP = ((await stP()).history || []).filter(h => h.cat === 'Boon' || h.cat === 'Drawback').map(h => h.t + ' ' + h.cat + ' ' + h.text);
+  check('History records a new boon, not the drawback that was already there', hP.join(' | '), 'add Boon Easy Focus');
+  /* level-up: talents first, and the skills step counts the sphere just picked */
+  await page.locator('[data-a="levelUp"]').first().click(); await page.waitForTimeout(300);
+  await dlg().locator('button', { hasText: 'Next' }).click(); await page.waitForTimeout(300);
+  await dlg().locator('input[name="hp"]').fill('5'); await dlg().locator('button', { hasText: 'Next' }).click(); await page.waitForTimeout(300);
+  const tr2 = dlg().locator('.talrow').first(); await tr2.locator('.tr-sph').fill('Body Control'); await tr2.locator('.tr-base').check();
+  await dlg().locator('button', { hasText: 'Next' }).click(); await page.waitForTimeout(400);
+  const esc = dlg().locator('label', { has: page.locator('input[name="sk-escape"]') });
+  check('level-up: the skills step counts a sphere picked on the talents step', (await esc.innerText()).replace(/\s+/g, ' ').trim() + ' / max ' + await esc.locator('input').getAttribute('max'), 'Escape Artist 0 +5 sphere / max 8');
+  await dlg().locator('button', { hasText: 'Back' }).click(); await page.waitForTimeout(300);
+  check('level-up: Back from skills returns to talents', /3 · Feats & talents/.test(await dlg().locator('.steps .cur').innerText()), 'true');
+  await dlg().locator('button', { hasText: 'Cancel' }).first().click().catch(() => page.keyboard.press('Escape')); await page.waitForTimeout(300);
+  /* every text box has a name a screen reader can read */
+  const unl = await page.evaluate(() => [...document.querySelectorAll('textarea,input:not([type=checkbox]):not([type=radio]):not([type=hidden]),select')].filter(e => !e.labels?.length && !e.getAttribute('aria-label') && !e.closest('label')).length);
+  check('no unlabelled boxes on the Traditions tab', unl, '0');
 
   console.log('Damaged saves');
   const damaged = [
@@ -683,6 +769,7 @@ function check(what, got, want) {
     ['a companion with no abilities', { companions: [{ kind: 'cohort', abil: null, mods: 'x' }] }],
     ['a class with odd class skills', { classes: { c1: { name: 'X', classSkills: 'x' } }, levels: [{ cls: 'c1', hp: 5 }] }],
     ['a null log row and a numeric sphere', { log: [null], levels: [{ picks: [{ kind: 'talent', name: 'A', sphere: 5 }] }] }],
+    ['broken skill abilities and trade overlaps', { skillAbil: { intim: { a: 'luck' }, bluff: 'x', climb: null, diplo: { a: 'str', why: 5 } }, traditions: { trade: { on: true, plus4: 'handle' } } }],
     ['broken wiki links', { extraPicks: [{ kind: 'talent', name: 'A', sphere: 'Nature', ref: 'x' }, { kind: 'talent', name: 'B', ref: { s: 5, n: null } }], traditions: { casting: { on: true, drawbacks: [{ name: 'C', ref: [] }] } }, sphDrawbacks: [{ sphere: 'Nature', name: 'D', ref: { s: 'drawbacks' } }] }],
     ['“constructor” as a theme, condition and form', { theme: { preset: 'constructor' }, conds: { constructor: true }, forms: [{ id: 'f', tf: 'constructor' }] }]];
   for (const [what, extra] of damaged) {
