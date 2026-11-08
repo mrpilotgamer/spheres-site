@@ -22,7 +22,8 @@ Game: **Pathfinder 1e with Spheres of Power, Might and Guile** (Drop Dead Studio
 | Talent and drawback descriptions | `~/spheres-site/public/talents/` (built from the wiki bundle; deployed with the site) |
 | Build script | `~/spheres-site/tools/build-talents.py` (not deployed) |
 | Tests | `~/spheres-site/tests/` (not deployed) |
-| GitHub (planned 2026-11-06) | a private repository holding the whole `spheres-site` folder; `.github/workflows/deploy.yml` tests and deploys every push to `main` |
+| Licence (2026-11-08) | `LICENSE.md`: the sheet's own code and notes under CC BY 4.0 (credit "Spheres Character Sheet by mrpilotgamer"); the wiki rules text (`public/talents/`, the `#…Lib` data blocks) under the OGL 1.0a, text and section 15 notices in `OGL.md` (copied from the wiki's Legal & OGL page, with this site's notice added). Keep both files if the repository goes public |
+| GitHub (set up 2026-11-08) | a private repository holding the whole `spheres-site` folder; `.github/workflows/deploy.yml` tests and deploys every push to `main` |
 
 Cloud Shell keeps the folder between visits, but Google deletes it after about 4 months of not
 opening Cloud Shell. If it's gone, re-upload the site zip (or rebuild it from the "Hosting
