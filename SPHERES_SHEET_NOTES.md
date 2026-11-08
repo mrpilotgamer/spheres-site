@@ -75,7 +75,7 @@ so every `firebase deploy` (Cloud Shell or GitHub) first checks the description 
 Normal sheet updates don't need this step; the `talents/` folder stays as it is.
 
 **Checks before deploying (optional):** `tests/check.js` opens the sheet in a headless browser, loads
-both example characters and runs 265 checks against values worked out by hand (HP, AC, saves,
+both example characters and runs 275 checks against values worked out by hand (HP, AC, saves,
 DCs, spell points, talents, skill ranks, attacks, toggles, the theme, free sphere ranks, blast augments, Roll20 macros,
 raised undead, temporary talents, cohorts, Workshop, wiki descriptions, adding talents from the wiki and more). It sits outside `public/`, so it is never deployed. Run it with:
 ```
@@ -94,7 +94,7 @@ won't match the installed browser), then:
 also need the sign-in emulator, `npx firebase emulators:exec --config firebase.emulators.json --only firestore,auth
 --project demo-spheres "node tests/party-check.js"` (same for `save-check.js`). `firebase.emulators.json` is
 `firebase.json` plus the auth and emulator settings; it's only for tests. GitHub doesn't run these three.
-Last full run: 2026-11-08 (quick fixes), `check.js` 265 (the others unchanged since the playtest batch: `talents-check.js` 30, `rules-check.js` 70, `party-check.js` 31,
+Last full run: 2026-11-08 (house rules), `check.js` 275 (the others unchanged since the playtest batch: `talents-check.js` 30, `rules-check.js` 70, `party-check.js` 31,
 `save-check.js` 12): all passed.
 
 **Rollback:** Firebase console → Hosting → release history → roll back. With GitHub: also revert the commit (the
@@ -434,10 +434,17 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
   Half speed in medium or heavy armor.
 
 **House rules (per character, can be exported for the whole table):**
-- Spell pool uses Int.
-- Concentration = CL + Wis.
-- Wis added to "per caster level" durations.
-- DCs use the highest mental modifier.
+- **Divided casting scores** (`rules.divCast`; one switch since 2026-11-08, owner's request): spell points = casting class
+  levels + Int; concentration = CL + Wis; Wis added to "per caster level" durations (`durcl`); DCs = 10 + ½ CL + the highest
+  mental modifier. It replaced four switches (`intPool`, `wisConc`, `wisDur`, `highDC`): `rulesFix()` (in `sanitizeChar` and
+  table-rules import) turns `divCast` on when any of them was on, and removes them.
+- **Advanced talents: 1, +1 per 5 levels** (`rules.advLimit`, group "Talents", 2026-11-08): 1 at 1st, 2 at 5th, 3 at 10th…
+  (`advCap(lvl)` = 1 + ⌊lvl/5⌋). A talent is advanced when the wiki index lists it as `advanced` (by `p.ref`, else sphere +
+  name, else a name found in only one sphere; legendary ones don't count), or when its editor's "Advanced talent" select
+  says so (`p.adv` = `'yes'` / `'no'`; empty = from the wiki). Temporary talents don't count; tradition grants do; "Times
+  taken" counts. Talents tab: an "Advanced talents N / M" tile (`advTile`), a warning naming them when over (`advWarn`),
+  an "Advanced" tag on their rows; the add-talent preview and level-up rows say how many you'd have (`advNote`). Needs
+  `talents/index.json`; until it loads the count shows "…".
 - SR reduces magic damage.
 - SR helps saves.
 - Stances last until ended.

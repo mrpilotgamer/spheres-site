@@ -789,6 +789,45 @@ function check(what, got, want) {
   const tags = async n => (await page.locator('details.item', { has: page.locator('summary .nm', { hasText: n }) }).locator(':scope > summary').innerText()).replace(/\s+/g, ' ');
   check('the Actions tab tags it too, and only it', /temporary talent off/.test(await tags('Lingering Darkness')) + ' ' + /temporary talent off/.test(await tags('Other thing')), 'true false');
 
+  /* ---------- house rules (2026-11-08): advanced talent limit, divided casting scores ---------- */
+  console.log('House rules');
+  await page.route(SITE + '**', route => { const f = decodeURIComponent(route.request().url().slice(SITE.length));
+    if (!/^[a-z0-9-]+\.json$/.test(f) || !fs.existsSync(path.join(TAL, f))) return route.abort();
+    route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: fs.readFileSync(path.join(TAL, f)) }); });
+  await page.evaluate(() => { const id = 'zz-adv', levels = Array.from({ length: 6 }, () => ({ cls: 'c1', hp: 5, picks: [] }));
+    levels[0].picks = [
+      { id: 'v1', kind: 'talent', name: 'Cyclone', sphere: 'Nature', tkind: 'magic' },
+      { id: 'v2', kind: 'talent', name: 'Create Haunt', sphere: 'Death', tkind: 'magic' },
+      { id: 'v3', kind: 'talent', name: 'Create Nature', sphere: 'Nature', tkind: 'magic' },
+      { id: 'v4', kind: 'talent', name: 'Homebrew Big Talent', sphere: 'Homebrew', tkind: 'magic', adv: 'yes' },
+      { id: 'v5', kind: 'talent', name: 'Mercy Killing', sphere: 'Death', tkind: 'magic', adv: 'no' }];
+    localStorage.setItem('spheres-sheet-v1:' + id, JSON.stringify({ app: 'spheres-sheet', v: 1, id, name: 'Advanced', levels,
+      classes: { c1: { name: 'Mage', hd: 6, bab: '1/2', cast: 'high', talents: 'auto' } }, rules: { maxFirst: true, advLimit: true, wisConc: true } }));
+    localStorage.setItem('spheres-sheet-v1:last', JSON.stringify(id)); });
+  await page.reload(); await page.waitForTimeout(400); await go('Character', 'Talents'); await page.waitForTimeout(600);
+  check('advanced talents: counted from the wiki and your own marks, against 1 + 1 per 5 levels', await tile('Advanced talents'), '3 / 2');
+  check('…with a warning naming them', /Too many advanced talents:.*3 \(Cyclone, Create Haunt, Homebrew Big Talent\); the house rule allows 2 at level 6/.test((await page.locator('p.warn', { hasText: 'Too many advanced talents' }).innerText()).replace(/\s+/g, ' ')), 'true');
+  const advTag = async n => /Advanced/.test(await page.locator('details.item', { has: page.locator('summary .nm', { hasText: new RegExp('^' + n + '$') }) }).locator(':scope > summary').innerText());
+  check('advanced rows are tagged (and “no” overrides the wiki)', [await advTag('Cyclone'), await advTag('Create Nature'), await advTag('Mercy Killing')].join(' '), 'true false false');
+  const hauntRow = page.locator('details.item', { has: page.locator('summary .nm', { hasText: /^Create Haunt$/ }) });
+  await hauntRow.locator(':scope > summary').click(); await page.waitForTimeout(200);
+  await hauntRow.locator('select[data-f$=".adv"]').selectOption('no'); await page.waitForTimeout(400);
+  check('marking one “No” drops it from the count', (await tile('Advanced talents')) + ' ' + await page.locator('p.warn', { hasText: 'Too many advanced talents' }).count(), '2 / 2 0');
+  await tkSearch('astral proj'); await page.locator('#tk-res [data-wkchoose]').first().click(); await page.waitForTimeout(600);
+  check('the add-talent preview warns before going over', /House rule: 3 of 2 advanced talents at level 6 \(over the limit\)/.test(await tkPrev()), 'true');
+  /* divided casting scores: the old switches turned into one */
+  await go('Advanced', 'Rules');
+  check('an old casting switch turns on “Divided casting scores”', await page.locator('[data-a="rule"][data-k="divCast"]').getAttribute('aria-pressed'), 'true');
+  check('…and the four old switches are gone', String(await page.locator('[data-a="rule"][data-k="wisConc"], [data-a="rule"][data-k="intPool"], [data-a="rule"][data-k="highDC"], [data-a="rule"][data-k="wisDur"]').count()), '0');
+  await page.click('[data-a="rule"][data-k="advLimit"]'); await page.waitForTimeout(300);
+  await go('Character', 'Talents');
+  check('switching the advanced rule off hides the count', String(await page.locator('.tile', { has: page.locator('.k', { hasText: /^Advanced talents$/ }) }).count()), '0');
+  await page.unroute(SITE + '**');
+  await home(); await page.click('button[data-k="incanter"]'); await page.waitForTimeout(500);
+  await go('Advanced', 'Rules'); await page.click('[data-a="rule"][data-k="divCast"]'); await page.waitForTimeout(300); await go('Play', 'Sheet');
+  check('divided casting scores: concentration = caster level + Wis (12 + 1)', await tile('Concentration'), '+13');
+  check('…spell points = class levels + Int, DC = 10 + ½ CL + best mental', (await tile('Spell points')) + ' ' + await tile('Magic DC'), '29 24');
+
   console.log('Damaged saves');
   const damaged = [
     ['a null drawback', { traditions: { casting: { on: true, drawbacks: [null], boons: [null] } } }],
