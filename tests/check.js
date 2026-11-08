@@ -800,21 +800,25 @@ function check(what, got, want) {
       { id: 'v2', kind: 'talent', name: 'Create Haunt', sphere: 'Death', tkind: 'magic' },
       { id: 'v3', kind: 'talent', name: 'Create Nature', sphere: 'Nature', tkind: 'magic' },
       { id: 'v4', kind: 'talent', name: 'Homebrew Big Talent', sphere: 'Homebrew', tkind: 'magic', adv: 'yes' },
-      { id: 'v5', kind: 'talent', name: 'Mercy Killing', sphere: 'Death', tkind: 'magic', adv: 'no' }];
+      { id: 'v5', kind: 'talent', name: 'Mercy Killing', sphere: 'Death', tkind: 'magic', adv: 'no' },
+      { id: 'v6', kind: 'talent', name: 'Bizarre Artistry', sphere: 'Artifice', tkind: 'skill' },
+      { id: 'v7', kind: 'talent', name: 'Ambrosia', sphere: 'Alchemy', tkind: 'combat' }];
     localStorage.setItem('spheres-sheet-v1:' + id, JSON.stringify({ app: 'spheres-sheet', v: 1, id, name: 'Advanced', levels,
       classes: { c1: { name: 'Mage', hd: 6, bab: '1/2', cast: 'high', talents: 'auto' } }, rules: { maxFirst: true, advLimit: true, wisConc: true } }));
     localStorage.setItem('spheres-sheet-v1:last', JSON.stringify(id)); });
   await page.reload(); await page.waitForTimeout(400); await go('Character', 'Talents'); await page.waitForTimeout(600);
-  check('advanced talents: counted from the wiki and your own marks, against 1 + 1 per 5 levels', await tile('Advanced talents'), '3 / 2');
-  check('…with a warning naming them', /Too many advanced talents:.*3 \(Cyclone, Create Haunt, Homebrew Big Talent\); the house rule allows 2 at level 6/.test((await page.locator('p.warn', { hasText: 'Too many advanced talents' }).innerText()).replace(/\s+/g, ' ')), 'true');
+  check('advanced, legendary and exceptional talents: counted together from the wiki and your own marks, against 1 + 1 per 5 levels', await tile('Advanced talents'), '5 / 2');
+  check('…with a warning naming them', /Too many advanced talents:.*5 \(Cyclone, Create Haunt, Homebrew Big Talent, Bizarre Artistry, Ambrosia\); the house rule allows 2 at level 6/.test((await page.locator('p.warn', { hasText: 'Too many advanced talents' }).innerText()).replace(/\s+/g, ' ')), 'true');
   const advTag = async n => /Advanced/.test(await page.locator('details.item', { has: page.locator('summary .nm', { hasText: new RegExp('^' + n + '$') }) }).locator(':scope > summary').innerText());
   check('advanced rows are tagged (and “no” overrides the wiki)', [await advTag('Cyclone'), await advTag('Create Nature'), await advTag('Mercy Killing')].join(' '), 'true false false');
+  const kindTag = async n => (await page.locator('details.item', { has: page.locator('summary .nm', { hasText: new RegExp('^' + n + '$') }) }).locator(':scope > summary .tag.gold').last().innerText()).trim();
+  check('legendary and exceptional ones are tagged by their own name', (await kindTag('Ambrosia')) + ' ' + await kindTag('Bizarre Artistry'), 'Legendary Exceptional');
   const hauntRow = page.locator('details.item', { has: page.locator('summary .nm', { hasText: /^Create Haunt$/ }) });
   await hauntRow.locator(':scope > summary').click(); await page.waitForTimeout(200);
   await hauntRow.locator('select[data-f$=".adv"]').selectOption('no'); await page.waitForTimeout(400);
-  check('marking one “No” drops it from the count', (await tile('Advanced talents')) + ' ' + await page.locator('p.warn', { hasText: 'Too many advanced talents' }).count(), '2 / 2 0');
+  check('marking one “No” drops it from the count', (await tile('Advanced talents')) + ' ' + await page.locator('p.warn', { hasText: 'Too many advanced talents' }).count(), '4 / 2 1');
   await tkSearch('astral proj'); await page.locator('#tk-res [data-wkchoose]').first().click(); await page.waitForTimeout(600);
-  check('the add-talent preview warns before going over', /House rule: 3 of 2 advanced talents at level 6 \(over the limit\)/.test(await tkPrev()), 'true');
+  check('the add-talent preview warns before going over', /House rule: 5 of 2 advanced talents at level 6 \(over the limit\)/.test(await tkPrev()), 'true');
   /* divided casting scores: the old switches turned into one */
   await go('Advanced', 'Rules');
   check('an old casting switch turns on “Divided casting scores”', await page.locator('[data-a="rule"][data-k="divCast"]').getAttribute('aria-pressed'), 'true');

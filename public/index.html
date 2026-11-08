@@ -677,7 +677,7 @@ var HOUSE=[
     ['avgHP','Average hit points every level','The level-up dialog fills in the average (half the die + 1) instead of asking for a roll.'],
     ['maxFirst','Maximum hit points at 1st level','Standard rule; on by default.']]],
   ['Talents',[
-    ['advLimit','Advanced talents: 1, +1 per 5 levels','You can have 1 advanced talent at 1st level, 2 at 5th, 3 at 10th, and so on. The Talents tab counts them (from the wiki’s Advanced talent lists, or ones you mark yourself) and warns when you go over.']]]
+    ['advLimit','Advanced talents: 1, +1 per 5 levels','Advanced, legendary and exceptional talents share one limit: 1 at 1st level, 2 at 5th, 3 at 10th, and so on. The Talents tab counts them (from the wiki’s lists, or ones you mark yourself) and warns when you go over.']]]
 ];
 
 /* ---------- formulas ----------
@@ -3557,7 +3557,7 @@ function pickSum(r,talent){ var p=r.p, n=linkedMods(p.name), tags=[];
   else { if(talent&&roleOf(p)!=='talent') tags.push('<span class="tag gold">'+esc((ROLES.filter(function(o){ return o[0]===roleOf(p); })[0]||['',''])[1])+'</span>'); if(r.lvl) tags.push('<span class="tag">Level '+r.lvl+'</span>'); }
   if(talent&&isTemp(ch,p)){ var ts=tempSrc(ch,p.temp); tags.push('<span class="tag'+(ts.on===false?'':' gold')+'">Temporary: '+esc(ts.name||'source')+(ts.on===false?' (off)':'')+'</span>'); }
   if(talent&&p.tkind) tags.push('<span class="tag">'+esc((TKINDS.filter(function(k){ return k[0]===p.tkind; })[0]||['',p.tkind])[1])+'</span>');
-  if(talent&&ch.rules.advLimit&&!isBase(p)&&advOf(p)) tags.push('<span class="tag gold" title="'+(advOf(p)==='marked'?'Marked advanced in its editor':'Listed as an advanced talent on the wiki')+'">Advanced</span>');
+  if(talent&&ch.rules.advLimit&&!isBase(p)&&advOf(p)) tags.push('<span class="tag gold" title="'+(advOf(p)==='marked'?'Marked advanced in its editor':'Listed as '+wkKindName(advWikiKind(p))+' on the wiki')+' (counts toward the advanced talent limit)">'+(advOf(p)==='marked'?'Advanced':wkKindName(advWikiKind(p)))+'</span>');
   if((p.subs||[]).length) tags.push('<span class="tag">'+plural(p.subs.length,'choice')+'</span>');
   if(n) tags.push('<span class="tag">'+plural(n,'modifier')+'</span>');
   return '<span class="nm"'+(tempOn(ch,p)?'':' style="opacity:.55"')+'>'+esc(p.name||'(unnamed)')+(pN(p)>1?' <b>×'+pN(p)+'</b>':'')+'</span>'+tags.join('')+'<span class="snip">'+esc(snip(p.notes))+'</span>'; }
@@ -3576,7 +3576,7 @@ function pickForm(r,talent){
       '<label class="fld"><span>Counts as</span><select data-f="'+base+'role">'+ROLES.map(function(o){return '<option value="'+o[0]+'"'+(roleOf(p)===o[0]?' selected':'')+'>'+o[1]+'</option>';}).join('')+'</select></label>'+tempSel(base,p)
      :'<label class="fld"><span>Kind</span><select data-f="'+base+'kind">'+KINDS.map(function(k){return '<option value="'+k[0]+'"'+((p.kind||'feat')===k[0]?' selected':'')+'>'+k[1]+'</option>';}).join('')+'</select></label>')+
     '<label class="fld"><span>Taken at</span><select data-pmove="'+r.where+'|'+r.i+'">'+lvlOpts(r.lvl)+'</select></label>'+(talent&&isBase(p)?'':fN(base+'n','Times taken',' min="1" max="50" placeholder="1" style="width:5rem"'))+
-    (talent&&!isBase(p)&&ch.rules.advLimit?'<label class="fld"><span>Advanced talent</span><select data-f="'+base+'adv">'+[['','Auto (wiki: '+(advWikiKind(p)===null?'checking…':advWikiKind(p)==='advanced'?'yes':'no')+')'],['yes','Yes'],['no','No']].map(function(o){ return '<option value="'+o[0]+'"'+((p.adv||'')===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join('')+'</select></label>':'')+(talent?'':'<label class="fld"><span>Heading (your own grouping)</span><input type="text" data-f="'+base+'grp" value="'+esc(p.grp||'')+'" list="pkHeads" placeholder="e.g. Campaign boons" style="width:12rem"></label>')+'</div>'+
+    (talent&&!isBase(p)&&ch.rules.advLimit?'<label class="fld"><span>Advanced talent</span><select data-f="'+base+'adv">'+[['','Auto (wiki: '+(advWikiKind(p)===null?'checking…':advKind(advWikiKind(p))?wkKindName(advWikiKind(p)).toLowerCase():'no')+')'],['yes','Yes'],['no','No']].map(function(o){ return '<option value="'+o[0]+'"'+((p.adv||'')===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join('')+'</select></label>':'')+(talent?'':'<label class="fld"><span>Heading (your own grouping)</span><input type="text" data-f="'+base+'grp" value="'+esc(p.grp||'')+'" list="pkHeads" placeholder="e.g. Campaign boons" style="width:12rem"></label>')+'</div>'+
     notesBox(base+'notes',p.notes)+
     ((p.kind==='feature'||p.kind==='racial')&&!talent?subsBlock(r)+(function(){ var others=featureRefs().filter(function(o){ return !(o.where===r.where&&o.i===r.i); }); return others.length?'<div class="row" style="margin:8px 0 0"><label class="fld"><span>Put this under another feature</span><select data-fmove="'+r.where+'|'+r.i+'"><option value="">—</option>'+others.map(function(o){ return '<option value="'+esc(o.where+'|'+o.i)+'">'+esc(o.p.name||'(unnamed)')+'</option>'; }).join('')+'</select></label></div>':''; })():'')+
     '<div class="row" style="margin-bottom:0"><span class="note">'+(n?plural(n,'modifier')+' named after it':'No modifiers: text only')+'</span><span class="spacer"></span><button class="mini" data-a="pickMod" data-name="'+esc(p.name)+'">+ Modifier</button><button class="mini danger" data-a="delPick" data-w="'+r.where+'" data-i="'+r.i+'" aria-label="Remove '+esc(p.name)+'">Remove</button></div></div>';
@@ -3672,7 +3672,7 @@ function wkBox(o,path,kind){
   var H=R.hit, e=H.e, isT=kind==='talent', md=isT?e[4]:e[3], url=WK_WIKI+(isT?e[5]:e[4]), extra=String(e[1]).replace(/\*\*/g,'');
   var nm=e[0], rest=extra.indexOf(nm)===0?extra.slice(nm.length).trim():'';
   var where=isT?(H.S.n+' sphere · '+e[2]):(e[2]+(e[5]?' · '+e[5]:'')), key='wk-'+path, more=!!(UI.wkMore||{})[key], long=md.length>900;
-  var h='<div class="wk"><div class="wkh"><b>'+esc(nm)+'</b>'+(rest?' <span class="note">'+esc(rest)+'</span>':'')+(isT&&e[3]?' <span class="tag gold">'+(e[3]==='legendary'?'Legendary':'Advanced')+'</span>':'')+
+  var h='<div class="wk"><div class="wkh"><b>'+esc(nm)+'</b>'+(rest?' <span class="note">'+esc(rest)+'</span>':'')+(isT&&e[3]?' <span class="tag gold">'+wkKindName(e[3])+'</span>':'')+
     '<span class="spacer"></span><a class="note" href="'+esc(url)+'" target="_blank" rel="noopener">Wiki ↗</a></div><div class="note" style="margin:0 0 4px">'+esc(where)+'</div>';
   if(H.how==='elsewhere') h+='<p class="note warn" style="margin:0 0 6px">Found in the '+esc(H.S.n)+' sphere'+(o.sphere?', not '+esc(o.sphere):'')+'.</p>';
   if(H.how==='ref'&&!ro) h+='<p class="note" style="margin:0 0 6px">Linked by hand.'+(wkNorm(o.name)!==wkNorm(nm)?' <button class="link" data-a="wkRename"'+pa+' data-v="'+esc(nm)+'">Rename to '+esc(nm)+'</button> ·':'')+' <button class="link" data-a="wkUnlink"'+pa+'>Unlink</button></p>';
@@ -3698,21 +3698,24 @@ document.addEventListener('input',function(e){ var t=e.target; if(t&&t.dataset&&
 /* a row with a description, or a collapsed one for drawbacks and boons (their rows are always open) */
 function wkFold(o,path,kind){ if(!o||!String(o.name||'').trim()&&!o.ref) return ''; var key='wkd-'+path; return '<details class="wkfold" data-keep="'+esc(key)+'"><summary>Wiki text</summary>'+wkBox(o,path,kind)+'</details>'; }
 /* ---------- house rule: advanced talents limited to 1 + 1 per 5 character levels (2026-11-08) ----------
-   A talent is advanced when the wiki lists it in an "Advanced … Talents" section (index.json kind 'advanced'; legendary
-   talents don't count), or when its editor says so: p.adv = 'yes' | 'no' ('' or missing = from the wiki). Temporary talents
+   Advanced, legendary and exceptional talents are one track (owner's table). A talent counts when the wiki lists it in an
+   "Advanced / Legendary / Exceptional … Talents" section (index.json kind), or when its editor says so: p.adv = 'yes' | 'no' ('' or missing = from the wiki). Temporary talents
    don't count; tradition grants do. */
+/* the wiki's three kinds of higher-tier talents; the house rule treats them as one track */
+function advKind(k){ return k==='advanced'||k==='legendary'||k==='exceptional'; }
+function wkKindName(k){ return {advanced:'Advanced',legendary:'Legendary',exceptional:'Exceptional'}[k]||'Advanced'; }
 function advCap(lvl){ return 1+Math.floor(Math.max(0,lvl)/5); }
 function advWikiKind(p){ if(wkState('index')!=='ok') return null; var I=WK.f.index;
   if(!I._m){ I._m={}; I._one={}; I.names.forEach(function(x,i){ I._m[x[1]+'|'+I._n[i]]=x[2]; I._one[I._n[i]]=I._one[I._n[i]]===undefined?x[2]:'?'; }); }
   var k=p.ref&&p.ref.s?I._m[p.ref.s+'|'+p.ref.n]:I._m[wkSlug(p.sphere)+'|'+wkNorm(p.name)];
   if(k===undefined){ var o=I._one[wkNorm(p.name)]; k=o==='?'?'':o; } return k||''; }
-function advOf(p){ if(p.adv==='yes') return 'marked'; if(p.adv==='no') return ''; var k=advWikiKind(p); return k===null?null:k==='advanced'?'wiki':''; }
+function advOf(p){ if(p.adv==='yes') return 'marked'; if(p.adv==='no') return ''; var k=advWikiKind(p); return k===null?null:advKind(k)?'wiki':''; }
 function advState(){ var n=0, list=[], unknown=false; pickRefs().forEach(function(r){ var p=r.p; if(p.kind!=='talent'||isBase(p)||isTemp(ch,p)) return; var a=advOf(p); if(a===null){ unknown=true; return; } if(a){ list.push(r); n+=pN(p); } });
   return {n:n,list:list,unknown:unknown,cap:advCap(D.lvl)}; }
 function advTile(){ if(!ch.rules.advLimit) return ''; var A=advState();
   return tile('Advanced talents',(A.unknown?'… / ':A.n+' / ')+A.cap,'house rule: 1 + 1 per 5 levels'+(A.unknown?'<span data-wkneed="index"></span>':'')); }
 function advWarn(){ if(!ch.rules.advLimit) return ''; var A=advState(); if(A.unknown) return '<p class="note" data-wkneed="index">Checking which talents are advanced…</p>'; if(A.n<=A.cap) return '';
-  return '<p class="warn" style="margin:8px 0 0"><b>Too many advanced talents:</b> '+A.n+' ('+esc(A.list.map(function(r){ return r.p.name+(pN(r.p)>1?' ×'+pN(r.p):''); }).join(', '))+'); the house rule allows '+A.cap+' at level '+D.lvl+' (1, +1 per 5 levels).</p>'; }
+  return '<p class="warn" style="margin:8px 0 0"><b>Too many advanced talents:</b> '+A.n+' ('+esc(A.list.map(function(r){ return r.p.name+(pN(r.p)>1?' ×'+pN(r.p):''); }).join(', '))+'); the house rule allows '+A.cap+' at level '+D.lvl+' (1, +1 per 5 levels; advanced, legendary and exceptional together).</p>'; }
 /* one line for the add-talent preview and level-up rows: how many advanced talents you'd have */
 function advNote(lvl,adding){ if(!ch.rules.advLimit) return ''; var A=advState(), cap=advCap(lvl); if(A.unknown) return '';
   var after=A.n+(adding||0); return '<span class="'+(after>cap?'bad':'note')+'">House rule: '+after+' of '+cap+' advanced talents at level '+lvl+(after>cap?' (over the limit)':'')+'.</span>'; }
@@ -3744,7 +3747,7 @@ function wkPickSearch(inp){ var ctx=inp.dataset.wkpick, row=ctx==='lu'?inp.close
   var I=WK.f.index, sphIn=ctx==='lu'?row.querySelector('.tr-sph'):$('tk-sphere'), prefer=sphIn&&sphIn.value.trim()?wkSlug(sphIn.value):'', have=wkHave(), L=wkFind(q,prefer);
   out.innerHTML=L.slice(0,8).map(function(i){ var x=I.names[i], S=I.spheres[x[1]]||{};
     return '<button type="button" class="mini" data-wkchoose="'+ctx+'" data-s="'+esc(x[1])+'" data-n="'+esc(I._n[i])+'" data-name="'+esc(x[0])+'">'+esc(x[0])+' <span class="note">· '+esc(S.n||x[1])+'</span>'+
-      (x[2]?' <span class="tag gold">'+(x[2]==='legendary'?'Legendary':'Advanced')+'</span>':'')+(have[x[1]+'|'+I._n[i]]?' <span class="tag">taken</span>':'')+'</button>'; }).join('')+
+      (x[2]?' <span class="tag gold">'+wkKindName(x[2])+'</span>':'')+(have[x[1]+'|'+I._n[i]]?' <span class="tag">taken</span>':'')+'</button>'; }).join('')+
     (L.length>8?'<p class="note" style="margin:2px 0 0;flex-basis:100%">'+(L.length-8)+' more: type more of the name.</p>':'')+(L.length?'':'<p class="note" style="margin:2px 0 0">Not on the wiki: it will be added as you typed it.</p>'); }
 document.addEventListener('focusin',function(e){ var t=e.target; if(t&&t.dataset&&t.dataset.wkpick!=null) wkGet('index'); });
 document.addEventListener('input',function(e){ var t=e.target; if(t&&t.dataset&&t.dataset.wkpick!=null) wkPickSearch(t); });
@@ -3760,8 +3763,8 @@ document.addEventListener('click',function(e){ var b=e.target.closest&&e.target.
 function wkLuNote(row,s,e){ if(!e) return ''; var I=WK.f.index, S=I.spheres[s]||{}, box=row.closest('#talRows'), bits=[];
   var inRows=box&&[].slice.call(box.querySelectorAll('.talrow')).some(function(r){ return r.querySelector('.tr-base').checked&&wkSlug(r.querySelector('.tr-sph').value)===s; });
   if(wkRoleOf(e)==='utility') bits.push('<span class="tag">[utility]</span>');
-  if(e[3]) bits.push('<span class="tag gold">'+(e[3]==='legendary'?'Legendary':'Advanced')+'</span> <span class="warn">optional rule: only with GM permission.</span>'+(e[3]==='advanced'&&ch.rules.advLimit?' '+advNote(D.lvl+1,1+(box?[].slice.call(box.querySelectorAll('.talrow')).filter(function(r){ return r!==row&&r.dataset.adv==='1'; }).length:0)):''));
-  if(e[3]==='advanced') row.dataset.adv='1'; else delete row.dataset.adv;
+  if(e[3]) bits.push('<span class="tag gold">'+wkKindName(e[3])+'</span> <span class="warn">optional rule: only with GM permission.</span>'+(advKind(e[3])&&ch.rules.advLimit?' '+advNote(D.lvl+1,1+(box?[].slice.call(box.querySelectorAll('.talrow')).filter(function(r){ return r!==row&&r.dataset.adv==='1'; }).length:0)):''));
+  if(advKind(e[3])) row.dataset.adv='1'; else delete row.dataset.adv;
   if(!wkHasSphere(s)&&!inRows) bits.push('<span class="warn">You don’t have the '+esc(S.n||s)+' sphere yet; the first talent spent on it buys the base sphere.</span> <button type="button" class="link lu-addbase" data-sph="'+esc(wkOwnSph(s))+'">Add a row for the base sphere</button>');
   var txt=String(e[4]).replace(/\*\*/g,'').replace(/\s+/g,' '); if(txt.length>260) txt=txt.slice(0,258)+'…';
   return '<p class="note" style="margin:2px 0 6px">'+(bits.length?bits.join(' ')+'<br>':'')+esc(txt)+' <a href="'+esc(WK_WIKI+e[5])+'" target="_blank" rel="noopener">Wiki ↗</a></p>'; }
@@ -3770,9 +3773,9 @@ document.addEventListener('click',function(e){ var b=e.target.closest&&e.target.
 function tkPickBox(){ var c=UI.tkPick; if(!c) return ''; var st=wkState(c.s);
   if(st==='err') return ''; if(st!=='ok') return '<div class="wk" data-wkneed="'+esc(c.s)+'"><p class="note">Loading the wiki text…</p></div>';
   var S=WK.f[c.s], e=wkEntry(c.s,c.n); if(!e) return ''; var key='wk-tkprev', more=!!(UI.wkMore||{})[key], long=e[4].length>900, h='<div class="wk">';
-  h+='<div class="wkh"><b>'+esc(e[0])+'</b> <span class="note">'+esc(String(e[1]).replace(/\*\*/g,'').slice(e[0].length).trim())+'</span>'+(e[3]?' <span class="tag gold">'+(e[3]==='legendary'?'Legendary':'Advanced')+'</span>':'')+'<span class="spacer"></span><a class="note" href="'+esc(WK_WIKI+e[5])+'" target="_blank" rel="noopener">Wiki ↗</a></div><div class="note" style="margin:0 0 4px">'+esc(S.n+' sphere · '+e[2])+'</div>';
+  h+='<div class="wkh"><b>'+esc(e[0])+'</b> <span class="note">'+esc(String(e[1]).replace(/\*\*/g,'').slice(e[0].length).trim())+'</span>'+(e[3]?' <span class="tag gold">'+wkKindName(e[3])+'</span>':'')+'<span class="spacer"></span><a class="note" href="'+esc(WK_WIKI+e[5])+'" target="_blank" rel="noopener">Wiki ↗</a></div><div class="note" style="margin:0 0 4px">'+esc(S.n+' sphere · '+e[2])+'</div>';
   if(wkHave()[c.s+'|'+c.n]) h+='<p class="note warn" style="margin:0 0 6px">You already have this talent. Add it again only if it can be taken more than once.</p>';
-  if(e[3]) h+='<p class="note warn" style="margin:0 0 6px">'+(e[3]==='legendary'?'Legendary':'Advanced')+' talents are an optional rule: only with GM permission.'+(e[3]==='advanced'&&ch.rules.advLimit?' '+advNote(D.lvl,1):'')+'</p>';
+  if(e[3]) h+='<p class="note warn" style="margin:0 0 6px">'+wkKindName(e[3])+' talents are an optional rule: only with GM permission.'+(advKind(e[3])&&ch.rules.advLimit?' '+advNote(D.lvl,1):'')+'</p>';
   if(!wkHasSphere(c.s)) h+='<label class="ck" style="margin:0 0 6px;font-size:13.5px"><input type="checkbox" id="tk-base"'+(UI.tkBaseOff?'':' checked')+'> Also add the '+esc(S.n)+' base sphere (you don’t have it yet; the first talent spent on a sphere buys it)</label>';
   return h+'<div class="wkt'+(long&&!more?' clip':'')+'">'+mdLite(e[4])+'</div>'+(long?'<button class="link" data-a="wkMore" data-k="'+key+'">'+(more?'Show less':'Show all')+'</button>':'')+'</div>'; }
 document.addEventListener('change',function(e){ var t=e.target; if(t&&t.id==='tk-base') UI.tkBaseOff=!t.checked; },true);

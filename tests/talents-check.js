@@ -9,7 +9,7 @@
 const fs = require('fs'), path = require('path');
 const DIR = path.resolve(__dirname, '..', 'public', 'talents');
 let pass = 0, fail = 0;
-function check(what, ok, detail) { if (ok) pass++; else fail++; console.log((ok ? '  ok   ' : '  FAIL ') + what + (ok || !detail ? '' : ': ' + detail)); }
+function check(what, ok, detail) { if (typeof ok === 'string' && typeof detail === 'string') { const got = ok; ok = got === detail; detail = 'got "' + got + '", expected "' + detail + '"'; } if (ok) pass++; else fail++; console.log((ok ? '  ok   ' : '  FAIL ') + what + (ok || !detail ? '' : ': ' + detail)); }
 const read = f => JSON.parse(fs.readFileSync(path.join(DIR, f), 'utf8'));
 const norm = s => String(s || '').normalize('NFKD').replace(/’/g, "'").toLowerCase().replace(/\[[^\]]*\]|\([^)]*\)/g, ' ').replace(/[^a-z0-9]/g, '');
 
@@ -44,6 +44,8 @@ const known = [['nature', 'Create Nature'], ['nature', 'Expanded Geomancing'], [
   ['boxing', 'Corkscrew Set Up'], ['pilot', 'Assured Repair'], ['polished-dark', 'Following Darkness'], ['equipment', 'Unarmored Training'],
   ['vocation', 'Adept Administrator'], ['form', 'Additional Wings'], ['leadership', 'Greater Recruitment']];
 for (const [s, n] of known) check(`${n} is in ${s}`, has(s, n));
+const kindOf = (sphere, name) => (read(sphere + '.json').t.find(t => norm(t[0]) === norm(name)) || [])[3];
+check('talent kinds: advanced, legendary and exceptional are tagged', [kindOf('nature', 'Cyclone'), kindOf('alchemy', 'Ambrosia'), kindOf('artifice', 'Bizarre Artistry'), kindOf('nature', 'Create Nature')].join(','), 'advanced,legendary,exceptional,');
 /* only the current (Ultimate) text: talents that exist only in a page's old copy are left out */
 check('old-only talents are left out (War: Greater Rally)', !has('war', 'Greater Rally'));
 

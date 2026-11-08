@@ -137,7 +137,7 @@ def drawback_section(name):
 
 def kind_of(section):
     s = section.lower()
-    return 'legendary' if 'legendary' in s else 'advanced' if 'advanced' in s else ''
+    return 'legendary' if 'legendary' in s else 'advanced' if 'advanced' in s else 'exceptional' if 'exceptional' in s else ''
 
 
 def name_of(heading):
