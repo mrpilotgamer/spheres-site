@@ -1,0 +1,29 @@
+# Test and deploy: on every push to main, run the checks; if they all pass, put the site live on Firebase Hosting.
+# The database rules (firestore.rules) are NOT deployed from here: deploy those by hand (firebase deploy --only firestore).
+name: Test and deploy
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:   # adds a "Run workflow" button on the Actions tab
+
+jobs:
+  test-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check the talent description files
+        run: node tests/talents-check.js
+      - name: Install the test browser
+        run: npm install --no-save playwright && npx playwright install --with-deps chromium
+      - name: Check the sheet (example characters, wiki text, adding talents...)
+        run: node tests/check.js
+      - name: Deploy to Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_SPHERES_CHARACTER_SHEET }}
+          channelId: live
+          projectId: spheres-character-sheet

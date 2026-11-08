@@ -1,0 +1,110 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Each player can read and write only their own characters: users/{their uid}/characters/{character id}
+    match /users/{uid}/characters/{charId} {
+      allow read, delete: if request.auth != null && request.auth.uid == uid;
+      // A character is saved either compressed (z: gzip bytes, about 1 MB) or as plain text (json, older versions).
+      allow create, update: if request.auth != null && request.auth.uid == uid
+        && ((request.resource.data.z is bytes && request.resource.data.z.size() < 1000000)
+            || (request.resource.data.json is string && request.resource.data.json.size() < 900000));
+    }
+
+    function signedIn() { return request.auth != null; }
+    function sizeOk(d) {
+      return (d.z is bytes && d.z.size() < 1000000) || (d.json is string && d.json.size() < 900000);
+    }
+    // A character copy (share link or a party's full sheet): only these fields, short labels.
+    function copyOk(d) {
+      return d.keys().hasOnly(['z', 'enc', 'json', 'owner', 'name', 'summary', 'savedAt', 'updatedAt'])
+        && sizeOk(d)
+        && (!('name' in d) || (d.name is string && d.name.size() <= 200))
+        && (!('summary' in d) || (d.summary is string && d.summary.size() <= 400));
+    }
+    // A party member's summary: only these fields, lists and labels of sensible size.
+    function memberOk(d, key) {
+      return d.keys().hasOnly(['name', 'player', 'cls', 'lvl', 'race', 'hp', 'ac', 'touch', 'ff', 'cmd', 'fort', 'ref', 'will',
+          'init', 'perc', 'conds', 'buffs', 'res', 'form', 'host', 'neg', 'accent', 'code', 'charId', 'owner', 'updatedAt'])
+        && d.charId is string && key == request.auth.uid + '_' + d.charId
+        && d.get('name', '') is string && d.get('name', '').size() <= 200
+        && d.get('player', '') is string && d.get('player', '').size() <= 100
+        && d.get('cls', '') is string && d.get('cls', '').size() <= 300
+        && d.get('conds', []) is list && d.get('conds', []).size() <= 60
+        && d.get('buffs', []) is list && d.get('buffs', []).size() <= 60
+        && d.get('res', []) is list && d.get('res', []).size() <= 60;
+    }
+
+    // Read-only share links: a copy of one character. Anyone with the link (its long random id) can read it;
+    // nobody can list them. Only the player who made it can write or delete it.
+    match /shares/{shareId} {
+      allow get: if true;
+      allow list: if false;
+      // New links start with the owner's id, so a stopped link can't be taken over by someone else.
+      allow create: if signedIn() && shareId.matches(request.auth.uid + '_.+')
+        && request.resource.data.owner == request.auth.uid && copyOk(request.resource.data);
+      allow update: if signedIn() && resource.data.owner == request.auth.uid
+        && request.resource.data.owner == request.auth.uid && copyOk(request.resource.data);
+      allow delete: if signedIn() && resource.data.owner == request.auth.uid;
+    }
+
+    // Parties: only their GMs can read them. Players join a character with the invite code; GMs join with the GM code.
+    match /parties/{pid} {
+      function party() { return get(/databases/$(database)/documents/parties/$(pid)).data; }
+      function isGM() { return signedIn() && request.auth.uid in party().gms; }
+
+      allow get, list: if signedIn() && request.auth.uid in resource.data.gms;
+      // New parties start with the creator's id (so a deleted party can't be re-created by someone holding its invite),
+      // and record the creator as owner.
+      allow create: if signedIn() && pid.matches(request.auth.uid + '_.+')
+        && request.resource.data.gms == [request.auth.uid] && request.resource.data.owner == request.auth.uid
+        && request.resource.data.code is string && request.resource.data.code.size() >= 16
+        && request.resource.data.gmCode is string && request.resource.data.gmCode.size() >= 16
+        && request.resource.data.name is string && request.resource.data.name.size() <= 120;
+      // A GM can rename the party and change its codes. The GM list: anyone may add or remove only themselves;
+      // only the creator may change it otherwise. The owner never changes. Anyone else can only join as GM with the GM code.
+      function gmsOk() {
+        return request.resource.data.gms == resource.data.gms
+          || request.resource.data.gms == resource.data.gms.removeAll([request.auth.uid])
+          || request.auth.uid == resource.data.get('owner', '');
+      }
+      allow update: if signedIn() && request.resource.data.gms is list
+        && request.resource.data.get('owner', '') == resource.data.get('owner', '') && (
+        (request.auth.uid in resource.data.gms && gmsOk()
+          && request.resource.data.code.size() >= 16 && request.resource.data.gmCode.size() >= 16
+          && request.resource.data.name is string && request.resource.data.name.size() <= 120)
+        || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['gms', 'gmJoin'])
+          && request.resource.data.gmJoin == resource.data.gmCode
+          && request.resource.data.gms == resource.data.gms.concat([request.auth.uid])));
+      allow delete: if signedIn() && request.auth.uid in resource.data.gms;
+
+      // One summary per character in the party, written by its player, read by the GMs.
+      // The document id is "<player uid>_<character id>".
+      match /members/{key} {
+        allow get, list: if isGM();
+        allow create: if signedIn() && key.matches(request.auth.uid + '_.+')
+          && request.resource.data.owner == request.auth.uid
+          && request.resource.data.code == party().code
+          && memberOk(request.resource.data, key);
+        allow update: if signedIn() && resource.data.owner == request.auth.uid
+          && request.resource.data.owner == request.auth.uid
+          && request.resource.data.code == resource.data.code
+          && memberOk(request.resource.data, key);
+        allow delete: if signedIn() && (resource.data.owner == request.auth.uid || isGM());
+      }
+      // The full character, for the GM's read-only view. Only for characters in the party.
+      match /sheets/{key} {
+        allow get, list: if isGM();
+        allow create, update: if signedIn() && key.matches(request.auth.uid + '_.+')
+          && request.resource.data.owner == request.auth.uid
+          && exists(/databases/$(database)/documents/parties/$(pid)/members/$(key))
+          && copyOk(request.resource.data);
+        allow delete: if signedIn() && (key.matches(request.auth.uid + '_.+') || isGM());
+      }
+    }
+
+    // Everything else is closed.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,6 @@
+# not part of the site
+node_modules/
+release/
+.firebase/
+firebase-debug.log
+*-debug.log
