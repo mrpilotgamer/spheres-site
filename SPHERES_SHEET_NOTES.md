@@ -75,7 +75,7 @@ so every `firebase deploy` (Cloud Shell or GitHub) first checks the description 
 Normal sheet updates don't need this step; the `talents/` folder stays as it is.
 
 **Checks before deploying (optional):** `tests/check.js` opens the sheet in a headless browser, loads
-both example characters and runs 259 checks against values worked out by hand (HP, AC, saves,
+both example characters and runs 265 checks against values worked out by hand (HP, AC, saves,
 DCs, spell points, talents, skill ranks, attacks, toggles, the theme, free sphere ranks, blast augments, Roll20 macros,
 raised undead, temporary talents, cohorts, Workshop, wiki descriptions, adding talents from the wiki and more). It sits outside `public/`, so it is never deployed. Run it with:
 ```
@@ -94,8 +94,8 @@ won't match the installed browser), then:
 also need the sign-in emulator, `npx firebase emulators:exec --config firebase.emulators.json --only firestore,auth
 --project demo-spheres "node tests/party-check.js"` (same for `save-check.js`). `firebase.emulators.json` is
 `firebase.json` plus the auth and emulator settings; it's only for tests. GitHub doesn't run these three.
-Last full run: 2026-11-08 (playtest batch), `check.js` 259, `talents-check.js` 30, `rules-check.js` 70, `party-check.js` 31,
-`save-check.js` 12: all passed.
+Last full run: 2026-11-08 (quick fixes), `check.js` 265 (the others unchanged since the playtest batch: `talents-check.js` 30, `rules-check.js` 70, `party-check.js` 31,
+`save-check.js` 12): all passed.
 
 **Rollback:** Firebase console → Hosting → release history → roll back. With GitHub: also revert the commit (the
 commit's page → "Revert"), or the next push puts the broken version back.
@@ -504,8 +504,8 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
     line now uses Greater Reanimate and half counts. The Sheet's companion list shows time left.
   - **Corrections to the mockup (Reanimate_Workbench.html):** horse 2 HD with hooves only, owlbear Str 19, griffon 5 HD,
     skeleton claws only with hands, Revenant Militia on racial HD, Fortified DR replaces rather than adds.
-  - **Not built:** raising several at once in one click (Mass Death Magic is noted in the casting line); the Faces of Death
-    variants (acid, exploding…); other creature templates (advanced, giant, celestial).
+  - **Not built:** other creature templates (advanced, giant, celestial). (Raising several at once and the Faces of Death
+    variants were built later: see "Mass Death Magic" and "Faces of Death undead variants".)
 - **Temporary talents, 2026-11-05.** Core rules "Temporary Talents".
   - **Data:** `ch.tempSrc = [{id, name, slots (formula), on, excl, rest:'keep'|'off', notes}]`; a pick with `p.temp = <source id>`
     is temporary. `sanitizeChar` drops `p.temp` that points to a missing source.
@@ -520,7 +520,8 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
   - **Armiger:** the author's note says customized-weapon talents aren't truly temporary (lingering benefits stay when you
     switch). The sheet treats them the same way for counting, which matches: no budget, no retrained ranks, active set only.
     The preset's slot formula uses character level; change `lvl` to the Armiger level if multiclassed.
-  - **Not built:** actions tied to a temporary talent don't grey out when it's off.
+  - **Actions named after a temporary talent that's off:** greyed out on the Sheet with Use disabled (`tempPaused({src:a.name})`),
+    and tagged "temporary talent off" on the Actions tab (2026-11-08).
 - **Talents and feats taken more than once (2026-11-05).** A pick's `p.n` (whole number, 2–50; missing = 1) is set with "Times
   taken" in its editor (not on base spheres) and shows as "Name ×N". `pN(p)` / `pSum(list)` count it everywhere picks are
   counted: talent budget and [utility] slots (`deriveCore`), feats had, per-sphere costs and the type tiles on Talents, free
@@ -1107,6 +1108,14 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
     to the account first. **Deploy the rules by hand** (`firebase deploy --only firestore`): GitHub only deploys the site.
     The site change works with the old rules too, so the order doesn't matter.
   - **GitHub workflow:** `actions/checkout@v5`, `actions/setup-node@v5` (the v4 ones ran on Node 20, which GitHub is retiring).
+- **Quick fixes (2026-11-08).**
+  - **Weapon rows closing (owner's report):** a weapon's "Special abilities" section used the same `data-keep` key as the
+    weapon's row (`wp-<id>`). `snapUI` stores open states by key, so the closed section overwrote the open row and every
+    edit closed the weapon (and lost the keyboard focus). The section is now `wpp-<id>`; `wpropAdd` opens it with
+    `UI.openNew='wpp-'+id`. **Rule: every `data-keep` key must be unique on a tab.** An audit (all tabs, both examples, every
+    `<details>` open) found no other duplicates.
+  - **Combat maneuver rows** (kind `cmb`, no dice) no longer draw an empty damage button on the Sheet.
+  - **Temporary talents:** see above (Actions tab tag).
 - **Sheet tab layout (2026-11-01):** the Companions card moved from the right column to the left, under Spheres, to balance the columns.
   - Ilyra's four blast actions became one "Destructive blast" with augments (Fire Blast on by default).
 - **Roll20 export (2026-11-01).** A "Roll20 macros" card on Save & print (`roll20Card`, `roll20Macros`). Free accounts only:

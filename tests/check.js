@@ -763,6 +763,32 @@ function check(what, got, want) {
   const unl = await page.evaluate(() => [...document.querySelectorAll('textarea,input:not([type=checkbox]):not([type=radio]):not([type=hidden]),select')].filter(e => !e.labels?.length && !e.getAttribute('aria-label') && !e.closest('label')).length);
   check('no unlabelled boxes on the Traditions tab', unl, '0');
 
+  /* ---------- quick fixes (2026-11-08): weapon rows stay open, no empty damage button, paused actions tagged ---------- */
+  console.log('Quick fixes');
+  await home(); await page.click('button[data-k="striker"]'); await page.waitForTimeout(500);
+  check('a combat maneuver has no (empty) damage button', (await page.locator('[data-a="why"][data-k="dmg:w2"]').count()) + ' ' + (await page.locator('[data-a="why"][data-k="dmg:w1"]').count()), '0 1');
+  await go('Character', 'Gear');
+  await page.click('[data-a="addWeapon"]'); await page.waitForTimeout(400);
+  const wKey = await page.locator('details.item[data-keep^="wp-"][open]').last().getAttribute('data-keep');
+  const wRow = page.locator(`details.item[data-keep="${wKey}"]`);
+  await wRow.locator('[data-f$=".name"]').fill('Longsword'); await wRow.locator('[data-f$=".dice"]').click(); await page.waitForTimeout(500);
+  check('a new weapon stays open when you click into the next box', (await wRow.evaluate(d => d.open)) + ' ' + await page.evaluate(() => document.activeElement && document.activeElement.dataset.f), 'true weapons.2.dice');
+  await page.keyboard.press('Control+A'); await page.keyboard.type('1d10'); await wRow.locator('[data-f$=".dtype"]').click(); await page.waitForTimeout(500);
+  check('…and after the next one', String(await wRow.evaluate(d => d.open)), 'true');
+  const wpp = wRow.locator('details.wprops'); await wpp.locator('summary').click(); await page.waitForTimeout(150);
+  check('its Special abilities section has its own key', await wpp.getAttribute('data-keep'), wKey.replace(/^wp-/, 'wpp-'));
+  /* an action named after a temporary talent that's off */
+  await page.evaluate(() => { const id = 'zz-tmp'; localStorage.setItem('spheres-sheet-v1:' + id, JSON.stringify({ app: 'spheres-sheet', v: 1, id, name: 'Temp', levels: [], classes: {},
+    tempSrc: [{ id: 't1', name: 'Quick Study', slots: '1', on: false }],
+    extraPicks: [{ id: 'p1', kind: 'talent', name: 'Lingering Darkness', sphere: 'Dark', temp: 't1' }],
+    actions: [{ id: 'a1', name: 'Lingering Darkness', act: 'standard', res: '', cost: '0', dcBase: 'none' }, { id: 'a2', name: 'Other thing', act: 'move', res: '', cost: '0', dcBase: 'none' }] }));
+    localStorage.setItem('spheres-sheet-v1:last', JSON.stringify(id)); });
+  await page.reload(); await page.waitForTimeout(400); await go('Play', 'Sheet');
+  check('the Sheet greys out an action whose temporary talent is off', /temporary talent not active/.test(await page.locator('.act', { hasText: 'Lingering Darkness' }).innerText()), 'true');
+  await go('Advanced', 'Actions');
+  const tags = async n => (await page.locator('details.item', { has: page.locator('summary .nm', { hasText: n }) }).locator(':scope > summary').innerText()).replace(/\s+/g, ' ');
+  check('the Actions tab tags it too, and only it', /temporary talent off/.test(await tags('Lingering Darkness')) + ' ' + /temporary talent off/.test(await tags('Other thing')), 'true false');
+
   console.log('Damaged saves');
   const damaged = [
     ['a null drawback', { traditions: { casting: { on: true, drawbacks: [null], boons: [null] } } }],
