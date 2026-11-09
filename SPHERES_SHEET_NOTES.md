@@ -482,6 +482,14 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
 
 ## Open items and ideas
 
+- **Maybe later (pinned 2026-11-09, from the code review's feature list; not planned yet):**
+  - **GM "what changed" highlight:** HP drops and new conditions since the GM last looked, highlighted on party cards.
+  - **Several practitioner modifiers:** the wiki lets a creature with more than one use the highest; today it's one `pracAbil`.
+  - **Class presets for granted talents and caster level:** Hedgewitch and Shifter paths (bonus combat or skill talents);
+    Wraith, Elementalist and Eliciter (a class-level caster level for one sphere). Manual today.
+  - **Warleader talents:** the Alternate Justicar's separate track (1 per level) isn't counted.
+  - **Joins per invite code:** limit how many characters can join with one code (needs a server function).
+
 - **Review fixes, 2026-11-09.** From a code review; each has a check under "Review fixes" or "Damaged saves" in `check.js`.
   - DR "bypassed by" and source text are escaped on the Sheet tab and in print; they reach other people through share links and parties.
   - The 4-second history timer works on the character that was edited and does nothing while a shared or party sheet is open, and
