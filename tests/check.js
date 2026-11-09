@@ -1137,6 +1137,9 @@ function check(what, got, want) {
     check('dashboard: compact view', [await p.locator('.pgrid.compact .pcard.compact').count(), await p.locator('.pcard .ptiles').count()].join(' '), '3 0');
     /* wait for real conditions, not fixed times: the choice is stored, the page is back, the party is drawn with its 3 cards */
     const kept = await p.waitForFunction(() => localStorage.getItem('spheres-party-view'), null, { timeout: 5000 }).then(h => h.jsonValue()).catch(() => null);
+    /* Chromium writes localStorage to disk in batches; a reload a fraction of a second after a click can come before the write
+       (a real person can't click and reload that fast). Give it time to land. */
+    await p.waitForTimeout(2500);
     await p.reload(); await p.waitForFunction(() => window.SheetCloud && document.getElementById('main'), null, { timeout: 10000 });
     await p.evaluate(() => window.dispatchEvent(new Event('sheet-cloud-ready')));
     await p.waitForFunction(() => document.querySelector('[data-a="partyOpen"]') || document.querySelector('.pcard'), null, { timeout: 10000 }).catch(() => {});
@@ -1145,6 +1148,27 @@ function check(what, got, want) {
     const res = [await order(), await p.locator('.pgrid.compact').count()].join(' ');
     check('dashboard: the sort and the view are remembered', res === 'Cass,Bree,Aldo 1' ? res : res + ' (stored before reload: ' + kept + ', after: ' + await p.evaluate(() => localStorage.getItem('spheres-party-view')) + ')', 'Cass,Bree,Aldo 1');
     await cx.close();
+  }
+
+  console.log('Trade traditions and multiclassing');
+  {
+    const mk = (classes, lv, trade) => page.evaluate(([classes, lv, trade]) => { const id = 'zz-trade'; localStorage.setItem('spheres-sheet-v1:' + id, JSON.stringify({ app: 'spheres-sheet', v: 1, id, name: 'Trader',
+      classes, levels: lv.map(c => ({ cls: c, hp: 5, picks: [] })), traditions: { trade: Object.assign({ on: true, rank: 'competent', replace: true, skills: [] }, trade) } }));
+      localStorage.setItem('spheres-sheet-v1:last', JSON.stringify(id)); }, [classes, lv, trade]);
+    const K = (name, skills) => ({ name, hd: 8, bab: '3/4', good: ['will'], skills, talents: 'none' });
+    const tradeNote = async () => { await go('Character', 'Traditions'); return (await page.locator('section.card', { hasText: 'Trade rank' }).first().innerText()).replace(/\s+/g, ' '); };
+    await mk({ a: K('Rogue', 8) }, ['a', 'a', 'a']); await page.reload(); await page.waitForTimeout(300);
+    await go('Character', 'Talents'); const one = (await tile('Talents used')).replace(/^\d+ \/ /, '');
+    check('one class: no extra trade talent; a class with 8 + Int ranks suggests adroit', [one, /trade rank adroit: Rogue has 8 \+ Int/i.test(await tradeNote())].join(' '), '0 true');
+    await page.click('[data-a="tradeRankSet"][data-k="adroit"]'); await page.waitForTimeout(200);
+    check('“Set it to adroit” sets it', /Trade rank adroit: Rogue has 8/.test(await tradeNote()), true);
+    await mk({ a: K('Fighter', 2), b: K('Rogue', 8), c: K('Wizard', 2) }, ['a', 'a', 'b', 'c', 'b']); await page.reload(); await page.waitForTimeout(300);
+    await go('Character', 'Talents');
+    check('each class after the first gives a trade talent (2 here)', (await tile('Talents used')).replace(/^\d+ \/ /, ''), '2');
+    check('…and a later class with more skill ranks raises the trade rank to adroit', /adroit: Rogue has more skill ranks per level \(8\) than Fighter \(2\)/.test(await tradeNote()), true);
+    await mk({ a: K('Fighter', 2), b: K('Rogue', 8) }, ['a', 'b'], { replace: false }); await page.reload(); await page.waitForTimeout(300);
+    await go('Character', 'Talents');
+    check('a trade tradition that keeps class lists gives no multiclass talents', (await tile('Talents used')).replace(/^\d+ \/ /, ''), '0');
   }
 
   check('no page errors', errors.length ? errors.join(' | ') : 'none', 'none');

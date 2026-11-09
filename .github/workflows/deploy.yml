@@ -39,6 +39,8 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Check the sheet (example characters, wiki text, adding talents...)
         run: node tests/check.js
+      - name: Check the script policy against the page (tools/csp.js)
+        run: node tests/csp-check.js
       - name: Check the database rules (emulator)
         run: npx firebase emulators:exec --only firestore --project demo-spheres "node tests/rules-check.js"
       - name: Check share links and parties (emulator)
@@ -63,6 +65,8 @@ jobs:
       - uses: actions/setup-node@v5   # the deploy's own pre-check (firebase.json "predeploy") runs node
         with:
           node-version: 22
+      - name: Add the script policy for this page (report-only; its hashes change with every edit)
+        run: node tools/csp.js --write firebase.json
       - name: Deploy to Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:

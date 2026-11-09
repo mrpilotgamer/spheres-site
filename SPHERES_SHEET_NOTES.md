@@ -94,7 +94,8 @@ won't match the installed browser), then:
 also need the sign-in emulator, `npx firebase emulators:exec --config firebase.emulators.json --only firestore,auth
 --project demo-spheres "node tests/party-check.js"` (same for `save-check.js`). `firebase.emulators.json` is
 `firebase.json` plus the auth and emulator settings; it's only for tests. `tests/config-check.js` (5 checks, no installs)
-fails if the two configs' hosting settings drift apart. GitHub runs all six (since 2026-11-09).
+fails if the two configs' hosting settings drift apart. `tests/csp-check.js` (6 checks; needs Playwright and the `firebase`
+package) checks the script policy against the page. GitHub runs all seven (since 2026-11-09).
 Last full run: 2026-11-09 (feature batch 2), `check.js` 341, `talents-check.js` 31, `config-check.js` 5, `rules-check.js` 90,
 `party-check.js` 36, `save-check.js` 12: all passed.
 
@@ -481,6 +482,27 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
 ---
 
 ## Open items and ideas
+
+- **Feature batch 3 (2026-11-09): trade traditions and multiclassing; the script policy.**
+  - **Trade traditions across classes** (Trade Traditions page, "Multiclassing Trade Talent" and "Increasing Trade Rank"):
+    `tradeMulti` finds your first class (the class of level 1) and each later class. Each later class adds one (trade)
+    talent from the Vocation sphere to the talent count ("Trade talents for new classes"). The suggested trade rank is adroit
+    when the first class has 5 + Int skill ranks or more, or a later class has more skill ranks per level than the first;
+    if the chosen rank differs, the trade card says why and offers "Set it to …". Only while the tradition replaces class
+    skills. Characters that raised "Bonus talents" by hand for this should lower it again.
+  - **Script policy** (`tools/csp.js`): a Content-Security-Policy listing the sheet's two inline scripts by hash, Firebase
+    (gstatic), Google sign-in (apis.google.com, accounts.google.com, the firebaseapp.com helper), the database and token
+    hosts, Google Fonts and account pictures. The hashes change with every edit, so the policy isn't in `firebase.json`: the
+    deploy job adds it (`node tools/csp.js --write firebase.json`) just before deploying. Cloud Shell deploys don't get it
+    (harmless). **Report-only for now:** browsers block nothing and list what they would have blocked in the console (F12).
+    Use the site for a while, sign-in included; if no "Content-Security-Policy" messages show up, set `MODE='enforce'` in
+    `tools/csp.js`. `tests/csp-check.js` serves the page with the policy *enforced* and checks the sheet's scripts and
+    Firebase run, every tab and print work with nothing blocked, and an injected script is blocked (sign-in itself can't be
+    tested offline). The share-link box's `onclick="this.select()"` became a listener (`data-selall`), since a script
+    policy blocks onclick attributes; don't add new `on…=` attributes.
+  - **Fixed:** the talent breakdown listed every class, even with +0 talents (a missing `{}` from batch "class data").
+  - **Test timing:** "the sort and the view are remembered" waits 2.5 s before its reload, because Chromium writes
+    localStorage to disk in batches and a reload right after a click can come first.
 
 - **Feature batch 2 (2026-11-09): copies, unsent changes, the party dashboard.**
   - **Save a copy to my characters** (read-only viewer, share links and party sheets; `roCopy`): a new character with a new id,
