@@ -21,14 +21,18 @@ service cloud.firestore {
         && (!('name' in d) || (d.name is string && d.name.size() <= 200))
         && (!('summary' in d) || (d.summary is string && d.summary.size() <= 400));
     }
-    // A party member's summary: only these fields, lists and labels of sensible size.
+    // A party member's summary: only these fields, of the right kind, lists and labels of sensible size.
+    function str(d, f, n) { return d.get(f, '') is string && d.get(f, '').size() <= n; }
+    function num(d, f) { return !(f in d) || d[f] is number; }
     function memberOk(d, key) {
       return d.keys().hasOnly(['name', 'player', 'cls', 'lvl', 'race', 'hp', 'ac', 'touch', 'ff', 'cmd', 'fort', 'ref', 'will',
           'init', 'perc', 'conds', 'buffs', 'res', 'form', 'host', 'neg', 'accent', 'code', 'charId', 'owner', 'updatedAt'])
-        && d.charId is string && key == request.auth.uid + '_' + d.charId
-        && d.get('name', '') is string && d.get('name', '').size() <= 200
-        && d.get('player', '') is string && d.get('player', '').size() <= 100
-        && d.get('cls', '') is string && d.get('cls', '').size() <= 300
+        && d.charId is string && d.charId.size() <= 100 && key == request.auth.uid + '_' + d.charId
+        && str(d, 'name', 200) && str(d, 'player', 100) && str(d, 'cls', 300) && str(d, 'race', 100)
+        && str(d, 'form', 200) && str(d, 'host', 200) && str(d, 'accent', 20) && str(d, 'code', 64)
+        && num(d, 'lvl') && num(d, 'ac') && num(d, 'touch') && num(d, 'ff') && num(d, 'cmd') && num(d, 'fort')
+        && num(d, 'ref') && num(d, 'will') && num(d, 'init') && num(d, 'perc') && num(d, 'neg')
+        && (!('hp' in d) || (d.hp is map && d.hp.keys().hasOnly(['cur', 'max', 'temp', 'non'])))
         && d.get('conds', []) is list && d.get('conds', []).size() <= 60
         && d.get('buffs', []) is list && d.get('buffs', []).size() <= 60
         && d.get('res', []) is list && d.get('res', []).size() <= 60;
@@ -51,6 +55,10 @@ service cloud.firestore {
     match /parties/{pid} {
       function party() { return get(/databases/$(database)/documents/parties/$(pid)).data; }
       function isGM() { return signedIn() && request.auth.uid in party().gms; }
+      // A party that still exists and isn't being deleted (partyDelete sets "closing" first, so a player's save that lands
+      // while it is being deleted can't leave a member or sheet behind).
+      function partyOpen() { return exists(/databases/$(database)/documents/parties/$(pid)) && party().get('closing', false) != true; }
+      function partyKeys(d) { return d.keys().hasOnly(['name', 'gms', 'owner', 'code', 'gmCode', 'by', 'createdAt', 'gmJoin', 'closing']); }
 
       allow get, list: if signedIn() && request.auth.uid in resource.data.gms;
       // New parties start with the creator's id (so a deleted party can't be re-created by someone holding its invite),
@@ -59,7 +67,8 @@ service cloud.firestore {
         && request.resource.data.gms == [request.auth.uid] && request.resource.data.owner == request.auth.uid
         && request.resource.data.code is string && request.resource.data.code.size() >= 16
         && request.resource.data.gmCode is string && request.resource.data.gmCode.size() >= 16
-        && request.resource.data.name is string && request.resource.data.name.size() <= 120;
+        && request.resource.data.name is string && request.resource.data.name.size() <= 120
+        && partyKeys(request.resource.data);
       // A GM can rename the party and change its codes. The GM list: anyone may add or remove only themselves;
       // only the creator may change it otherwise. The owner never changes. Anyone else can only join as GM with the GM code.
       function gmsOk() {
@@ -69,13 +78,16 @@ service cloud.firestore {
       }
       allow update: if signedIn() && request.resource.data.gms is list
         && request.resource.data.get('owner', '') == resource.data.get('owner', '') && (
-        (request.auth.uid in resource.data.gms && gmsOk()
-          && request.resource.data.code.size() >= 16 && request.resource.data.gmCode.size() >= 16
+        (request.auth.uid in resource.data.gms && gmsOk() && partyKeys(request.resource.data)
+          && request.resource.data.code is string && request.resource.data.code.size() >= 16 && request.resource.data.code.size() <= 64
+          && request.resource.data.gmCode is string && request.resource.data.gmCode.size() >= 16 && request.resource.data.gmCode.size() <= 64
           && request.resource.data.name is string && request.resource.data.name.size() <= 120)
         || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['gms', 'gmJoin'])
           && request.resource.data.gmJoin == resource.data.gmCode
           && request.resource.data.gms == resource.data.gms.concat([request.auth.uid])));
-      allow delete: if signedIn() && request.auth.uid in resource.data.gms;
+      // Only the creator deletes a party; if the creator stopped being a GM (or an older party has no owner), any GM can.
+      allow delete: if signedIn() && (request.auth.uid == resource.data.get('owner', '')
+        || (request.auth.uid in resource.data.gms && !(resource.data.get('owner', '') in resource.data.gms)));
 
       // One summary per character in the party, written by its player, read by the GMs.
       // The document id is "<player uid>_<character id>".
@@ -84,12 +96,13 @@ service cloud.firestore {
         // Only for a character saved in the player's own account, so one invite code can't make endless member records.
         allow create: if signedIn() && key.matches(request.auth.uid + '_.+')
           && request.resource.data.owner == request.auth.uid
-          && request.resource.data.code == party().code
+          && partyOpen() && request.resource.data.code == party().code
           && memberOk(request.resource.data, key)
           && exists(/databases/$(database)/documents/users/$(request.auth.uid)/characters/$(request.resource.data.charId));
+        // The code stays the one it joined with, or becomes the party's current one (opening a newer invite link again).
         allow update: if signedIn() && resource.data.owner == request.auth.uid
-          && request.resource.data.owner == request.auth.uid
-          && request.resource.data.code == resource.data.code
+          && request.resource.data.owner == request.auth.uid && partyOpen()
+          && (request.resource.data.code == resource.data.code || request.resource.data.code == party().code)
           && memberOk(request.resource.data, key);
         allow delete: if signedIn() && (resource.data.owner == request.auth.uid || isGM());
       }
@@ -98,7 +111,7 @@ service cloud.firestore {
         allow get, list: if isGM();
         allow create, update: if signedIn() && key.matches(request.auth.uid + '_.+')
           && request.resource.data.owner == request.auth.uid
-          && exists(/databases/$(database)/documents/parties/$(pid)/members/$(key))
+          && partyOpen() && exists(/databases/$(database)/documents/parties/$(pid)/members/$(key))
           && copyOk(request.resource.data);
         allow delete: if signedIn() && (key.matches(request.auth.uid + '_.+') || isGM());
       }

@@ -42,10 +42,12 @@ async function until(fn, ms = 15000) { const t = Date.now(); for (;;) { try { co
   check('the GM sees “Parties you run”', !!(await until(() => gm.locator('h2', { hasText: 'Parties you run' }).count())), 'true');
   await gm.click('[data-a="partyNew"]'); await gm.fill('.dlg input[name=n]', 'Tuesday group'); await dlgBtn(gm, 'Create');
   check('the party appears', !!(await until(() => gm.locator('.li b', { hasText: 'Tuesday group' }).count())), 'true');
-  await gm.click('[data-a="partyInvite"][data-k="player"]'); const invite = await until(async () => { const t = await clip(gm); return /join=/.test(t) ? t : null; });
+  /* copy a link: click again until the clipboard has it (the first click can land before the party's codes have loaded) */
+  const copyLink = (k, re, not) => until(async () => { await gm.click(`[data-a="partyInvite"][data-k="${k}"]`); await wait(300); const t = await clip(gm); return re.test(t) && t !== not ? t : null; });
+  const invite = await copyLink('player', /[?&]join=/);
   if (process.env.DEBUG) console.log('clipboard:', JSON.stringify(await clip(gm)), 'invite:', JSON.stringify(invite));
   check('a player invite link is copied', /\?join=[A-Za-z0-9_]+&code=[A-Za-z0-9]{20,}&n=Tuesday%20group&emu$/.test(invite || ''), 'true');
-  await gm.click('[data-a="partyInvite"][data-k="gm"]'); const gmInvite = await until(async () => { const t = await clip(gm); return /gmjoin=/.test(t) ? t : null; });
+  const gmInvite = await copyLink('gm', /gmjoin=/);
 
   /* ---------- a player joins with Tova ---------- */
   console.log('Player');
@@ -123,6 +125,27 @@ async function until(fn, ms = 15000) { const t = Date.now(); for (;;) { try { co
   await go(pl, 'Advanced', 'Save');
   check('the party drops off the character', await pl.locator('#main section', { hasText: 'Share and parties' }).locator('[data-a="partyLeave"]').count(), '0');
   check('the removed player’s own save still works', !!(await until(() => pl.locator('#cloudStat', { hasText: 'Saved to your account' }).count(), 10000)), 'true');
+
+  /* ---------- review fixes (2026-11-09): rejoining with a newer invite link; deleting a character takes its copies with it ---------- */
+  console.log('Rejoining and deleting');
+  const gmHome = async () => { await gm.goto(BASE + '?emu&beta'); await ready(gm); await until(() => gm.locator('.li b', { hasText: 'Tuesday group' }).count()); };
+  const newInvite = async () => { await gmHome(); await gm.locator('details.pmore summary').first().click(); await gm.click('[data-a="partyCode"]'); await dlgBtn(gm, 'New link'); await wait(800);
+    return copyLink('player', /[?&]join=/, invite2); };
+  const join = async link => { await pl.goto(link); await ready(pl); await until(() => pl.locator('.dlg h2', { hasText: 'Join “Tuesday group”' }).count(), 12000); await dlgBtn(pl, 'Join');
+    return !!(await until(() => pl.locator('#toast', { hasText: 'Joined “Tuesday group”' }).count(), 12000)); };
+  await gmHome(); const invite2 = await copyLink('player', /[?&]join=/, invite);
+  check('the removed character joins again with the current link', await join(invite2), 'true');
+  const invite3 = await newInvite();
+  check('it opens a newer invite link again and stays in the party', await join(invite3), 'true');
+  await go(pl, 'Advanced', 'Save'); await pl.click('[data-a="shareOn"]');
+  const link2 = await until(async () => { const v = await pl.locator('#main input[aria-label="Share link"]').inputValue().catch(() => ''); return /share=/.test(v) ? v : null; });
+  const share2 = link2.match(/share=([A-Za-z0-9_]+)/)[1]; await wait(1500);
+  check('the new share link works', await anon.evaluate(id => window.SheetCloud.shareGet(id).then(r => !!(r && r.json)), share2), 'true');
+  await pl.click('[data-a="home"]'); await until(() => pl.locator('[data-a="removeChar"]').count());
+  await pl.locator('[data-a="removeChar"]').first().click(); await dlgBtn(pl, 'Delete');
+  check('deleting the character stops its share link', !!(await until(() => anon.evaluate(id => window.SheetCloud.shareGet(id).then(r => !r), share2), 12000)), 'true');
+  await gm.locator('[data-a="partyOpen"]').first().click().catch(() => {});
+  check('…and takes it off the GM’s dashboard', await until(async () => (await gm.locator('.pcard').count()) === 0 && (await gm.locator('h2', { hasText: 'Tuesday group' }).count()) > 0, 12000) ? 'gone' : 'still there', 'gone');
 
   check('no page errors', errors.length ? errors.join(' | ') : 'none', 'none');
   await browser.close(); server.close();

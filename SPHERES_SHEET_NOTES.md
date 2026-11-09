@@ -86,25 +86,28 @@ When you change an example on purpose, update its expected numbers in the script
 `tests/talents-check.js` (31 checks, no browser, a second) checks the description files in `public/talents/`:
 `node tests/talents-check.js`. The wiki-description part of `check.js` reads those files too, so build them first.
 
-The other three tests (`rules-check.js` 70 checks, `party-check.js` 31, `save-check.js` 12) test the database rules and
+The other three tests (`rules-check.js` 90 checks, `party-check.js` 36, `save-check.js` 12) test the database rules and
 cloud saving. They need the Firebase emulator, which needs Java (Claude's cloud sessions have it). Install the tools once
 with `npm i --no-save firebase-tools@13 firebase@10.12.2 @firebase/rules-unit-testing@3` (not Playwright: a second copy
 won't match the installed browser), then:
 `npx firebase emulators:exec --only firestore --project demo-spheres "node tests/rules-check.js"` and, for the two that
 also need the sign-in emulator, `npx firebase emulators:exec --config firebase.emulators.json --only firestore,auth
 --project demo-spheres "node tests/party-check.js"` (same for `save-check.js`). `firebase.emulators.json` is
-`firebase.json` plus the auth and emulator settings; it's only for tests. GitHub doesn't run these three.
-Last full run: 2026-11-09 (review fixes, class data, stacking), `check.js` 310, `talents-check.js` 31 (the others unchanged since the playtest batch: `rules-check.js` 70, `party-check.js` 31,
-`save-check.js` 12): all passed.
+`firebase.json` plus the auth and emulator settings; it's only for tests. `tests/config-check.js` (5 checks, no installs)
+fails if the two configs' hosting settings drift apart. GitHub runs all six (since 2026-11-09).
+Last full run: 2026-11-09 (review fixes), `check.js` 313, `talents-check.js` 31, `config-check.js` 5, `rules-check.js` 90,
+`party-check.js` 36, `save-check.js` 12: all passed.
 
 **Rollback:** Firebase console → Hosting → release history → roll back. With GitHub: also revert the commit (the
 commit's page → "Revert"), or the next push puts the broken version back.
 
 ### GitHub and automatic deploys (set up 2026-11-06)
 - **Files:** `.gitignore` (leaves out `node_modules/`, `release/`, `.firebase/`, debug logs) and
-  `.github/workflows/deploy.yml`: on a push to `main` (or "Run workflow" on the Actions tab) it runs
-  `tests/talents-check.js`, installs Playwright and Chromium, runs `tests/check.js`, then deploys hosting with
-  `FirebaseExtended/action-hosting-deploy@v0` (`channelId: live`).
+  `.github/workflows/deploy.yml` (reworked 2026-11-09): on every push to `main` and every pull request (or "Run workflow")
+  the `test` job runs `talents-check.js`, `config-check.js`, `check.js` and, in the emulators, `rules-check.js`,
+  `party-check.js` and `save-check.js` (tool versions pinned in the workflow; raise them on purpose). Only on `main`, and
+  only if every check passed, the `deploy` job deploys hosting with `FirebaseExtended/action-hosting-deploy@v0`
+  (`channelId: live`). The workflow token is read-only except in the deploy job; deploys never overlap.
 - **Secret:** `FIREBASE_SERVICE_ACCOUNT_SPHERES_CHARACTER_SHEET` (repository → Settings → Secrets and variables → Actions),
   made by `firebase init hosting:github`. If that command named it differently, change the name in `deploy.yml` to match.
 - **Not deployed by GitHub:** the database rules. After changing `firestore.rules`, run `firebase deploy --only firestore`
@@ -495,6 +498,34 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
     class features": `odd`, `m5`, see `TALX`/`talxFor`); class-list entries can carry `bt` (bonus talents), `tx` (`talx`) and
     `nt` (a note). Characters made from the old entries keep their old class settings: edit the class on the Build tab.
   - **Build script:** "Talents Types" headings aren't talent sections (removed the fake Death talent "Dominion"; 4217 talents).
+  - **Cloud and parties:** deleting a character also deletes its share link and its party summary and sheet (`unlinkChar`,
+    and anything still waiting to be sent for it). A character already in a party can open a newer invite link again (the
+    rules accept the party's current code on update). Deleting a party sets `closing` first; members and sheets can't be
+    written while it closes or after it's gone (`partyOpen()` in the rules), and a failed delete clears `closing` again.
+    Only the party's creator can delete it (any GM once the creator has left, or for a party with no owner); others see
+    "Only the GM who made it can delete it". Party documents take only known fields (`partyKeys`), codes must be text.
+    Member summaries: every field type-checked and size-limited (`memberOk`), and the sheet cuts its strings to fit
+    (`partySummary`). A failed join fixes the character that joined, even after switching. "Couldn't load your parties"
+    clears on the next good load; opening a party twice quickly keeps one live listener (`partyReq`).
+  - **Changed in two places:** `spheres-sheet-sync` (localStorage) remembers, per account and character, the save time this
+    device and the account last agreed on. If both changed since, the sheet asks: this device's / keep both (this
+    device's copy becomes "… (this device)") / the account's. Closing the question keeps both. `sanitizeChar` now keeps
+    `savedAt` (it used to drop it, so after a reload any account copy looked newer and replaced unsent edits).
+  - **Smaller:** Undo appears only on the message an edit made (`toast(t,true)`), not on "Signed in" or errors. Imports
+    over 32 MB are refused (`IMPORT_MAX`); the log is capped at 200 and history at 20,000 on load. A saved file that
+    differs from this browser's copy only in its save time opens without asking. Print shows a message instead of the
+    previous character if a part can't be laid out. "Save as file" leaves out anything a browser extension added to the
+    page. Class ids that aren't plain letters, digits, `-` or `_` get a new id on load (levels follow).
+    Trade traditions add Artistry and Lore automatically (the sheet always has background skills).
+  - **Hosting headers (`firebase.json`, copied to `firebase.emulators.json`):** `X-Content-Type-Options: nosniff` and
+    `Referrer-Policy` everywhere; on pages, a Content-Security-Policy with `frame-ancestors 'self'; object-src 'none';
+    base-uri 'none'; form-action 'none'`. Not yet: a `script-src` list. The inline scripts would need hashes that change
+    with every edit of the page, and Google sign-in loads scripts and frames that must be allowed exactly; a wrong list
+    breaks sign-in on the live site. If wanted, try it first as `Content-Security-Policy-Report-Only` and watch the console.
+  - **Build script:** refuses to clear a folder that has `.json` files but no talents `index.json`; exits 1 when it reports
+    a problem (a sphere with no talents, empty text, or two spheres that would share a file name); closes its files.
+  - **Not changed:** anyone holding an invite code can still make many characters and join each (accepted: limiting it
+    needs a server). GitHub actions are pinned by version tag, not commit.
   - **Stacking and formulas:** see "Stacking" above. Temporary-talent pausing (`tempPaused`) needs a word break after the name
     and skips sources that start with a longer pick you have that is on (`TON`): "Power Attack" isn't paused by a temporary
     talent "Power" when you have the Power Attack feat. Shapeshift DCs use this derive's numbers, not the last drawn. Nauseated

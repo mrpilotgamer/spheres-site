@@ -149,6 +149,7 @@ def build(bundle, outdir):
     pick = lambda pre: [os.path.join(bundle, f) for f in files if f.startswith(pre) and f.endswith('.md')]
     kinds = {'02-': 'magic', '03-': 'combat', '04-': 'skill'}
     spheres = OrderedDict()   # slug -> {n, k, page, t: [...], seen}
+    clashes = []
     for pre, k in kinds.items():
         for path in pick(pre):
             for pslug, title, body in pages(path):
@@ -159,6 +160,8 @@ def build(bundle, outdir):
                 for name, kk, part in split_spheres(name, k, pslug, first_tab(body)):
                     sl = slug(name)
                     S = spheres.setdefault(sl, {'n': name, 'k': kk, 'page': pslug, 't': [], 'seen': set()})
+                    if S['n'] != name:      # two different spheres whose names make the same file name
+                        clashes.append('%s and %s both become %s.json' % (S['n'], name, sl))
                     for sec, h, md, _g in entries(part, talent_section):
                         if norm(h) in S['seen']:
                             continue
@@ -187,8 +190,17 @@ def build(bundle, outdir):
                 dbs.append([name_of(h), h, where, md, pslug, re.sub(r'\s*\[[^\]]*\]', '', sph).strip()])
 
     os.makedirs(outdir, exist_ok=True)
-    for f in os.listdir(outdir):
-        if f.endswith('.json'):
+    # only clear a folder this script made (it holds our index.json), so a wrong path can't wipe someone else's files
+    old = [f for f in os.listdir(outdir) if f.endswith('.json')]
+    if old:
+        try:
+            with open(os.path.join(outdir, 'index.json'), encoding='utf8') as fh:
+                ours = isinstance(json.load(fh).get('spheres'), dict)
+        except (OSError, ValueError, AttributeError):
+            ours = False
+        if not ours:
+            sys.exit('%s has .json files but no talents index.json: not clearing it. Give an empty folder or the talents folder.' % outdir)
+        for f in old:
             os.remove(os.path.join(outdir, f))
     index = {'v': V, 'spheres': {}, 'names': []}
     total_raw = total_gz = 0
@@ -201,7 +213,7 @@ def build(bundle, outdir):
         data = {'v': V, 'n': S['n'], 'k': S['k'], 'url': WIKI + S['page'],
                 'cols': ['name', 'heading', 'section', 'kind', 'md', 'page'], 't': S['t']}
         raw = json.dumps(data, ensure_ascii=False, separators=(',', ':')).encode('utf8')
-        open(os.path.join(outdir, sl + '.json'), 'wb').write(raw)
+        write(os.path.join(outdir, sl + '.json'), raw)
         total_raw += len(raw); total_gz += len(gzip.compress(raw, 9))
         index['spheres'][sl] = {'n': S['n'], 'k': S['k'], 'c': len(S['t']), 'p': S['page']}
         for t in S['t']:
@@ -211,19 +223,23 @@ def build(bundle, outdir):
                 report.append('empty text: %s / %s' % (S['n'], t[1]))
     draw = {'v': V, 'url': WIKI + 'casting-traditions', 'cols': ['name', 'heading', 'group', 'md', 'page', 'sphere'], 'd': dbs}
     raw = json.dumps(draw, ensure_ascii=False, separators=(',', ':')).encode('utf8')
-    open(os.path.join(outdir, 'drawbacks.json'), 'wb').write(raw)
+    write(os.path.join(outdir, 'drawbacks.json'), raw)
     total_raw += len(raw); total_gz += len(gzip.compress(raw, 9))
     index['drawbacks'] = len(dbs)
     raw = json.dumps(index, ensure_ascii=False, separators=(',', ':')).encode('utf8')
-    open(os.path.join(outdir, 'index.json'), 'wb').write(raw)
+    write(os.path.join(outdir, 'index.json'), raw)
     print('spheres: %d   talents: %d   drawbacks/boons: %d' % (len(index['spheres']), len(index['names']), len(dbs)))
     print('index.json: %d KB (%d KB gzipped)' % (len(raw) // 1024, len(gzip.compress(raw, 9)) // 1024))
     print('all files: %.1f MB (%.2f MB gzipped)' % ((total_raw + len(raw)) / 1048576, (total_gz + len(gzip.compress(raw, 9))) / 1048576))
-    for sl, s in sorted(index['spheres'].items(), key=lambda x: -x[1]['c']):
-        pass
-    for r in report:
+    for r in clashes + report:
         print('  check:', r)
+    index['problems'] = len(clashes) + len(report)
     return index
+
+
+def write(path, raw):
+    with open(path, 'wb') as fh:
+        fh.write(raw)
 
 
 if __name__ == '__main__':
@@ -231,4 +247,5 @@ if __name__ == '__main__':
         sys.exit(__doc__)
     here = os.path.dirname(os.path.abspath(__file__))
     out = sys.argv[2] if len(sys.argv) > 2 else os.path.join(here, '..', 'public', 'talents')
-    build(sys.argv[1], out)
+    # a non-zero exit when something needs a look (a sphere with no talents, empty text, two spheres in one file)
+    sys.exit(1 if build(sys.argv[1], out)['problems'] else 0)

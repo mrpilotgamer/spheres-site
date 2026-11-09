@@ -907,6 +907,12 @@ function check(what, got, want) {
     await p2.goto('file://' + tmp); await p2.waitForTimeout(500);
     const asked = await p2.locator('.dlg-back').count(); await p2.keyboard.press('Escape'); await p2.waitForTimeout(400);
     check('closing “Two saves found” keeps the newer copy', asked + ' ' + (await p2.innerText('#cname')).trim() + ' ' + await p2.evaluate(id => JSON.parse(localStorage.getItem('spheres-sheet-v1:' + id)).name, A.id), '1 Browser copy Browser copy');
+    /* the same character again, differing only in when it was saved: no question */
+    const same = await p2.evaluate(id => JSON.parse(localStorage.getItem('spheres-sheet-v1:' + id)), A.id); same.savedAt = 1000;
+    fs.writeFileSync(tmp, html.replace(/(<script type="application\/json" id="savedState">)[\s\S]*?(<\/script>)/, (m, a, b) => a + JSON.stringify(same).replace(/</g, '\\u003c') + b));
+    const p2c = await cx2.newPage(); await p2c.goto('file://' + tmp); await p2c.waitForTimeout(500);
+    check('a saved file that matches this browser’s copy opens without asking', [await p2c.locator('.dlg-back').count(), (await p2c.innerText('#cname')).trim()].join(' '), '0 Browser copy');
+    await p2c.close();
 
     /* a damaged character inside a saved file opens instead of leaving a blank page */
     emb.levels = [{ picks: 'y' }]; emb.id = { a: 1 };
@@ -914,6 +920,25 @@ function check(what, got, want) {
     const p3 = await cx2.newPage(); p3.on('pageerror', e => errors.push(e.message)); await p3.goto('file://' + tmp); await p3.waitForTimeout(500);
     check('a damaged character in a saved file still opens', (await p3.innerText('#cname')).trim(), 'File copy');
     await cx2.close(); fs.rmSync(path.dirname(tmp), { recursive: true, force: true });
+
+    /* changed on this device and, separately, in the account: ask instead of overwriting this device's copy */
+    const conflict = async (syncedAt) => { const cx = await browser.newContext(), p = await cx.newPage(); p.on('pageerror', e => errors.push(e.message));
+      await p.addInitScript(([A, syncedAt]) => { const K = 'spheres-sheet-v1'; if (sessionStorage.getItem('i')) return; sessionStorage.setItem('i', 1); localStorage.clear();
+        localStorage.setItem(K + ':' + A.id, JSON.stringify(Object.assign({}, A, { name: 'Device', savedAt: 2000 }))); localStorage.setItem(K + ':last', JSON.stringify(A.id));
+        localStorage.setItem('spheres-sheet-sync', JSON.stringify({ ['u1/' + A.id]: syncedAt }));
+        const store = { [A.id]: { json: JSON.stringify(Object.assign({}, A, { name: 'Account' })), savedAt: 3000 } }; window.__store = store;
+        window.SheetCloud = { redirectResult: () => Promise.resolve(null), onUser: cb => setTimeout(() => cb({ uid: 'u1', name: 'Pat', email: 'p@x' }), 0), current: () => ({ uid: 'u1' }),
+          list: () => Promise.resolve(Object.keys(store).map(id => ({ id, name: JSON.parse(store[id].json).name, savedAt: store[id].savedAt, meta: {} }))), get: id => Promise.resolve(store[id] || null),
+          put: (id, rec) => { store[id] = rec; return Promise.resolve({ size: 1 }); }, partiesMine: () => Promise.resolve([]) }; }, [A, syncedAt]);
+      await p.goto(FILE); await p.waitForTimeout(300); await p.evaluate(() => window.dispatchEvent(new Event('sheet-cloud-ready'))); await p.waitForTimeout(800); return [cx, p]; };
+    [cx, p] = await conflict(1000);
+    const askedC = await p.locator('.dlg h2', { hasText: 'Changed in two places' }).count();
+    await p.click('.dlg button:has-text("Keep both")'); await p.waitForTimeout(600);
+    check('changed in two places: asks, and “Keep both” keeps both', [askedC, (await p.innerText('#cname')).trim(), await p.evaluate(() => Object.keys(localStorage).map(k => { try { return JSON.parse(localStorage.getItem(k)).name; } catch (e) { return ''; } }).includes('Device (this device)'))].join(' '), '1 Account true');
+    await cx.close();
+    [cx, p] = await conflict(2000);
+    check('unchanged here since the last save: the newer account copy just loads', [await p.locator('.dlg').count(), (await p.innerText('#cname')).trim()].join(' '), '0 Account');
+    await cx.close();
 
     /* importing a damaged file says so instead of failing silently */
     await page.evaluate(() => { const b = document.createElement('button'); b.dataset.a = 'importJson'; document.getElementById('main').appendChild(b); b.click(); }); await page.waitForTimeout(200);

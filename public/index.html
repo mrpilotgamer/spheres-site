@@ -380,7 +380,10 @@ if (/^https?:$/.test(location.protocol) && !window.SheetCloud) {
       partyNewCode: pid => { const c = rnd(); return F.updateDoc(F.doc(db, "parties", pid), { code: c }).then(() => c); },
       partyJoinGM: (pid, code) => F.updateDoc(F.doc(db, "parties", pid), { gms: F.arrayUnion(auth.currentUser.uid), gmJoin: code }),
       partyLeaveGM: pid => F.updateDoc(F.doc(db, "parties", pid), { gms: F.arrayRemove(auth.currentUser.uid) }),
-      partyDelete: async pid => { for (const sub of ["members", "sheets"]) { const s = await F.getDocs(F.collection(db, "parties", pid, sub)); await Promise.all(s.docs.map(d => F.deleteDoc(d.ref))); } await F.deleteDoc(F.doc(db, "parties", pid)); },
+      /* "closing" first, so a player's save that lands meanwhile can't leave a member behind; undone if the delete fails */
+      partyDelete: async pid => { const P = F.doc(db, "parties", pid); await F.updateDoc(P, { closing: true }).catch(() => {});
+        try { for (const sub of ["members", "sheets"]) { const s = await F.getDocs(F.collection(db, "parties", pid, sub)); await Promise.all(s.docs.map(d => F.deleteDoc(d.ref))); } await F.deleteDoc(P); }
+        catch (e) { await F.updateDoc(P, { closing: false }).catch(() => {}); throw e; } },
       memberPut: (pid, key, data) => F.setDoc(F.doc(db, "parties", pid, "members", key), Object.assign({}, data, { owner: auth.currentUser.uid, updatedAt: F.serverTimestamp() })),
       memberDel: (pid, key) => F.deleteDoc(F.doc(db, "parties", pid, "members", key)),
       sheetPut: async (pid, key, rec) => F.setDoc(F.doc(db, "parties", pid, "sheets", key), Object.assign(await pack(rec.json), { owner: auth.currentUser.uid, name: rec.name || "", savedAt: rec.savedAt || 0, updatedAt: F.serverTimestamp() })),
@@ -884,7 +887,8 @@ function tradOn(ch,k){ var t=ch.traditions||{}; return k!=='trade'&&t.mode==='un
 function tradName(ch,k){ var t=ch.traditions||{}; return k!=='trade'&&t.mode==='unified'?(t.unifiedName||'Unified tradition'):((t[k]&&t[k].name)||''); }
 /* a tradition's grants that are in force (adroit-only grants need adroit trade rank) */
 function tradGrants(ch,k){ var t=(ch.traditions||{})[k]; if(!t||!tradOn(ch,k)) return []; return (t.grants||[]).filter(function(g){ return !(k==='trade'&&g.adroit&&t.rank!=='adroit'); }); }
-var TRADE_AUTO=['craft','perc','perform','prof'];
+/* the wiki adds Artistry and Lore "if your game uses background skills": the sheet always has them */
+var TRADE_AUTO=['craft','perc','perform','prof','art','lore'];
 /* what a talent pick is: the base sphere (1 talent, its base abilities ride along free), a talent (1), or a free bonus talent */
 var ROLES=[['sphere','Base sphere (1 talent)'],['basefree','Base sphere (free, from a class feature)'],['talent','Talent (1 talent)'],['utility','[Utility] talent (utility slot first)'],['bonus','Bonus talent (free)']];
 function roleOf(p){ if(p.role) return p.role; if(/\[utility\]/i.test(p.name||'')) return 'utility'; var n=String(p.name||'').trim().toLowerCase(), sp=String(p.sphere||'').trim().toLowerCase();
@@ -1546,7 +1550,11 @@ function sanitizeChar(o){
   var b=blankChar(); if(!o||typeof o!=='object') return b;
   Object.keys(b).forEach(function(k){ if(o[k]===undefined||o[k]===null) return; if(typeof b[k]==='object'&&!Array.isArray(b[k])&&b[k]!==null){ if(typeof o[k]==='object'&&!Array.isArray(o[k])) b[k]=Object.assign(b[k],o[k]); } else if(Array.isArray(b[k])){ if(Array.isArray(o[k])) b[k]=o[k]; } else if(typeof b[k]==='string'){ if(typeof o[k]==='string') b[k]=o[k]; else if(typeof o[k]==='number'||typeof o[k]==='boolean') b[k]=String(o[k]); } else if(typeof b[k]==='number'||typeof b[k]==='boolean'){ if(typeof o[k]!=='object') b[k]=o[k]; } else b[k]=o[k]; });
   if(typeof b.id!=='string'||!/^[A-Za-z0-9_-]{1,96}$/.test(b.id)) b.id=uidG();
-  Object.keys(b.classes).forEach(function(id){ var k=b.classes[id]=Object.assign(blankClass(),b.classes[id]); k.talents=own(TALP_OLD,k.talents)?TALP_OLD[k.talents]:own(TALP,k.talents)?k.talents:'auto';
+  /* when it was last saved: without it, a copy loaded after a reload looked older than any account copy (and replaced unsent edits) */
+  if(typeof o.savedAt==='number'&&isFinite(o.savedAt)&&o.savedAt>0) b.savedAt=o.savedAt;
+  /* class ids end up inside attributes and formulas (lvl.<id>): an imported one that isn't plain letters, digits, - or _ gets a new id */
+  var cRe={}; Object.keys(b.classes).forEach(function(id){ if(/^[A-Za-z0-9_-]{1,60}$/.test(id)) return; var nid='c'+uidG().slice(1); while(own(b.classes,nid)) nid+='x'; b.classes[nid]=b.classes[id]; delete b.classes[id]; cRe[id]=nid; });
+  Object.keys(b.classes).forEach(function(id){ var k=b.classes[id]=Object.assign(blankClass(),b.classes[id]&&typeof b.classes[id]==='object'&&!Array.isArray(b.classes[id])?b.classes[id]:{}); k.talents=own(TALP_OLD,k.talents)?TALP_OLD[k.talents]:own(TALP,k.talents)?k.talents:'auto';
     if(!Array.isArray(k.classSkills)) k.classSkills=[]; k.classSkills=k.classSkills.filter(function(x){ return typeof x==='string'; }); if(!Array.isArray(k.good)) k.good=[]; k.name=String(k.name==null?'':k.name); if(!own(TALX,k.talx)) k.talx=''; });
   Object.keys(b.conds).forEach(function(k){ if(!own(CONDM,k)||!b.conds[k]) delete b.conds[k]; });
   if(!own(SIZES,b.size)) b.size='M';
@@ -1555,14 +1563,15 @@ function sanitizeChar(o){
     Object.keys(blankTrad(k)).forEach(function(f){ if(Array.isArray(blankTrad(k)[f])&&!Array.isArray(x[f])) x[f]=[]; }); });
   b.levels=b.levels.filter(function(l){ return l&&typeof l==='object'; }).map(function(l){ l=Object.assign({cls:'',hp:0,fcb:'none',inc:'',ranks:{},picks:[],note:''},l);
     l.picks=(Array.isArray(l.picks)?l.picks:[]).filter(function(x){ return x&&typeof x==='object'; }); if(!l.ranks||typeof l.ranks!=='object'||Array.isArray(l.ranks)) l.ranks={};
-    ['cls','fcb','inc','note'].forEach(function(f){ if(l[f]!=null&&typeof l[f]!=='string') l[f]=String(l[f]); }); return l; });
+    ['cls','fcb','inc','note'].forEach(function(f){ if(l[f]!=null&&typeof l[f]!=='string') l[f]=String(l[f]); }); if(own(cRe,l.cls)) l.cls=cRe[l.cls]; return l; });
   var rows=function(a){ return (Array.isArray(a)?a:[]).filter(function(x){ return x&&typeof x==='object'; }); };
   ['mods','weapons','resources','actions','groups','gear','containers','dr','extraSkills','companions','customRules','rulings','extraPicks','forms','history'].forEach(function(k){ b[k]=rows(b[k]); });
+  if(b.history.length>20000) b.history=b.history.slice(-20000);
   b.forms.forEach(function(f){ f.traits=rows(f.traits); if(!own(TF,f.tf)) f.tf='blank'; });
   /* nested lists and fields that other code reads without checking: one bad row mustn't stop the sheet from opening */
   var str=function(v){ return v==null?'':typeof v==='string'?v:String(v); };
   ['casting','martial','trade'].forEach(function(k){ var T=b.traditions[k]; ['drawbacks','boons'].forEach(function(f){ if(T[f]!=null) T[f]=rows(T[f]); }); });
-  b.log=(Array.isArray(b.log)?b.log:[]).filter(function(x){ return x&&typeof x==='object'; }).map(function(x){ return {t:str(x.t),at:n0(x.at)}; });
+  b.log=(Array.isArray(b.log)?b.log.slice(0,200):[]).filter(function(x){ return x&&typeof x==='object'; }).map(function(x){ return {t:str(x.t),at:n0(x.at)}; });
   b.companions.forEach(function(c){ var bc=blankComp(c.kind||'conj'); c.abil=Object.assign({},bc.abil,c.abil&&typeof c.abil==='object'?c.abil:{}); c.inc=Object.assign({},bc.inc,c.inc&&typeof c.inc==='object'?c.inc:{});
     ['attacks','mods','traits'].forEach(function(f){ c[f]=rows(c[f]); }); if(!Array.isArray(c.good)) c.good=[];
     if(c.coh!=null){ if(typeof c.coh!=='object'||Array.isArray(c.coh)) delete c.coh; else c.coh={prof:own(COH_P,c.coh.prof)?c.coh.prof:'',troop:!!c.coh.troop}; }
@@ -1882,7 +1891,12 @@ function confirmBox(title,msg,ok,danger){ return modal({title:title,html:'<p cla
 
 /* ===================== STATE ===================== */
 var KEY='spheres-sheet-v1', HISTMAX=40;
-var PAGE_SRC=null; try{ PAGE_SRC='<!DOCTYPE html>\n'+document.documentElement.outerHTML; }catch(e){}
+/* the page's own source, for "Save as file". Taken from the page as loaded, keeping only the sheet's own parts: anything a
+   browser extension added to the head or body (styles, banners, scripts from elsewhere) is left out of saved files. */
+var PAGE_SRC=null; try{ (function(){ var R=document.documentElement.cloneNode(true), H=R.querySelector('head'), B=R.querySelector('body'), KEEP={top:1,tabbar:1,main:1,toast:1,printView:1};
+  if(H) Array.prototype.slice.call(H.children).forEach(function(e){ var t=e.tagName; if(t==='META'||t==='TITLE'||t==='STYLE'&&!e.id&&!e.className||t==='LINK'&&/^https:\/\/fonts\.(googleapis|gstatic)\.com\//.test(e.getAttribute('href')||'')) return; e.remove(); });
+  if(B) Array.prototype.slice.call(B.children).forEach(function(e){ if(e.tagName==='SCRIPT'&&!e.hasAttribute('src')||KEEP[e.id]||e.classList.contains('top')&&e.tagName==='HEADER') return; e.remove(); });
+  PAGE_SRC='<!DOCTYPE html>\n'+R.outerHTML; })(); }catch(e){}
 var ch=null, D=null, hist=[];
 var UI={tab:'sheet',amt:5,allSk:false,sphOpen:{},home:false,lastIn:{play:'sheet',char:'build',adv:'mods'},condQ:'',openNew:null,toast:null};
 var TABS=[['sheet','Sheet & combat'],['build','Build'],['trad','Traditions'],['skills','Skills'],['talents','Talents'],['picks','Feats & features'],['comp','Companions'],['gear','Gear'],['notes','Notes'],['mods','Modifiers'],['acts','Actions & resources'],['rules','House rules'],['save','Save & print'],['poss','Possession'],['shape','Shapeshift'],['ws','Workshop'],['pers','Personas'],['hist','History']];
@@ -1984,6 +1998,13 @@ function classLineOf(c){ var cc=classCounts(c); return Object.keys(cc).map(funct
 function metaOf(c){ var m=(c&&c.meta)||{}; return {campaign:String(m.campaign||'').trim(),status:STATN[m.status]?m.status:'active',pin:!!m.pin}; }
 function partyNames(c){ return (c&&Array.isArray(c.parties)?c.parties:[]).filter(function(x){ return x&&(!CL.user||x.uid===CL.user.uid); }).map(function(x){ return {pid:String(x.pid||''),name:String(x.name||'').slice(0,80)}; }); }
 /* what the account last received for each character (per signed-in user), ignoring savedAt: a save that changes nothing else isn't sent */
+/* when this device and the account last held the same copy of each character (its savedAt), by account and character id:
+   a newer account copy only replaces this device's copy without asking if this device hasn't changed since */
+var SYNCK='spheres-sheet-sync';
+function syncedAt(id){ var m=lsGet(SYNCK)||{}; var v=m[(CL.user&&CL.user.uid||'')+'/'+id]; return typeof v==='number'?v:null; }
+function setSynced(id,t){ if(!CL.user||typeof t!=='number') return; var m=lsGet(SYNCK); if(!m||typeof m!=='object'||Array.isArray(m)) m={}; m[CL.user.uid+'/'+id]=t; lsSet(SYNCK,m); }
+/* both copies changed since they were last the same: this device has edits the account never got, and the account has newer ones */
+function syncConflict(loc,cl){ if(!loc||!cl) return false; var t=syncedAt(loc.id); return t!=null&&(cl.savedAt||0)>(loc.savedAt||0)&&(loc.savedAt||0)>t&&(cl.savedAt||0)>t; }
 function sentSig(c){ return {k:(CL.user&&CL.user.uid||'')+'/'+c.id, v:JSON.stringify(Object.assign({},c,{savedAt:0}))}; }
 function cloudRec(c){ return {app:'spheres-sheet',v:1,json:JSON.stringify(c),name:c.name||'',summary:[classLineOf(c),c.race].filter(Boolean).join(' · '),savedAt:c.savedAt||Date.now(),meta:metaOf(c),level:(c.levels||[]).length,parties:partyNames(c)}; }
 function listRec(c,rec){ return {id:c.id,name:rec.name,summary:rec.summary,savedAt:rec.savedAt,meta:rec.meta,level:rec.level,parties:rec.parties||[]}; }
@@ -2006,7 +2027,7 @@ function cloudPush(c){
   if(pushing){ pushQ=pushQ.filter(function(x){ return x.id!==c.id; }).concat([c]); return; }
   var sig=sentSig(c); if(CL.sent[sig.k]===sig.v){ setStat('Saved to your account'); pushNext(); return; }
   pushing=true; var rec=cloudRec(c);
-  window.SheetCloud.put(c.id,rec).then(function(res){ CL.sent[sig.k]=sig.v; sizeNote(c,res); setStat('Saved to your account'); try{ publishCopies(c); }catch(e){} if(CL.list){ CL.list=CL.list.filter(function(x){return x.id!==c.id;}).concat([listRec(c,rec)]); } })
+  window.SheetCloud.put(c.id,rec).then(function(res){ CL.sent[sig.k]=sig.v; setSynced(c.id,rec.savedAt); sizeNote(c,res); setStat('Saved to your account'); try{ publishCopies(c); }catch(e){} if(CL.list){ CL.list=CL.list.filter(function(x){return x.id!==c.id;}).concat([listRec(c,rec)]); } })
     .catch(function(e){ setStat(cloudErrMsg(e,c),true); if(e&&e.code==='sheet/too-big'&&!CL.warned['big'+c.id]){ CL.warned['big'+c.id]=1; alertBox(cloudErrMsg(e,c)); } })
     .then(function(){ pushing=false; pushNext(); });
 }
@@ -2016,9 +2037,15 @@ function refreshList(){ if(!CL.user) return; window.SheetCloud.list().then(funct
 function syncOpen(){
   if(!CL.user||!ch||pushT||pushing||UI.ro) return; var id=ch.id;
   window.SheetCloud.get(id).then(function(r){ if(!ch||ch.id!==id) return;
-    if(r&&r.json&&(r.savedAt||0)>(ch.savedAt||0)){ try{ var c=sanitizeChar(JSON.parse(r.json)); c.savedAt=r.savedAt; ch=c; hist=[]; lsSet(KEY+':'+ch.id,ch); log('Loaded the newer copy from your account.'); lsSet(KEY+':'+ch.id,ch); setStat('Up to date with your account'); paint(); }catch(e){} }
+    if(r&&r.json&&(r.savedAt||0)>(ch.savedAt||0)){ var c=null; try{ c=safeChar(JSON.parse(r.json)); }catch(e){} if(!c) return; c.savedAt=r.savedAt;
+      var take=function(){ ch=c; hist=[]; log('Loaded the newer copy from your account.'); lsSet(KEY+':'+ch.id,ch); setSynced(ch.id,r.savedAt); setStat('Up to date with your account'); paint(); };
+      if(!syncConflict(ch,c)){ take(); return; }
+      syncAsk(ch,c).then(function(v){ if(!ch||ch.id!==id) return;
+        if(v==='acct') take();
+        else if(v==='both'){ var mine0=JSON.parse(JSON.stringify(ch)); mine0.id=uidG(); mine0.name=(mine0.name||'Character')+' (this device)'; delete mine0.share; mine0.parties=[]; mine0.savedAt=Date.now(); lsSet(KEY+':'+mine0.id,mine0); cloudPush(mine0); take(); toast('Kept both: this device’s version is now “'+mine0.name+'”.'); }
+        else { ch.savedAt=Date.now(); save(); cloudPush(); setStat('Saving this device’s copy…'); } }); }
     else if(!r||(r.savedAt||0)<(ch.savedAt||0)) cloudPush();
-    else setStat('Saved to your account');
+    else { if(r) setSynced(id,r.savedAt); setStat('Saved to your account'); }
   }).catch(function(e){ setStat('Couldn’t reach your account ('+(e&&e.code||'offline')+'). Saving on this device.',true); });
 }
 function localChars(){ var out=[]; try{ for(var i=0;i<localStorage.length;i++){ var k=localStorage.key(i); if(k.indexOf(KEY+':')!==0||/:(last|tab)$/.test(k)) continue; var o=lsGet(k); if(o&&o.app==='spheres-sheet'&&o.id) out.push({id:o.id,name:o.name||'',summary:[classLineOf(sanitizeChar(o)),o.race].filter(Boolean).join(' · '),savedAt:o.savedAt||0,meta:metaOf(o),level:(o.levels||[]).length,parties:partyNames(o)}); } }catch(e){} return out; }
@@ -2026,6 +2053,9 @@ function localChars(){ var out=[]; try{ for(var i=0;i<localStorage.length;i++){ 
 var STATUSES=[['active','Active'],['npc','NPC'],['concept','Concept'],['retired','Retired'],['dead','Dead']], STATN={}; STATUSES.forEach(function(x){ STATN[x[0]]=x[1]; });
 var ARCHIVED={retired:1,dead:1};
 /* the newest full copy of a character: this device's or the account's */
+function syncAsk(loc,cl){ var d=function(t){ return esc(new Date(t||0).toLocaleString()); };
+  return modal({title:'Changed in two places',html:'<p class="dlg-msg">'+esc(loc.name||'This character')+' was changed on this device ('+d(loc.savedAt)+') and, separately, in your account from another device ('+d(cl.savedAt)+'). Which should stay?</p><p class="note">“Keep both” makes this device’s version a separate character.</p>',
+    buttons:[{label:'This device’s',value:'dev'},{label:'Keep both',value:'both'},{label:'Your account’s (newer)',value:'acct',primary:true}]}).then(function(r){ return r&&r.value||'both'; }); }
 function charFull(id){ if(ch&&ch.id===id) return Promise.resolve(JSON.parse(JSON.stringify(ch))); var loc=lsGet(KEY+':'+id);
   if(CL.user&&(CL.list||[]).some(function(x){ return x.id===id; })) return window.SheetCloud.get(id).then(function(r){ var cl=null; try{ cl=r&&r.json?JSON.parse(r.json):null; if(cl) cl.savedAt=r.savedAt; }catch(e){} return loc&&(!cl||(loc.savedAt||0)>=(cl.savedAt||0))?loc:cl; }).catch(function(){ return loc; });
   return Promise.resolve(loc); }
@@ -2052,7 +2082,7 @@ window.addEventListener('sheet-cloud-ready',function(){ CL.ready=true; if(LINK&&
       if(!u&&was&&!CL.signingOut&&Date.now()-(CL.inAt||0)<20000) alertBox('Your browser signed you straight back out: it didn’t keep the sign-in in this site’s storage. In your browser’s site settings for this page, allow cookies and site data (and check you’re not in a private window), then sign in again.');
       if(u&&!was) CL.inAt=Date.now(); if(!u) CL.signingOut=false;
       if(u){ refreshList(); syncOpen(); CL.parties=null; if(BETA) loadParties(); if(LINK&&LINK.kind!=='share') setTimeout(linkGo,0); if(!was&&(CL.signingIn||redir)){ CL.signingIn=false; redir=false; toast('Signed in as '+(u.name||u.email)+(u.name&&u.email?' ('+u.email+')':'')+'. Your characters now save to your account.'); } }
-      else { setStat(''); CL.parties=null; if(UI.party){ if(UI.partyUnsub){ UI.partyUnsub(); UI.partyUnsub=null; } UI.party=null; UI.home=true; } if(redir){ redir=false; alertBox('Google sent you back without signing you in. This usually means the browser blocked the sign-in'+(INAPP?': you’re in an app’s built-in browser, which Google doesn’t allow. Open the sheet in Chrome or Safari and sign in there.':'. Try again; if it keeps happening, allow pop-ups for this site, or try another browser.')); } }
+      else { setStat(''); CL.parties=null; CL.partyErr=''; if(UI.party){ if(UI.partyUnsub){ UI.partyUnsub(); UI.partyUnsub=null; } UI.party=null; UI.home=true; } if(redir){ redir=false; alertBox('Google sent you back without signing you in. This usually means the browser blocked the sign-in'+(INAPP?': you’re in an app’s built-in browser, which Google doesn’t allow. Open the sheet in Chrome or Safari and sign in there.':'. Try again; if it keeps happening, allow pop-ups for this site, or try another browser.')); } }
       paint(); }); }); });
 window.addEventListener('sheet-cloud-failed',function(){ CL.failed=true; if(LINK){ LINK=null; alertBox('Couldn’t reach the server to open that link. Check your connection and open the link again.'); } paint(); });
 window.addEventListener('focus',function(){ if(CL.ready&&!CL.user&&window.SheetCloud&&window.SheetCloud.current){ var u=window.SheetCloud.current(); if(u){ CL.user=u; CL.list=null; refreshList(); syncOpen(); paint(); } } });
@@ -2082,6 +2112,13 @@ var EMU_Q=/[?&]emu\b/.test(location.search)?'&emu':'';
 function shareURL(id){ return location.origin+location.pathname+'?share='+id+EMU_Q; }
 function inviteURL(P,gm){ return location.origin+location.pathname+'?'+(gm?'gmjoin=':'join=')+P.id+'&code='+encodeURIComponent(gm?P.gmCode:P.code)+'&n='+encodeURIComponent(P.name||'')+(BETA_ALL?'':'&beta=1')+EMU_Q; }
 function mine(x){ return !!(x&&CL.user&&x.uid===CL.user.uid); }
+/* a deleted character's share link and party copies: stop anything still waiting to be sent, then delete them */
+function unlinkChar(id,copies,inCloud){ var acct=inCloud?window.SheetCloud.get(id).then(function(r){ try{ return r&&r.json?JSON.parse(r.json):null; }catch(e){ return null; } },function(){ return null; }):Promise.resolve(null);
+  return acct.then(function(cc){ var sh={}, pt={}, key=CL.user.uid+'_'+id;
+    copies.concat([cc]).forEach(function(c){ if(!c||typeof c!=='object') return; if(c.share&&mine(c.share)&&typeof c.share.id==='string') sh[c.share.id]=1; (Array.isArray(c.parties)?c.parties:[]).forEach(function(p){ if(mine(p)&&typeof p.pid==='string') pt[p.pid]=1; }); });
+    Object.keys(PUB.timer).forEach(function(k){ var hit=Object.keys(sh).some(function(s){ return k==='sh:'+s; })||Object.keys(pt).some(function(p){ return k.slice(k.indexOf(':')+1)===p+'/'+key; }); if(hit){ clearTimeout(PUB.timer[k]); PUB.timer[k]=null; PUB.job[k]=null; } });
+    return Promise.all(Object.keys(sh).map(function(s){ return window.SheetCloud.shareDel(s).catch(function(){}); })
+      .concat(Object.keys(pt).map(function(p){ delete PUB.last[p+'/'+key]; return Promise.all([window.SheetCloud.memberDel(p,key).catch(function(){}),window.SheetCloud.sheetDel(p,key).catch(function(){})]); }))); }); }
 function memberKey(c){ return CL.user.uid+'_'+c.id; }
 function ago(ms){ var s=Math.max(0,Math.round((Date.now()-ms)/1000)); return s<60?'just now':s<3600?Math.round(s/60)+' min ago':s<86400?Math.round(s/3600)+' h ago':new Date(ms).toLocaleDateString(); }
 /* the copy others see: without share and party details (no invite codes leave the player's own save) */
@@ -2095,12 +2132,12 @@ function pubThrottle(k,ms,fn){ PUB.job[k]=fn; if(PUB.timer[k]) return; var wait=
 function pubFlush(){ Object.keys(PUB.timer).forEach(function(k){ if(!PUB.timer[k]) return; clearTimeout(PUB.timer[k]); PUB.timer[k]=null; PUB.at[k]=Date.now(); var f=PUB.job[k]; PUB.job[k]=null; if(f) f(); }); }
 function pubWarn(k,msg){ if(PUB.warned[k]) return; PUB.warned[k]=1; toast(msg); }
 /* what a GM sees on the party dashboard (the open character only: it uses the numbers worked out for it) */
-function partySummary(){ var HP=hpObj(), PH=possHost();
-  return {name:ch.name||'Unnamed',player:String(CL.user.name||'').split(' ')[0]||'A player',cls:classLine(),lvl:D.lvl,race:ch.race||'',
+function partySummary(){ var HP=hpObj(), PH=possHost(), cut=function(v,n){ return String(v==null?'':v).slice(0,n); };
+  return {name:cut(ch.name||'Unnamed',200),player:cut(String(CL.user.name||'').split(' ')[0]||'A player',100),cls:cut(classLine(),300),lvl:D.lvl,race:cut(ch.race,100),
     hp:{cur:D.hpMax-n0(HP.dmg),max:D.hpMax,temp:n0(HP.temp),non:n0(HP.non)},ac:D.ac,touch:D.touch,ff:D.ff,cmd:D.cmd,fort:D.fort,ref:D.ref,will:D.will,init:D.init,perc:(D.skills.perc||{}).total||0,
     conds:Object.keys(ch.conds||{}).filter(function(k){ return ch.conds[k]; }),buffs:(ch.groups||[]).filter(function(g){ return g.on; }).map(function(g){ return g.name; }),
     res:(ch.resources||[]).map(function(r){ var mx=D.res[r.id]?D.res[r.id].max:0; return {n:r.name,cur:Math.min(n0(r.cur),mx),max:mx}; }),
-    form:D.form?D.form.name:'',host:PH?(PH.name||'a host'):'',neg:n0(ch.negLevels),accent:themePal(ch.theme).gold}; }
+    form:cut(D.form?D.form.name:'',200),host:cut(PH?(PH.name||'a host'):'',200),neg:n0(ch.negLevels),accent:cut(themePal(ch.theme).gold,20)}; }
 function publishCopies(c){ if(!CL.user||!window.SheetCloud||!window.SheetCloud.sharePut||UI.ro) return; var rec=null, R=function(){ return rec||(rec=copyRec(c)); };
   if(c.share&&mine(c.share)) pubThrottle('sh:'+c.share.id,60000,function(){ window.SheetCloud.sharePut(c.share.id,R()).catch(function(e){ pubWarn('sh'+c.id,'Couldn’t update the share link for '+(c.name||'this character')+' ('+(e&&e.code||'offline')+'). The character itself is saved.'); }); });
   if(c!==ch) return; var sm=null, key=memberKey(c);
@@ -2132,24 +2169,27 @@ function linkGo(){ if(!LINK||!window.SheetCloud) return; var L=LINK;
       buttons:[{label:'Cancel',value:null},{label:'Join',value:'ok',primary:true}],read:function(root){ return rd(root).s('c'); }})
     .then(function(r){ if(r.value!=='ok') return; charFull(r.data).then(function(c){ if(!c){ alertBox('Couldn’t read that character.'); return; }
       c.parties=(c.parties||[]).filter(function(p){ return p.pid!==L.pid; }).concat([{pid:L.pid,code:L.code,name:L.name,uid:CL.user.uid}]); openChar(c,false);
-      var key=memberKey(ch), sm=partySummary(), lk=L.pid+'/'+key;
+      var jc=ch, key=memberKey(jc), sm=partySummary(), lk=L.pid+'/'+key;
       /* the database only takes a party member for a character saved in the player's account, so save it there first */
-      window.SheetCloud.put(ch.id,cloudRec(ch)).then(function(){ return window.SheetCloud.memberPut(L.pid,key,Object.assign({},sm,{code:L.code,charId:ch.id})); }).then(function(){ PUB.last[lk]=JSON.stringify(sm); PUB.at['sp:'+lk]=Date.now(); return window.SheetCloud.sheetPut(L.pid,key,copyRec(ch)); })
-        .then(function(){ save(); toast('Joined “'+L.name+'” with '+(ch.name||'this character')+'. Its GMs can see it now.'); })
-        .catch(function(e){ ch.parties=(ch.parties||[]).filter(function(p){ return p.pid!==L.pid; }); save(); paint();
+      window.SheetCloud.put(jc.id,cloudRec(jc)).then(function(){ return window.SheetCloud.memberPut(L.pid,key,Object.assign({},sm,{code:L.code,charId:jc.id})); }).then(function(){ PUB.last[lk]=JSON.stringify(sm); PUB.at['sp:'+lk]=Date.now(); return window.SheetCloud.sheetPut(L.pid,key,copyRec(jc)); })
+        .then(function(){ if(ch===jc) save(); else { jc.savedAt=Date.now(); lsSet(KEY+':'+jc.id,jc); } toast('Joined “'+L.name+'” with '+(jc.name||'this character')+'. Its GMs can see it now.'); })
+        .catch(function(e){ jc.parties=(jc.parties||[]).filter(function(p){ return p.pid!==L.pid; }); if(ch===jc) save(); else { jc.savedAt=Date.now(); lsSet(KEY+':'+jc.id,jc); cloudPush(jc); } paint();
           alertBox(e&&e.code==='permission-denied'?'This invite link doesn’t work anymore (the GM may have made a new one). Ask your GM for the current link.':'Couldn’t join ('+(e&&e.code||'offline')+'). Try the link again.'); }); }); }); }); }
 /* ---------- the GM's dashboard ---------- */
 function loadParties(){ if(!BETA||!CL.user||CL.partiesLoading) return; CL.partiesLoading=true;
-  window.SheetCloud.partiesMine().then(function(l){ CL.parties=l.sort(function(a,b){ return String(a.name).localeCompare(String(b.name)); }); },function(e){ CL.parties=[]; CL.partyErr='Couldn’t load your parties ('+(e&&e.code||'offline')+').'; })
+  window.SheetCloud.partiesMine().then(function(l){ CL.partyErr=''; CL.parties=l.sort(function(a,b){ return String(a.name).localeCompare(String(b.name)); }); },function(e){ CL.parties=[]; CL.partyErr='Couldn’t load your parties ('+(e&&e.code||'offline')+').'; })
     .then(function(){ CL.partiesLoading=false; if(UI.home||!ch||UI.party) paint(); }); }
+/* the creator deletes a party; any GM can once the creator has stopped being one (or for an older party with no owner) */
+function partyCanDelete(P){ var o=P&&P.owner||'', g=P&&P.gms||[]; return !!(CL.user&&P&&(CL.user.uid===o||g.indexOf(o)<0)); }
 function partyOf(pid){ return (CL.parties||[]).filter(function(x){ return x.id===pid; })[0]||null; }
-function openParty(pid){ if(UI.partyUnsub){ UI.partyUnsub(); UI.partyUnsub=null; }
-  var go=function(){ var P=partyOf(pid); if(!P){ alertBox('Couldn’t open that party: you’re not one of its GMs, or it was deleted.'); return; }
+var partyReq=0;
+function openParty(pid){ if(UI.partyUnsub){ UI.partyUnsub(); UI.partyUnsub=null; } var req=++partyReq;
+  var go=function(){ if(req!==partyReq) return; if(UI.partyUnsub){ UI.partyUnsub(); UI.partyUnsub=null; } var P=partyOf(pid); if(!P){ alertBox('Couldn’t open that party: you’re not one of its GMs, or it was deleted.'); return; }
     UI.party={id:pid,members:[],loaded:false,err:''}; UI.home=false; paint(); window.scrollTo(0,0);
     UI.partyUnsub=window.SheetCloud.watchMembers(pid,function(list){ if(!UI.party||UI.party.id!==pid) return; UI.party.members=list; UI.party.loaded=true; UI.party.err=''; if(!UI.ro) paint(); },
       function(e){ if(!UI.party||UI.party.id!==pid) return; UI.party.loaded=true; UI.party.err='Live updates stopped ('+(e&&e.code||'offline')+'). Reload the page to try again.'; if(!UI.ro) paint(); }); };
   if(partyOf(pid)) go(); else window.SheetCloud.partiesMine().then(function(l){ CL.parties=l; go(); },function(e){ alertBox('Couldn’t load your parties ('+(e&&e.code||'offline')+').'); }); }
-function closeParty(){ if(UI.partyUnsub){ UI.partyUnsub(); UI.partyUnsub=null; } UI.party=null; UI.home=true; loadParties(); paint(); window.scrollTo(0,0); }
+function closeParty(){ partyReq++; if(UI.partyUnsub){ UI.partyUnsub(); UI.partyUnsub=null; } UI.party=null; UI.home=true; loadParties(); paint(); window.scrollTo(0,0); }
 function memberCard(m){ var L=function(x){ return Array.isArray(x)?x.slice(0,60):[]; }; m=Object.assign({},m,{conds:L(m.conds),buffs:L(m.buffs),res:L(m.res).filter(function(r){ return r&&typeof r==='object'; })}); ['name','player','cls','race','form','host','key'].forEach(function(k){ m[k]=m[k]==null?'':String(m[k]).slice(0,200); }); var hp=m.hp&&typeof m.hp==='object'?m.hp:{}, cur=n0(hp.cur), mx=n0(hp.max), pct=mx?Math.max(0,Math.min(100,cur/mx*100)):0, acc=HEX6.test(m.accent||'')?m.accent:'var(--gold)', t=function(k,v,n){ return '<div class="tile"><span class="k">'+k+'</span><span class="v">'+esc(v)+'</span>'+(n?'<span class="n">'+esc(n)+'</span>':'')+'</div>'; };
   return '<section class="card pcard" style="border-top:3px solid '+acc+'"><div class="cardhead" style="margin-bottom:2px"><h2>'+esc(m.name||'Unnamed')+'</h2><span class="note">'+esc(m.player||'')+' · '+esc(ago(m.updatedAt))+'</span></div>'+
     '<p class="note" style="margin:0 0 6px">'+esc([m.cls,m.race].filter(Boolean).join(' · '))+'</p>'+
@@ -2182,7 +2222,7 @@ function partiesCard(){ if(!BETA||!CL.user) return ''; if(CL.parties==null) load
   if(!L) h+='<p class="note">Loading…</p>'; else if(!L.length) h+='<p class="empty">You don’t run any parties yet.</p>';
   else h+='<div class="list">'+L.map(function(P){ return '<div class="li" style="flex-wrap:wrap"><span style="flex:1 1 180px"><b>'+esc(P.name||'Party')+'</b><br><span class="note">'+plural((P.gms||[]).length,'GM')+'</span></span>'+
     '<button class="mini primary" data-a="partyOpen" data-id="'+esc(P.id)+'">Open</button><button class="mini" data-a="partyInvite" data-id="'+esc(P.id)+'" data-k="player">Player invite</button><button class="mini" data-a="partyInvite" data-id="'+esc(P.id)+'" data-k="gm">GM invite</button>'+
-    '<details class="pmore" style="flex-basis:100%"><summary class="note" style="font-size:12.5px">More</summary><div class="row" style="margin:4px 0 0"><button class="mini" data-a="partyRename" data-id="'+esc(P.id)+'">Rename</button><button class="mini" data-a="partyCode" data-id="'+esc(P.id)+'">New player invite link</button><button class="mini" data-a="partyGMCode" data-id="'+esc(P.id)+'">New GM invite link</button>'+((P.gms||[]).length>1?'<button class="mini" data-a="partyGMLeave" data-id="'+esc(P.id)+'">Stop being a GM</button>':'')+'<button class="mini danger" data-a="partyDel" data-id="'+esc(P.id)+'">Delete party</button></div></details></div>'; }).join('')+'</div>';
+    '<details class="pmore" style="flex-basis:100%"><summary class="note" style="font-size:12.5px">More</summary><div class="row" style="margin:4px 0 0"><button class="mini" data-a="partyRename" data-id="'+esc(P.id)+'">Rename</button><button class="mini" data-a="partyCode" data-id="'+esc(P.id)+'">New player invite link</button><button class="mini" data-a="partyGMCode" data-id="'+esc(P.id)+'">New GM invite link</button>'+((P.gms||[]).length>1?'<button class="mini" data-a="partyGMLeave" data-id="'+esc(P.id)+'">Stop being a GM</button>':'')+(partyCanDelete(P)?'<button class="mini danger" data-a="partyDel" data-id="'+esc(P.id)+'">Delete party</button>':'<span class="note">Only the GM who made it can delete it.</span>')+'</div></details></div>'; }).join('')+'</div>';
   return h+'</section>'; }
 /* the character's own side: its share link and the parties it's in (Save & print tab) */
 function shareCard(){ if(!BETA) return ''; var h='<section class="card"><h2>Share and parties <span class="tag">beta</span></h2>';
@@ -2198,7 +2238,8 @@ function log(t){ if(!ch) return; ch.log.unshift({t:t,at:Date.now()}); if(ch.log.
 /* log it and show it in a toast with Undo (for one-tap actions whose result may be off-screen) */
 function say(t){ log(t); UI.toast=t; }
 var toastT=null;
-function toast(t){ var el=$('toast'); if(!el) return; el.innerHTML='<span>'+esc(t)+'</span>'+(hist.length?'<button class="mini" data-a="undo">Undo</button>':'')+'<button class="mini" data-a="toastX" aria-label="Dismiss">×</button>'; el.hidden=false; clearTimeout(toastT); toastT=setTimeout(function(){ el.hidden=true; },6000); }
+/* undo: true only for the message an edit just made (runAction's showToast), so "Signed in" or an error never offers to undo something else */
+function toast(t,undoable){ var el=$('toast'); if(!el) return; el.innerHTML='<span>'+esc(t)+'</span>'+(undoable&&hist.length?'<button class="mini" data-a="undo">Undo</button>':'')+'<button class="mini" data-a="toastX" aria-label="Dismiss">×</button>'; el.hidden=false; clearTimeout(toastT); toastT=setTimeout(function(){ el.hidden=true; },6000); }
 function toastHide(){ var el=$('toast'); if(el) el.hidden=true; clearTimeout(toastT); }
 function remember(before){ if(before!==JSON.stringify(ch)){ hist.push(before); if(hist.length>HISTMAX) hist.shift(); } }
 function undo(){ if(!hist.length||UI.ro) return; var keepS=ch.share, keepP=ch.parties; ch=sanitizeChar(JSON.parse(hist.pop())); if(keepS) ch.share=keepS; else delete ch.share; ch.parties=keepP||[]; save(); paint(); }
@@ -4206,7 +4247,8 @@ function printHTML(){
   h+='</div></div></div>';
   return h;
 }
-function fillPrint(){ var el=$('printView'); if(el) el.innerHTML=ch?printHTML():''; }
+/* a part that can't be drawn mustn't leave the previous character's page in the print view */
+function fillPrint(){ var el=$('printView'); if(!el) return; try{ el.innerHTML=ch?printHTML():''; }catch(e){ try{ console.error(e); }catch(x){} el.innerHTML='<p>'+esc((ch&&ch.name||'This character')+' couldn’t be laid out for printing: part of it is damaged ('+(e&&e.message||e)+').')+'</p>'; } }
 window.addEventListener('beforeprint',fillPrint);
 /* ===================== ROLL20 MACROS =====================
    One macro per roll, for pasting into a Roll20 character's Abilities (free accounts). They use Roll20's built-in
@@ -4439,7 +4481,8 @@ var A={
   openChar:function(el){ var id=el.dataset.id; if(ch&&ch.id===id){ UI.home=false; return 'ui'; } var loc=lsGet(KEY+':'+id);
     if(CL.user&&(CL.list||[]).some(function(x){return x.id===id;})){ setStat('Opening…');
       window.SheetCloud.get(id).then(function(r){ var cloud=null; try{ cloud=r&&r.json?JSON.parse(r.json):null; if(cloud) cloud.savedAt=r.savedAt; }catch(e){}
-        if(loc&&cloud) openChar((loc.savedAt||0)>(cloud.savedAt||0)?loc:cloud,(loc.savedAt||0)>(cloud.savedAt||0)); else if(cloud||loc) openChar(cloud||loc,!cloud); })
+        if(loc&&cloud&&syncConflict(loc,cloud)){ openChar(loc,false); syncOpen(); }
+        else if(loc&&cloud){ var useLoc=(loc.savedAt||0)>(cloud.savedAt||0); openChar(useLoc?loc:cloud,useLoc); if(!useLoc) setSynced(id,cloud.savedAt); } else if(cloud||loc) openChar(cloud||loc,!cloud); })
         .catch(function(e){ if(loc) openChar(loc,false); else alertBox('Couldn’t open it: '+(e&&e.code||'offline')); });
       return 'skip'; }
     if(loc) openChar(loc,!!CL.user); return 'skip'; },
@@ -4464,10 +4507,13 @@ var A={
   uploadChar:function(el){ var o=lsGet(KEY+':'+el.dataset.id); if(!o||!CL.user) return 'skip'; window.SheetCloud.put(o.id,cloudRec(o)).then(function(res){ sizeNote(o,res); refreshList(); }).catch(function(e){ alertBox(cloudErrMsg(e,o)); }); return 'skip'; },
   removeChar:function(el){ var id=el.dataset.id, inCloud=el.dataset.c==='1', o=lsGet(KEY+':'+id)||((CL.list||[]).filter(function(x){return x.id===id;})[0])||{};
     confirmBox('Delete '+(o.name?'“'+o.name+'”':'this character')+'?',(inCloud?'It’s removed from your Google account and this device. ':'It’s removed from this device. ')+'This can’t be undone, so export it first (Save & print tab) if you might want it back.','Delete',true).then(function(ok){ if(!ok) return;
+      var loc=lsGet(KEY+':'+id), open0=ch&&ch.id===id?ch:null;
       try{ localStorage.removeItem(KEY+':'+id); }catch(e){}
       if(ch&&ch.id===id){ ch=null; hist=[]; try{ localStorage.removeItem(KEY+':last'); }catch(e){} }
       var done=function(){ CL.list=(CL.list||[]).filter(function(x){return x.id!==id;}); UI.home=true; paint(); };
-      if(inCloud&&CL.user) window.SheetCloud.del(id).then(done).catch(function(e){ alertBox('Couldn’t delete it from your account: '+(e&&e.code||'offline')); done(); }); else done(); });
+      /* its share link and party copies go too, so nobody keeps reading a character its player deleted */
+      if(CL.user) unlinkChar(id,[open0,loc],inCloud).then(function(){ return inCloud?window.SheetCloud.del(id):null; }).then(done).catch(function(e){ alertBox('Couldn’t delete it from your account: '+(e&&e.code||'offline')); done(); });
+      else { done(); if([open0,loc].some(function(c){ return c&&(c.share||(c.parties||[]).length); })) alertBox('Its share link and party copies are still online: sign in, then delete them from another copy of the character, or ask the party’s GM to remove it.'); } });
     return 'skip'; },
   tradMode:function(el){ var m=el.dataset.k, T=ch.traditions; if(T.mode===m) return 'skip';
     if(m==='unified'){ T.mode='unified'; if(!T.unifiedName) T.unifiedName=[T.casting.name,T.martial.name].filter(Boolean).join(' / '); log('Traditions: unified.'); return; }
@@ -4825,12 +4871,15 @@ function slug(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').
 function download(name,text,type){ try{ var b=new Blob([text],{type:type||'application/octet-stream'}), a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=name; document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); },1500); return true; }catch(e){ return false; } }
 function stamp(){ var d0=new Date(); return d0.toISOString().slice(0,10)+'-'+String(d0.getHours()).padStart(2,'0')+String(d0.getMinutes()).padStart(2,'0'); }
 function alertBox(msg){ return modal({title:'Hmm',html:'<p class="dlg-msg">'+esc(msg)+'</p>',buttons:[{label:'OK',value:null,primary:true}]}); }
+/* a character is usually well under 1 MB; a backup of many characters can be several. Anything far bigger isn't one of ours. */
+var IMPORT_MAX=32*1048576;
 function pickFile(title,note){
   return modal({title:title,html:'<p class="note">'+esc(note)+'</p><input type="file" name="file" accept=".json,application/json,text/plain" aria-label="Choose a file"><textarea name="j" aria-label="Or paste the text here" placeholder="…or paste the text here" style="margin-top:8px;min-height:7rem"></textarea>',
     buttons:[{label:'Cancel',value:null},{label:'Import',value:'ok',primary:true}],
     onOpen:function(root){ root.querySelector('[name=file]').addEventListener('change',function(e){ var f=e.target.files&&e.target.files[0]; if(!f) return; var r=new FileReader(); r.onload=function(){ root.querySelector('[name=j]').value=String(r.result||''); }; r.readAsText(f); }); },
     read:function(root){ return rd(root).s('j'); }})
-    .then(function(r){ if(r.value!=='ok') return null; if(!String(r.data||'').trim()){ alertBox('Nothing to import: choose a file or paste its text.'); return null; } try{ var o=JSON.parse(r.data); if(o&&typeof o==='object') return o; }catch(e){} alertBox('That text isn’t a valid file.'); return null; });
+    .then(function(r){ if(r.value!=='ok') return null; if(!String(r.data||'').trim()){ alertBox('Nothing to import: choose a file or paste its text.'); return null; }
+      if(String(r.data).length>IMPORT_MAX){ alertBox('That file is too big to be from this sheet ('+Math.round(String(r.data).length/1048576)+' MB; the limit is '+Math.round(IMPORT_MAX/1048576)+' MB).'); return null; } try{ var o=JSON.parse(r.data); if(o&&typeof o==='object') return o; }catch(e){} alertBox('That text isn’t a valid file.'); return null; });
 }
 function saveFileFlow(){
   if(!PAGE_SRC){ alertBox('This browser can’t read the page’s own source, so it can’t build a file. Use Export instead.'); return; }
@@ -5017,7 +5066,7 @@ function runAction(f,el){
     .catch(function(e){ try{ console.error(e); }catch(x){} alertBox('That didn’t work: '+(e&&e.message||e)+'. Nothing was saved.'); paint(); }); return; }
   if(ch&&before!=='null') remember(before); save(); paint(); showToast();
 }
-function showToast(){ if(UI.toast){ var m=UI.toast; UI.toast=null; toast(m); } }
+function showToast(){ if(UI.toast){ var m=UI.toast; UI.toast=null; toast(m,true); } }
 document.addEventListener('click',function(e){
   if(e.target.closest('.dlg-back')) return;
   var tg=e.target.closest('[data-tgrp]'); if(tg){ var gk=tg.dataset.tgrp; if(groupOf(UI.tab)!==gk){ var GG=TGROUPS.filter(function(x){ return x[0]===gk; })[0], sh=GG[2].filter(tabOn); goTab(sh.indexOf(UI.lastIn[gk])>=0?UI.lastIn[gk]:sh[0]||GG[2][0]); paint(); window.scrollTo(0,0); } return; }
@@ -5125,7 +5174,9 @@ document.addEventListener('keydown',function(e){
   var emb=null; try{ var el=$('savedState'); emb=el?JSON.parse(el.textContent):null; }catch(e){}
   if(emb&&emb.app==='spheres-sheet'){
     var loc=lsGet(KEY+':'+emb.id);
-    if(loc&&loc.savedAt&&emb.savedAt&&loc.savedAt!==emb.savedAt){
+    /* only ask when the two really differ: choosing a copy saves it again with a new time, which alone isn't a difference */
+    var sameBut=function(a,b){ try{ var x=Object.assign({},a), y=Object.assign({},b); delete x.savedAt; delete y.savedAt; return JSON.stringify(x)===JSON.stringify(y); }catch(e){ return false; } };
+    if(loc&&loc.savedAt&&emb.savedAt&&loc.savedAt!==emb.savedAt&&!sameBut(loc,emb)){
       ch=safeChar(emb); if(!ch){ ch=safeChar(loc); paint(); alertBox(DAMAGED); return; } render();
       modal({title:'Two saves found',html:'<p class="dlg-msg">This file holds '+esc(emb.name||'the character')+' as saved '+esc(new Date(emb.savedAt).toLocaleString())+'.\nThis browser has a copy from '+esc(new Date(loc.savedAt).toLocaleString())+'.\n\nWhich should the sheet use?</p>',
         buttons:[{label:'The file’s',value:'emb'},{label:'This browser’s'+(loc.savedAt>emb.savedAt?' (newer)':''),value:'loc',primary:loc.savedAt>emb.savedAt}]})

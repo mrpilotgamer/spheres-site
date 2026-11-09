@@ -113,6 +113,36 @@ const CODE = 'PlayerCode-0123456789', GMCODE = 'GmCode-0123456789abcd', z = Byte
   await check('the old GM link stops working', assertFails(updateDoc(doc(other, 'parties/gm1_P4'), { gms: arrayUnion('pl2'), gmJoin: GMCODE })));
   await check('the creator can remove a co-GM', assertSucceeds(updateDoc(doc(gm, 'parties/gm1_P4'), { gms: ['gm1'] })));
 
+  console.log('Review fixes (2026-11-09)');
+  const NEW = 'NewPlayerCode-0123456';
+  await check('set up P5 with a member', assertSucceeds((async () => {
+    await setDoc(doc(gm, 'parties/gm1_P5'), { name: 'P5', gms: ['gm1'], owner: 'gm1', code: CODE, gmCode: GMCODE });
+    await setDoc(doc(pl, 'parties/gm1_P5/members/pl1_c1'), { owner: 'pl1', code: CODE, charId: 'c1', name: 'Tova' }); })()));
+  await updateDoc(doc(gm, 'parties/gm1_P5'), { code: NEW });
+  await check('a member who opens the newer invite link again keeps their place (code becomes the new one)', assertSucceeds(setDoc(doc(pl, 'parties/gm1_P5/members/pl1_c1'), { owner: 'pl1', code: NEW, charId: 'c1', name: 'Tova' })));
+  await check('…but not any other code', assertFails(setDoc(doc(pl, 'parties/gm1_P5/members/pl1_c1'), { owner: 'pl1', code: 'MadeUpCode-0123456789', charId: 'c1' })));
+  await check('a member summary with an over-long race is refused', assertFails(setDoc(doc(pl, 'parties/gm1_P5/members/pl1_c1'), { owner: 'pl1', code: NEW, charId: 'c1', race: 'x'.repeat(5000) })));
+  await check('a member summary with a text AC is refused', assertFails(setDoc(doc(pl, 'parties/gm1_P5/members/pl1_c1'), { owner: 'pl1', code: NEW, charId: 'c1', ac: 'x'.repeat(100) })));
+  await check('a member summary with extra hit point fields is refused', assertFails(setDoc(doc(pl, 'parties/gm1_P5/members/pl1_c1'), { owner: 'pl1', code: NEW, charId: 'c1', hp: { cur: 1, junk: 'x' } })));
+  await check('a full member summary of the right kinds is taken', assertSucceeds(setDoc(doc(pl, 'parties/gm1_P5/members/pl1_c1'), { owner: 'pl1', code: NEW, charId: 'c1', name: 'Tova', player: 'Pat', cls: 'Striker 12', lvl: 12, race: 'Human',
+    hp: { cur: 1, max: 2, temp: 0, non: 0 }, ac: 20, touch: 12, ff: 18, cmd: 25, fort: 9, ref: 7, will: 4, init: 3, perc: 10, conds: [], buffs: [], res: [], form: '', host: '', neg: 0, accent: '#c9a14a' })));
+  await check('a party with an unknown field is refused', assertFails(updateDoc(doc(gm, 'parties/gm1_P5'), { junk: 'x' })));
+  await check('a party code that isn’t text is refused', assertFails(updateDoc(doc(gm, 'parties/gm1_P5'), { code: ['x'.repeat(20)] })));
+  await check('a co-GM joins P5', assertSucceeds(updateDoc(doc(gm2, 'parties/gm1_P5'), { gms: arrayUnion('gm2'), gmJoin: GMCODE })));
+  await check('a co-GM can’t delete the party', assertFails(deleteDoc(doc(gm2, 'parties/gm1_P5'))));
+  await check('a GM marks the party as closing (the first step of deleting it)', assertSucceeds(updateDoc(doc(gm, 'parties/gm1_P5'), { closing: true })));
+  await check('while it closes, a member’s save is refused', assertFails(setDoc(doc(pl, 'parties/gm1_P5/members/pl1_c1'), { owner: 'pl1', code: NEW, charId: 'c1', name: 'Tova' })));
+  await check('…and so is its full sheet', assertFails(setDoc(doc(pl, 'parties/gm1_P5/sheets/pl1_c1'), { owner: 'pl1', z, name: 'Tova' })));
+  await check('…and joining', assertFails(setDoc(doc(pl, 'parties/gm1_P5/members/pl1_c3'), { owner: 'pl1', code: NEW, charId: 'c1' })));
+  await check('the GM still clears the members', assertSucceeds(deleteDoc(doc(gm, 'parties/gm1_P5/members/pl1_c1'))));
+  await check('the creator deletes the party', assertSucceeds(deleteDoc(doc(gm, 'parties/gm1_P5'))));
+  await check('a member left behind can’t keep writing to a deleted party', assertFails(setDoc(doc(pl, 'parties/gm1_P5/members/pl1_c1'), { owner: 'pl1', code: NEW, charId: 'c1' })));
+  await check('set up P6: the creator stops being a GM', assertSucceeds((async () => {
+    await setDoc(doc(gm, 'parties/gm1_P6'), { name: 'P6', gms: ['gm1'], owner: 'gm1', code: CODE, gmCode: GMCODE });
+    await updateDoc(doc(gm2, 'parties/gm1_P6'), { gms: arrayUnion('gm2'), gmJoin: GMCODE });
+    await updateDoc(doc(gm, 'parties/gm1_P6'), { gms: arrayRemove('gm1') }); })()));
+  await check('then a remaining GM can delete it', assertSucceeds(deleteDoc(doc(gm2, 'parties/gm1_P6'))));
+
   console.log('Everything else');
   await check('other collections are closed', assertFails(setDoc(doc(gm, 'secrets/x'), { a: 1 })));
 
