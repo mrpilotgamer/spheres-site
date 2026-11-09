@@ -501,8 +501,10 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
     tested offline). The share-link box's `onclick="this.select()"` became a listener (`data-selall`), since a script
     policy blocks onclick attributes; don't add new `on…=` attributes.
   - **Fixed:** the talent breakdown listed every class, even with +0 talents (a missing `{}` from batch "class data").
-  - **Test timing:** "the sort and the view are remembered" waits 2.5 s before its reload, because Chromium writes
-    localStorage to disk in batches and a reload right after a click can come first.
+  - **Test without a reload:** the dashboard "remembered" check used to reload the page, and failed about 1 run in 5:
+    headless Chromium doesn't reliably keep a file:// page's localStorage across a reload (the storage came back empty,
+    the test's own setup marker included). It now checks the saved value, edits it, and reopens the dashboard instead.
+    The real https site keeps storage normally. Avoid reloads in `check.js` when a check depends on localStorage.
 
 - **Feature batch 2 (2026-11-09): copies, unsent changes, the party dashboard.**
   - **Save a copy to my characters** (read-only viewer, share links and party sheets; `roCopy`): a new character with a new id,
