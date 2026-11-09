@@ -149,6 +149,12 @@ button.tile:hover::after{color:var(--gold)}
 .actgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:8px}
 .tag{display:inline-block;padding:1px 8px;border-radius:10px;background:var(--soft);font-size:12px;color:var(--muted)}
 .tag.gold{background:var(--gold-deep);color:var(--gold)}
+.tag.bad{background:var(--bad-deep);color:var(--bad)}
+.pcard.stale{opacity:.62}
+.pgrid.compact{grid-template-columns:repeat(auto-fill,minmax(min(100%,240px),1fr))}
+.pcard.compact{padding:10px 12px}
+.seg{display:inline-flex;flex-wrap:wrap;gap:4px}
+.seg button.on{background:var(--gold-deep);color:var(--gold);border-color:var(--gold)}
 .table-wrap{overflow-x:auto}
 table{border-collapse:collapse;width:100%}
 th{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);text-align:left;font-weight:600;padding:7px 8px;border-bottom:1px solid var(--rule)}
@@ -2024,7 +2030,7 @@ var SIZE_WARN=750000, SIZE_MAX=990000; CL.size={}; CL.warned={};
 function cloudErrMsg(e,c){ if(e&&e.code==='sheet/too-big') return 'This character is too big to save to your account ('+kb(e.size)+' of '+kb(e.limit)+(e.size!==e.raw?' compressed':'')+'). It’s safe on this device: use Save file to keep a copy, or Archive old history on the History tab.';
   var raw=c?JSON.stringify(c).length:0; return 'Couldn’t save to your account ('+(e&&e.code||'offline')+').'+(e&&e.code==='permission-denied'&&raw>SIZE_WARN?' The character may be too big ('+kb(raw)+'): try Archive old history on the History tab.':' It’s safe on this device.'); }
 function sizeNote(c,res){ if(!res) return; CL.size[c.id]=res; if(res.size>=SIZE_WARN&&!CL.warned[c.id]){ CL.warned[c.id]=1; toast((c.name||'This character')+' is getting big for your account ('+kb(res.size)+' of '+kb(SIZE_MAX)+'). Archive old history on the History tab to make room.'); } }
-function setStat(t,bad){ CL.status=t; CL.bad=!!bad; var el=$('cloudStat'); if(el){ el.textContent=t; el.className='cstat'+(bad?' bad':''); } }
+function setStat(t,bad){ CL.status=t; CL.bad=!!bad; var el=$('cloudStat'); if(el){ el.textContent=t; el.className='cstat'+(bad?' bad':''); } var rb=$('cloudRetry'); if(rb) rb.hidden=!bad; }
 /* account saves wait until there have been no changes for 8 s (SAVE_WAIT), but never longer than 30 s after the first unsaved
    change (SAVE_MAX), so a busy fight still saves. The device copy is written at once either way, and hiding or closing the tab
    sends a waiting save straight away. */
@@ -2039,7 +2045,7 @@ function cloudPush(c){
   pushing=true; var rec=cloudRec(c);
   window.SheetCloud.put(c.id,rec).then(function(res){ CL.sent[sig.k]=sig.v; setSynced(c.id,rec.savedAt); sizeNote(c,res); setStat('Saved to your account'); try{ publishCopies(c); }catch(e){} if(CL.list){ CL.list=CL.list.filter(function(x){return x.id!==c.id;}).concat([listRec(c,rec)]); } })
     .catch(function(e){ setStat(cloudErrMsg(e,c),true); if(e&&e.code==='sheet/too-big'&&!CL.warned['big'+c.id]){ CL.warned['big'+c.id]=1; alertBox(cloudErrMsg(e,c)); } })
-    .then(function(){ pushing=false; pushNext(); });
+    .then(function(){ pushing=false; pushNext(); if(UI.home) paintSoon(); /* the Characters screen's "not yet in your account" tags */ });
 }
 function pushNext(){ var nx=pushQ.shift(); if(!nx) return; if(ch&&!UI.ro&&nx.id===ch.id) nx=ch; cloudPush(nx); }
 function refreshList(){ if(!CL.user) return; window.SheetCloud.list().then(function(l){ CL.list=l; if(UI.home||!ch) paint(); }).catch(function(e){ CL.list=[]; setStat('Couldn’t load your characters ('+(e&&e.code||'offline')+')',true); if(UI.home||!ch) paint(); }); }
@@ -2077,7 +2083,8 @@ function charStore(c,where){ c.savedAt=Date.now(); if(ch&&ch.id===c.id){ ch=sani
   return Promise.resolve(); }
 function setMeta(ids,patch){ return Promise.all(ids.map(function(id){ return charFull(id).then(function(c){ if(!c) return; c.meta=Object.assign(metaOf(c),patch); return charStore(c); }); }))
   .catch(function(e){ alertBox(cloudErrMsg(e)); }).then(function(){ paint(); }); }
-function homeList(){ var map={}, add=function(x,where){ var m=map[x.id]||(map[x.id]={id:x.id,name:x.name,summary:x.summary,savedAt:-1,cloud:false,local:false,meta:{},level:0,parties:[]}); m[where]=true; if((x.savedAt||0)>m.savedAt){ m.savedAt=x.savedAt||0; m.name=x.name; m.summary=x.summary; m.meta=metaOf(x); m.level=x.level||0; m.parties=x.parties||[]; } };
+/* locAt / cloudAt: when this device's copy and the account's copy were saved (to show "not yet in your account") */
+function homeList(){ var map={}, add=function(x,where){ var m=map[x.id]||(map[x.id]={id:x.id,name:x.name,summary:x.summary,savedAt:-1,cloud:false,local:false,meta:{},level:0,parties:[],locAt:0,cloudAt:0}); m[where]=true; m[where==='cloud'?'cloudAt':'locAt']=Math.max(m[where==='cloud'?'cloudAt':'locAt'],x.savedAt||0); if((x.savedAt||0)>m.savedAt){ m.savedAt=x.savedAt||0; m.name=x.name; m.summary=x.summary; m.meta=metaOf(x); m.level=x.level||0; m.parties=x.parties||[]; } };
   if(CL.user&&CL.list) CL.list.forEach(function(x){ add(x,'cloud'); });
   localChars().forEach(function(x){ add(x,'local'); });
   if(ch&&!UI.ro&&!map[ch.id]&&(ch.levels||[]).length) add({id:ch.id,name:ch.name,summary:[classLineOf(ch),ch.race].filter(Boolean).join(' · '),savedAt:ch.savedAt||0,meta:metaOf(ch),level:ch.levels.length,parties:partyNames(ch)},'local');
@@ -2157,7 +2164,7 @@ function publishCopies(c){ if(!CL.user||!window.SheetCloud||!window.SheetCloud.s
       pubWarn('m'+lk,'Couldn’t update '+(c.name||'this character')+' in the party “'+p.name+'” ('+(e&&e.code||'offline')+'). The character itself is saved.'); throw e; }); PUB.mp[lk].catch(function(){}); });
     pubThrottle('sp:'+lk,30000,function(){ (PUB.mp[lk]||Promise.resolve()).then(function(){ return window.SheetCloud.sheetPut(p.pid,key,R()); }).catch(function(){}); }); }); }
 /* ---------- read-only viewer (a share link, or a GM opening a party member) ---------- */
-var RO_OK={why:1,sphToggle:1,allSk:1,fhelp:1,roExit:1,signIn:1};
+var RO_OK={why:1,sphToggle:1,allSk:1,fhelp:1,roExit:1,signIn:1,roCopy:1};
 function roOpen(c,info){ var c1=safeChar(c); if(!c1){ alertBox(DAMAGED); return; } histNow(); if(pushT&&!UI.ro) cloudPush(); if(!UI.ro) UI.roPrev={ch:ch,hist:hist,tab:UI.tab,home:UI.home}; ch=c1; hist=[]; redoH=[]; UI.ro=info; UI.home=false; UI.tab='sheet'; paint(); window.scrollTo(0,0); }
 function roExit(){ var p=UI.roPrev||{}; UI.ro=null; UI.roPrev=null; ch=p.ch||null; hist=p.hist||[]; redoH=[]; UI.tab=p.tab||'sheet'; UI.home=!ch||!!p.home; paint(); window.scrollTo(0,0); }
 /* nothing in a viewed sheet can be changed: fields off, buttons other than looking (breakdowns, folding) off */
@@ -2199,9 +2206,20 @@ function openParty(pid){ if(UI.partyUnsub){ UI.partyUnsub(); UI.partyUnsub=null;
     UI.partyUnsub=window.SheetCloud.watchMembers(pid,function(list){ if(!UI.party||UI.party.id!==pid) return; UI.party.members=list; UI.party.loaded=true; UI.party.err=''; if(!UI.ro) paint(); },
       function(e){ if(!UI.party||UI.party.id!==pid) return; UI.party.loaded=true; UI.party.err='Live updates stopped ('+(e&&e.code||'offline')+'). Reload the page to try again.'; if(!UI.ro) paint(); }); };
   if(partyOf(pid)) go(); else window.SheetCloud.partiesMine().then(function(l){ CL.parties=l; go(); },function(e){ alertBox('Couldn’t load your parties ('+(e&&e.code||'offline')+').'); }); }
+/* "3 min ago" and the "not live" mark age even when nothing arrives: redraw the dashboard once a minute (not under a dialog) */
+setInterval(function(){ if(UI.party&&!UI.ro&&!UI.home&&document.visibilityState==='visible'&&!document.querySelector('.dlg-back')) paint(); },60000);
 function closeParty(){ partyReq++; if(UI.partyUnsub){ UI.partyUnsub(); UI.partyUnsub=null; } UI.party=null; UI.home=true; loadParties(); paint(); window.scrollTo(0,0); }
-function memberCard(m){ var L=function(x){ return Array.isArray(x)?x.slice(0,60):[]; }; m=Object.assign({},m,{conds:L(m.conds),buffs:L(m.buffs),res:L(m.res).filter(function(r){ return r&&typeof r==='object'; })}); ['name','player','cls','race','form','host','key'].forEach(function(k){ m[k]=m[k]==null?'':String(m[k]).slice(0,200); }); var hp=m.hp&&typeof m.hp==='object'?m.hp:{}, cur=n0(hp.cur), mx=n0(hp.max), pct=mx?Math.max(0,Math.min(100,cur/mx*100)):0, acc=HEX6.test(m.accent||'')?m.accent:'var(--gold)', t=function(k,v,n){ return '<div class="tile"><span class="k">'+k+'</span><span class="v">'+esc(v)+'</span>'+(n?'<span class="n">'+esc(n)+'</span>':'')+'</div>'; };
-  return '<section class="card pcard" style="border-top:3px solid '+acc+'"><div class="cardhead" style="margin-bottom:2px"><h2>'+esc(m.name||'Unnamed')+'</h2><span class="note">'+esc(m.player||'')+' · '+esc(ago(m.updatedAt))+'</span></div>'+
+/* a member who hasn't updated for this long is probably not playing right now (signed out, tab closed): marked, so the
+   GM doesn't trust old numbers. Players' sheets send an update at most every 12 s while they change things. */
+var STALE_MS=10*60000;
+function memberCard(m,compact){ var L=function(x){ return Array.isArray(x)?x.slice(0,60):[]; }; m=Object.assign({},m,{conds:L(m.conds),buffs:L(m.buffs),res:L(m.res).filter(function(r){ return r&&typeof r==='object'; })}); ['name','player','cls','race','form','host','key'].forEach(function(k){ m[k]=m[k]==null?'':String(m[k]).slice(0,200); }); var hp=m.hp&&typeof m.hp==='object'?m.hp:{}, cur=n0(hp.cur), mx=n0(hp.max), pct=mx?Math.max(0,Math.min(100,cur/mx*100)):0, acc=HEX6.test(m.accent||'')?m.accent:'var(--gold)', t=function(k,v,n){ return '<div class="tile"><span class="k">'+k+'</span><span class="v">'+esc(v)+'</span>'+(n?'<span class="n">'+esc(n)+'</span>':'')+'</div>'; };
+  var stale=Date.now()-n0(m.updatedAt)>STALE_MS, when='<span class="note">'+esc(m.player||'')+' · '+esc(ago(m.updatedAt))+'</span>'+(stale?' <span class="tag" title="No update from this sheet for a while: the player may be offline, so the numbers may be old">not live</span>':'');
+  if(compact) return '<section class="card pcard compact'+(stale?' stale':'')+'" style="border-left:3px solid '+acc+'"><div class="row" style="margin:0;justify-content:space-between;align-items:baseline"><b>'+esc(m.name||'Unnamed')+'</b>'+when+'</div>'+
+    '<div class="row" style="margin:2px 0 0;justify-content:space-between"><span><b>'+cur+'</b> / '+mx+' hp'+(n0(hp.temp)?' <span class="tag gold">+'+n0(hp.temp)+'</span>':'')+(cur<=0?' <span class="'+(cur<0?'bad':'warn')+'">'+(cur<0?'Dying':'Disabled')+'</span>':'')+'</span><span class="note">AC '+n0(m.ac)+' · Init '+sgn(n0(m.init))+' · Perc '+sgn(n0(m.perc))+'</span></div>'+
+    '<div class="bar"><i class="'+(pct<=25?'crit':pct<=50?'low':'')+'" style="width:'+pct+'%"></i></div>'+
+    ((m.conds||[]).length?'<div class="chips" style="margin-top:4px">'+m.conds.map(function(c){ return '<span class="tag pcond">'+esc(c)+'</span>'; }).join('')+'</div>':'')+
+    '<div class="row" style="margin:4px 0 0;justify-content:flex-end"><button class="mini" data-a="partyView" data-k="'+esc(m.key)+'">Open sheet</button></div></section>';
+  return '<section class="card pcard'+(stale?' stale':'')+'" style="border-top:3px solid '+acc+'"><div class="cardhead" style="margin-bottom:2px"><h2>'+esc(m.name||'Unnamed')+'</h2><span>'+when+'</span></div>'+
     '<p class="note" style="margin:0 0 6px">'+esc([m.cls,m.race].filter(Boolean).join(' · '))+'</p>'+
     '<div class="row" style="margin:0;justify-content:space-between"><span><span class="big">'+cur+'</span> / '+mx+' hp'+(n0(hp.temp)?' <span class="tag gold">+'+n0(hp.temp)+' temp</span>':'')+(n0(hp.non)?' <span class="tag">'+n0(hp.non)+' nonlethal</span>':'')+'</span>'+(cur<=0?'<span class="'+(cur<0?'bad':'warn')+'">'+(cur<0?'Dying':'Disabled')+'</span>':'')+'</div>'+
     '<div class="bar"><i class="'+(pct<=25?'crit':pct<=50?'low':'')+'" style="width:'+pct+'%"></i></div>'+
@@ -2211,12 +2229,19 @@ function memberCard(m){ var L=function(x){ return Array.isArray(x)?x.slice(0,60)
     ((m.buffs||[]).length?'<div class="chips" style="margin-top:6px">'+m.buffs.map(function(b){ return '<span class="tag gold">'+esc(b)+'</span>'; }).join('')+'</div>':'')+
     ((m.res||[]).length?'<div class="list" style="margin-top:6px">'+m.res.map(function(r){ return '<div class="li" style="padding:3px 0"><span style="flex:1">'+esc(r.n)+'</span><b>'+n0(r.cur)+'</b><span class="note">/ '+n0(r.max)+'</span></div>'; }).join('')+'</div>':'')+
     '<div class="row" style="margin:8px 0 0;justify-content:flex-end"><button class="mini" data-a="partyView" data-k="'+esc(m.key)+'">Open sheet</button><button class="mini danger" data-a="partyKick" data-k="'+esc(m.key)+'">Remove</button></div></section>'; }
-function partyHTML(){ var P=UI.party, D0=partyOf(P.id)||{}, ms=(P.members||[]).filter(function(m){ return m&&typeof m==='object'; }).sort(function(a,b){ return String(a.name).localeCompare(String(b.name)); });
+/* the GM's choices on the dashboard, kept in this browser */
+var PSORT=[['name','Name'],['hp','Most hurt'],['init','Initiative'],['live','Recently updated']];
+function partyPref(k,v){ var o; try{ o=JSON.parse(localStorage.getItem('spheres-party-view'))||{}; }catch(e){ o={}; } if(v===undefined) return o[k]; o[k]=v; try{ localStorage.setItem('spheres-party-view',JSON.stringify(o)); }catch(e){} }
+function memberSort(by){ var hpPct=function(m){ var h=m.hp&&typeof m.hp==='object'?m.hp:{}; return n0(h.max)?n0(h.cur)/n0(h.max):1; }, nm=function(a,b){ return String(a.name).localeCompare(String(b.name)); };
+  return by==='hp'?function(a,b){ return hpPct(a)-hpPct(b)||nm(a,b); }:by==='init'?function(a,b){ return n0(b.init)-n0(a.init)||nm(a,b); }:by==='live'?function(a,b){ return n0(b.updatedAt)-n0(a.updatedAt)||nm(a,b); }:nm; }
+function partyHTML(){ var P=UI.party, D0=partyOf(P.id)||{}, by=partyPref('sort')||'name', compact=!!partyPref('compact'), ms=(P.members||[]).filter(function(m){ return m&&typeof m==='object'; }).sort(memberSort(by));
   var h='<section class="card" style="margin-top:var(--gap)"><div class="cardhead"><h2>'+esc(D0.name||'Party')+' <span class="tag">beta</span></h2><span class="row" style="margin:0"><button class="mini" data-a="partyInvite" data-id="'+esc(P.id)+'" data-k="player">Copy player invite link</button><button class="mini" data-a="partyInvite" data-id="'+esc(P.id)+'" data-k="gm">Copy GM invite link</button></span></div>'+
     '<p class="note">Updates live as players change their sheets (when they’re signed in). Only this party’s GMs ('+(D0.gms||[]).length+') can see this page; players can’t see it or each other. Nothing here changes their characters.</p>'+(P.err?'<p class="bad">'+esc(P.err)+'</p>':'')+'</section>';
   if(!P.loaded) h+='<p class="note" style="margin-top:var(--gap)">Loading…</p>';
   else if(!ms.length) h+='<section class="card" style="margin-top:var(--gap)"><p class="empty">No characters yet. Send your players the invite link: they open it, sign in and pick a character.</p></section>';
-  else h+='<div class="pgrid">'+ms.map(function(m){ try{ return memberCard(m); }catch(e){ return ''; } }).join('')+'</div>';
+  else { h+='<div class="row ptools" style="margin:var(--gap) 0 0;align-items:center"><span class="note">Sort</span><span class="seg" role="group" aria-label="Sort characters">'+PSORT.map(function(x){ return '<button class="mini'+(by===x[0]?' on':'')+'" aria-pressed="'+(by===x[0])+'" data-a="partySort" data-k="'+x[0]+'">'+x[1]+'</button>'; }).join('')+'</span>'+
+      '<span class="spacer"></span><button class="mini" data-a="partyCompact" aria-pressed="'+compact+'">'+(compact?'Full cards':'Compact view')+'</button></div>';
+    h+='<div class="pgrid'+(compact?' compact':'')+'">'+ms.map(function(m){ try{ return memberCard(m,compact); }catch(e){ return ''; } }).join('')+'</div>'; }
   return h; }
 /* "Parties you're in": a list built from the characters' own saves (players can't see a party's dashboard) */
 function partiesInCard(){ if(!CL.user) return ''; var by={}, order=[];
@@ -2308,7 +2333,7 @@ function firstName(u){ return String(u.name||'').split(' ')[0]||u.email||'your G
 var INAPP=/FBAN|FBAV|Instagram|Discord|Line\/|Snapchat|; ?wv\)|GSA\//.test(navigator.userAgent||'');
 function acctHTML(){
   var h='';
-  if(CL.user) h='<span class="acct" title="Signed in as '+esc(CL.user.name||'')+(CL.user.email?' ('+esc(CL.user.email)+')':'')+'">'+(CL.user.photo?'<img src="'+esc(CL.user.photo)+'" alt="" referrerpolicy="no-referrer">':'')+'<span><span class="acct-who">Signed in as <b>'+esc(firstName(CL.user))+'</b></span><br><span id="cloudStat" class="cstat'+(CL.bad?' bad':'')+'">'+esc(CL.status||'')+'</span></span></span>';
+  if(CL.user) h='<span class="acct" title="Signed in as '+esc(CL.user.name||'')+(CL.user.email?' ('+esc(CL.user.email)+')':'')+'">'+(CL.user.photo?'<img src="'+esc(CL.user.photo)+'" alt="" referrerpolicy="no-referrer">':'')+'<span><span class="acct-who">Signed in as <b>'+esc(firstName(CL.user))+'</b></span><br><span id="cloudStat" class="cstat'+(CL.bad?' bad':'')+'">'+esc(CL.status||'')+'</span> <button class="link" data-a="cloudRetry" id="cloudRetry"'+(CL.bad?'':' hidden')+'>Retry</button></span></span>';
   else if(CL.ready) h='<button data-a="signIn">Sign in with Google</button>';
   return h+(ch&&!UI.home?'<button data-a="home">Characters</button>':'');
 }
@@ -2319,7 +2344,7 @@ function renderTop(){
   $('subline').textContent=[classLine(),ch.race,ch.alignment,ch.pronouns].filter(Boolean).join(' · ');
   var HP=hpObj(), cur=D.hpMax-n0(HP.dmg), pct=D.hpMax?Math.max(0,Math.min(100,cur/D.hpMax*100)):0, PH=possHost();
   $('quick').innerHTML=(D.form?'<span class="tag gold">In form: '+esc(D.form.name)+'</span>':'')+(PH?'<span class="tag gold">Possessing '+esc(PH.name||'a host')+' ('+(possActive()?'active':'passive')+')</span>':'')+'<div class="minihp"><span class="note">HP <b style="color:var(--ink)">'+cur+'</b> / '+D.hpMax+(n0(HP.temp)?' · temp '+n0(HP.temp):'')+(n0(HP.non)?' · nonlethal '+n0(HP.non):'')+'</span><div class="bar"><i class="'+(pct<=25?'crit':pct<=50?'low':'')+'" style="width:'+pct+'%"></i></div></div>'+
-    (UI.ro?'<span class="tag gold">Read-only</span><span class="note">'+esc(UI.ro.label||'')+'</span><button class="primary" data-a="roExit">'+esc(UI.ro.back||'Close')+'</button>':
+    (UI.ro?'<span class="tag gold">Read-only</span><span class="note">'+esc(UI.ro.label||'')+'</span><button data-a="roCopy" title="Make your own copy of this character, to change as you like. The original isn’t affected.">Save a copy to my characters</button><button class="primary" data-a="roExit">'+esc(UI.ro.back||'Close')+'</button>':
     (ch.rules.xp&&xpInfo().ready?'<span class="tag gold">Can level up</span>':'')+'<button class="primary" data-a="levelUp">Level up</button>'+(CL.user?'':'<button data-a="saveFile">Save file</button>')+'<button data-a="undo" id="undoBtn"'+(hist.length?' title="Undo ('+hist.length+' step'+(hist.length>1?'s':'')+' back; Ctrl+Z)"':' disabled')+'>Undo'+(hist.length?' <span class="note">'+hist.length+'</span>':'')+'</button>'+(redoH.length?'<button data-a="redo" id="redoBtn" title="Redo ('+redoH.length+'; Ctrl+Shift+Z or Ctrl+Y)">Redo <span class="note">'+redoH.length+'</span></button>':'')+acctHTML());
   var g=groupOf(UI.tab), G=TGROUPS.filter(function(x){ return x[0]===g; })[0];
   $('tabbar').hidden=false;
@@ -2352,13 +2377,16 @@ function render(){
   m.setAttribute('role','tabpanel'); m.setAttribute('aria-labelledby','tab-'+UI.tab);
   m.innerHTML=f(); UI.lastOpen=UI.openNew; UI.openNew=null; roLock(m);
 }
-function charRow(x){ var cur=ch&&ch.id===x.id, m=x.meta, find=[x.name,x.summary,m.campaign,STATN[m.status]].join(' ').toLowerCase();
+/* signed in, on this device and in the account, and this device's copy is newer: 'saving' while a save is on its way, else true */
+function charUnsent(x){ if(!CL.user||!CL.list||!x.cloud||!x.local||x.locAt<=x.cloudAt) return false; return ch&&ch.id===x.id&&(pushT||pushing||pushQ.some(function(q){ return q.id===x.id; }))?'saving':true; }
+function charRow(x){ var cur=ch&&ch.id===x.id, m=x.meta, unsent=charUnsent(x), find=[x.name,x.summary,m.campaign,STATN[m.status]].join(' ').toLowerCase();
   return '<div class="charrow'+(cur?' cur':'')+'" data-find="'+esc(find)+'"><button class="pin'+(m.pin?' on':'')+'" data-a="pinChar" data-id="'+esc(x.id)+'" aria-pressed="'+m.pin+'" title="'+(m.pin?'Unpin':'Pin to the top')+'" aria-label="'+(m.pin?'Unpin ':'Pin ')+esc(x.name||'character')+'">'+(m.pin?'★':'☆')+'</button>'+
     '<span style="flex:1 1 220px"><b style="font-size:16px">'+esc(x.name||'Unnamed character')+'</b>'+(cur?' <span class="tag gold">open</span>':'')+(m.status!=='active'?' <span class="tag">'+esc(STATN[m.status])+'</span>':'')+'<br><span class="note">'+esc(x.summary||'No levels yet')+(x.savedAt?' · saved '+esc(new Date(x.savedAt).toLocaleString([], {dateStyle:'medium',timeStyle:'short'})):'')+'</span><br>'+
-      (m.pin&&m.campaign?'<span class="tag">'+esc(m.campaign)+'</span> ':'')+(x.cloud?'<span class="tag">In your account</span> ':'')+(x.local?'<span class="tag">On this device</span>':'')+'</span>'+
+      (m.pin&&m.campaign?'<span class="tag">'+esc(m.campaign)+'</span> ':'')+(x.cloud?'<span class="tag">In your account</span> ':'')+(x.local?'<span class="tag">On this device</span>':'')+
+      (unsent==='saving'?' <span class="tag">Saving…</span>':unsent?' <span class="tag bad" title="This device has changes your account doesn’t have yet">Not yet in your account</span>':'')+'</span>'+
     '<span class="row" style="margin:0"><button class="mini primary" data-a="openChar" data-id="'+esc(x.id)+'">'+(cur?'Back to it':'Open')+'</button>'+
       '<button class="mini" data-a="orgChar" data-id="'+esc(x.id)+'">Organize…</button><button class="mini" data-a="dupChar" data-id="'+esc(x.id)+'">Duplicate</button>'+
-      (CL.user&&!x.cloud?'<button class="mini" data-a="uploadChar" data-id="'+esc(x.id)+'">Save to account</button>':'')+
+      (CL.user&&!x.cloud?'<button class="mini" data-a="uploadChar" data-id="'+esc(x.id)+'">Save to account</button>':'')+(unsent===true?'<button class="mini primary" data-a="uploadChar" data-id="'+esc(x.id)+'">Send now</button>':'')+
       '<button class="mini danger" data-a="removeChar" data-id="'+esc(x.id)+'" data-c="'+(x.cloud?1:0)+'">Delete</button></span></div>'; }
 /* live search on the Characters screen: hide rows, open groups that match */
 function homeFilter(){ var q=String(UI.homeQ||'').trim().toLowerCase(), m=$('main'), any=false; if(!m) return;
@@ -4519,7 +4547,9 @@ var A={
   backupAll:function(){ var ids=homeList().map(function(x){ return x.id; }); setStat&&CL.user&&setStat('Gathering characters…');
     Promise.all(ids.map(charFull)).then(function(cs){ cs=cs.filter(Boolean); download('spheres-characters-'+stamp()+'.json',JSON.stringify({app:'spheres-sheet-backup',v:1,savedAt:Date.now(),chars:cs}),'application/json'); toast('Backed up '+plural(cs.length,'character')+'.'); if(CL.user) setStat('Saved to your account'); })
       .catch(function(e){ alertBox('Couldn’t gather every character: '+(e&&e.code||e)); }); return 'skip'; },
-  uploadChar:function(el){ var o=lsGet(KEY+':'+el.dataset.id); if(!o||!CL.user) return 'skip'; window.SheetCloud.put(o.id,cloudRec(o)).then(function(res){ sizeNote(o,res); refreshList(); }).catch(function(e){ alertBox(cloudErrMsg(e,o)); }); return 'skip'; },
+  uploadChar:function(el){ var id=el.dataset.id, o=ch&&ch.id===id&&!UI.ro?ch:lsGet(KEY+':'+id); if(!o||!CL.user) return 'skip'; el.disabled=true; var rec=cloudRec(o), sig=sentSig(o);
+    window.SheetCloud.put(o.id,rec).then(function(res){ CL.sent[sig.k]=sig.v; setSynced(o.id,rec.savedAt); sizeNote(o,res); toast('Sent '+(o.name||'the character')+' to your account.'); refreshList(); }).catch(function(e){ el.disabled=false; alertBox(cloudErrMsg(e,o)); }); return 'skip'; },
+  cloudRetry:function(){ if(!CL.user) return 'skip'; setStat('Trying again…'); if(ch&&!UI.ro){ var sig=sentSig(ch); delete CL.sent[sig.k]; cloudPush(); } refreshList(); return 'skip'; },
   removeChar:function(el){ var id=el.dataset.id, inCloud=el.dataset.c==='1', o=lsGet(KEY+':'+id)||((CL.list||[]).filter(function(x){return x.id===id;})[0])||{};
     confirmBox('Delete '+(o.name?'“'+o.name+'”':'this character')+'?',(inCloud?'It’s removed from your Google account and this device. ':'It’s removed from this device. ')+'This can’t be undone, so export it first (Save & print tab) if you might want it back.','Delete',true).then(function(ok){ if(!ok) return;
       var loc=lsGet(KEY+':'+id), open0=ch&&ch.id===id?ch:null;
@@ -4703,6 +4733,13 @@ var A={
   r20copy:function(el){ var m=roll20Macros()[+el.dataset.i]; if(!m) return 'skip'; copyText(m.text).then(function(ok){ toast(ok?'Copied “'+m.name+'”. Paste it into a new Ability in Roll20.':'Couldn’t copy: open “Show the text” and copy it by hand.'); }); return 'skip'; },
   r20all:function(){ var t=roll20Macros().map(function(m){ return '=== '+m.name+' ===\n'+m.text; }).join('\n\n'); download(slug(ch.name||'character')+'-roll20-macros.txt',t,'text/plain'); return 'skip'; },
   roExit:function(){ roExit(); return 'skip'; },
+  /* the viewed sheet becomes a new character of your own (new id, no share link or parties); the original is never touched */
+  roCopy:function(){ if(!UI.ro||!ch) return 'skip'; var c=JSON.parse(JSON.stringify(ch)); noLinks(c); delete c.histSnap; c.history=[];
+    c.id=uidG(); c.name=(c.name||'Character')+' (copy)'; c.meta=Object.assign(metaOf(c),{pin:false});
+    var p=UI.roPrev||{}, from=UI.ro.kind==='party'?'a party member’s sheet':'a shared sheet'; UI.ro=null; UI.roPrev=null;
+    ch=safeChar(c); if(!ch){ ch=p.ch||null; alertBox(DAMAGED); paint(); return 'skip'; } hist=[]; redoH=[]; UI.home=false; UI.tab='sheet';
+    log('Copied from '+from+'. The original isn’t affected.'); save(); paint(); window.scrollTo(0,0);
+    toast('Saved “'+ch.name+'” to your characters. It’s yours to change; the original isn’t affected.'); return 'skip'; },
   /* Pathfinder 1e point buy for the base scores (before racial adjustments): a running total from 0, no race, no budget */
   pointBuy:function(){ var COST={7:-4,8:-2,9:-1,10:0,11:1,12:2,13:3,14:5,15:7,16:10,17:13,18:17}, sc={};
     AB.forEach(function(a){ var v=n0(ch.abil[a],10); sc[a]=v>=7&&v<=18?v:10; });
@@ -4729,6 +4766,8 @@ var A={
       check:function(root,v){ return v==='ok'&&!rd(root).s('n').trim()?'Give the party a name.':''; },read:function(root){ return rd(root).s('n').trim().slice(0,80); }})
     .then(function(r){ if(r.value!=='ok') return null; window.SheetCloud.partyCreate(r.data).then(function(){ CL.parties=null; loadParties(); toast('Created “'+r.data+'”. Copy its player invite link to send to your players.'); },function(e){ alertBox('Couldn’t create the party ('+(e&&e.code||'offline')+').'); }); return null; }); },
   partyOpen:function(el){ openParty(el.dataset.id); return 'skip'; },
+  partySort:function(el){ if(!PSORT.some(function(x){ return x[0]===el.dataset.k; })) return 'skip'; partyPref('sort',el.dataset.k); return 'ui'; },
+  partyCompact:function(){ partyPref('compact',!partyPref('compact')); return 'ui'; },
   partyClose:function(){ closeParty(); return 'skip'; },
   partyInvite:function(el){ var P=partyOf(el.dataset.id); if(!P) return 'skip'; var gm=el.dataset.k==='gm';
     copyText(inviteURL(P,gm)).then(function(ok){ toast(ok?(gm?'GM invite link copied: send it only to other GMs. Whoever opens it can see every character in the party.':'Player invite link copied: send it to your players. They pick a character when they open it.'):'Couldn’t copy the link.'); }); return 'skip'; },

@@ -95,7 +95,7 @@ also need the sign-in emulator, `npx firebase emulators:exec --config firebase.e
 --project demo-spheres "node tests/party-check.js"` (same for `save-check.js`). `firebase.emulators.json` is
 `firebase.json` plus the auth and emulator settings; it's only for tests. `tests/config-check.js` (5 checks, no installs)
 fails if the two configs' hosting settings drift apart. GitHub runs all six (since 2026-11-09).
-Last full run: 2026-11-09 (feature batch 1), `check.js` 330, `talents-check.js` 31, `config-check.js` 5, `rules-check.js` 90,
+Last full run: 2026-11-09 (feature batch 2), `check.js` 341, `talents-check.js` 31, `config-check.js` 5, `rules-check.js` 90,
 `party-check.js` 36, `save-check.js` 12: all passed.
 
 **Rollback:** Firebase console → Hosting → release history → roll back. With GitHub: also revert the commit (the
@@ -481,6 +481,17 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
 ---
 
 ## Open items and ideas
+
+- **Feature batch 2 (2026-11-09): copies, unsent changes, the party dashboard.**
+  - **Save a copy to my characters** (read-only viewer, share links and party sheets; `roCopy`): a new character with a new id,
+    " (copy)" after the name, no share link, parties or history; the original isn't touched. Works signed out too.
+  - **Not yet in your account:** `homeList` keeps each copy's save time (`locAt`, `cloudAt`); `charUnsent` marks a character
+    whose device copy is newer ("Saving…" while a save for it is on its way). "Send now" (`uploadChar`) sends the open
+    character's latest state and records it as in step (`CL.sent`, `setSynced`). A failed save shows Retry next to the status
+    line (`cloudRetry`, shown by `setStat` when the status is bad). The Characters screen redraws after each save.
+  - **Party dashboard:** sort by name, most hurt (lowest HP share), initiative or recently updated (`memberSort`); a compact
+    view (name, HP bar, AC, Init, Perception, conditions); both kept per browser (`spheres-party-view`). A card with no update
+    for 10 minutes (`STALE_MS`) is dimmed and tagged "not live"; the dashboard redraws once a minute so times stay right.
 
 - **Feature batch 1 (2026-11-09): undo, redo, importing.**
   - **Redo:** `redoH` holds undone steps (whole-character JSON, like `hist`); `histStep` moves one between the two stacks, always
