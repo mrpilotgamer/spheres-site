@@ -965,6 +965,10 @@ function check(what, got, want) {
     check('class list: Incanter, bonus talent at odd levels', pick(lib('Incanter'), 'tx'), 'odd');
     check('class list: Hive, ½ rounded up', pick(lib('Hive'), 'tal'), '0.5up');
     check('class list: Cyborg uses prestige saves', pick(lib('Cyborg'), 'pre'), 'true');
+    check('class list: Conscript, bonus talent at odd levels (like Incanter)', pick(lib('Conscript'), 'mart', 'tx'), 'expert/odd');
+    check('class list: Raveler, bonus talent at even levels', pick(lib('Raveler'), 'tal', 'tx'), '1/even');
+    check('class list: Professional, bonus talent at 1st and every 4', pick(lib('Professional'), 'tx'), 'f4');
+    check('class list: Advisor and Scholar, 2 bonus talents at 1st', [pick(lib('Advisor'), 'bt'), pick(lib('Scholar'), 'bt')].join(' '), '2 2');
 
     /* the talent totals those settings give (Talents used tile: 0 / total, incl. the 2 bonus magic talents for casters) */
     const cases = [
@@ -974,7 +978,11 @@ function check(what, got, want) {
       ['Incanter 13', { cast: 'high', talents: 'auto', talx: 'odd' }, 13, 22],
       ['Mageknight 1', { cast: 'low', talents: 'auto', bonusTalents: 1 }, 1, 3],
       ['Hive 5', { cast: 'mid', talents: '0.5up', prestige: true }, 5, 5],
-      ['Magemage 5', { cast: 'low', talents: '1', prestige: true }, 5, 7]];
+      ['Magemage 5', { cast: 'low', talents: '1', prestige: true }, 5, 7],
+      ['Conscript 3', { martial: 'expert', talents: 'auto', talx: 'odd' }, 3, 5],
+      ['Conscript 20', { martial: 'expert', talents: 'auto', talx: 'odd' }, 20, 30],
+      ['Raveler 4', { cast: 'mid', talents: '1', talx: 'even' }, 4, 8],
+      ['Professional-style 9 (1st, 5th, 9th)', { martial: 'expert', talents: 'auto', talx: 'f4' }, 9, 12]];
     for (const [what, k, n, want] of cases) {
       await page.evaluate(([k, n]) => { const id = 'zz-cls'; localStorage.setItem('spheres-sheet-v1:' + id, JSON.stringify({ app: 'spheres-sheet', v: 1, id, name: 'Cls', classes: { c1: Object.assign({ name: 'C', hd: 8, bab: '3/4', good: ['will'], skills: 4 }, k) },
         levels: Array.from({ length: n }, () => ({ cls: 'c1', hp: 5, picks: [] })) })); localStorage.setItem('spheres-sheet-v1:last', JSON.stringify(id)); }, [k, n]);

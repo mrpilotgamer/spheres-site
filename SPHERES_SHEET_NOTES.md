@@ -96,7 +96,7 @@ also need the sign-in emulator, `npx firebase emulators:exec --config firebase.e
 `firebase.json` plus the auth and emulator settings; it's only for tests. `tests/config-check.js` (5 checks, no installs)
 fails if the two configs' hosting settings drift apart. `tests/csp-check.js` (6 checks; needs Playwright and the `firebase`
 package) checks the script policy against the page. GitHub runs all seven (since 2026-11-09).
-Last full run: 2026-11-09 (feature batch 2), `check.js` 341, `talents-check.js` 31, `config-check.js` 5, `rules-check.js` 90,
+Last full run: 2026-11-09 (class talent check), `check.js` 354, `talents-check.js` 31, `config-check.js` 5, `rules-check.js` 90,
 `party-check.js` 36, `save-check.js` 12: all passed.
 
 **Rollback:** Firebase console → Hosting → release history → roll back. With GitHub: also revert the commit (the
@@ -482,6 +482,18 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
 ---
 
 ## Open items and ideas
+
+- **Class talent check against the wiki (2026-11-09, owner noticed Conscript).** `tools/verify-classes.py <bundle folder>`
+  compares every Spheres class in the class list with its wiki table, levels 1-20: talent columns plus the levels whose
+  Special column says "Bonus talent". 125 of 132 match; the 7 others are listed in its `KNOWN` (text-only grants, the
+  Warleader track, a variant race) and it exits 1 only for a new, unexplained difference. Run it after a wiki update.
+  - **Fixed in the class list:** Conscript (+1 at every odd level, like Incanter), Raveler (+1 at every even level),
+    Professional (+1 at 1st, 5th, 9th, 13th, 17th), Advisor and Scholar (2 bonus talents at 1st: Leader's Communication
+    sphere + (assist) talent, Problem Solver's Alchemy and Scout spheres). Cyborg's note says to add its 3rd-level Tinker talent.
+  - **New "More talents from class features" choices:** `even` (every even level) and `f4` (1st and every 4 levels after),
+    next to `odd` and `m5`.
+  - Characters already made from these classes keep their old class settings: set "More talents from class features" (or
+    Bonus talents) on the Build tab.
 
 - **Feature batch 3 (2026-11-09): trade traditions and multiclassing; the script policy.**
   - **Trade traditions across classes** (Trade Traditions page, "Multiclassing Trade Talent" and "Increasing Trade Rank"):
