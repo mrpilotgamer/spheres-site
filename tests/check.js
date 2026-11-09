@@ -1074,6 +1074,71 @@ function check(what, got, want) {
     check('dropping something that isn’t a character says why', /isn’t a valid file/.test(await alertText()), true);
   }
 
+  console.log('Copies, unsent changes and the party dashboard');
+  {
+    const ex = async k => { const cx = await browser.newContext(), p = await cx.newPage(); await p.goto(FILE); await p.waitForTimeout(300); await p.click(`button[data-k="${k}"]`); await p.waitForTimeout(400);
+      const c = await p.evaluate(() => JSON.parse(localStorage.getItem('spheres-sheet-v1:' + JSON.parse(localStorage.getItem('spheres-sheet-v1:last'))))); await cx.close(); return c; };
+    const A = await ex('striker');
+    /* a fake account: opts.cloud = {id: {name, savedAt}}, opts.failPuts = how many saves fail first, opts.members = party members */
+    const fake = async (opts, url) => { const cx = await browser.newContext({ viewport: { width: 1280, height: 1000 } }), p = await cx.newPage(); p.on('pageerror', e => errors.push(e.message));
+      await p.addInitScript(([A, opts]) => { const K = 'spheres-sheet-v1'; if (!sessionStorage.getItem('i')) { sessionStorage.setItem('i', 1); localStorage.clear();
+          if (opts.local) { localStorage.setItem(K + ':' + A.id, JSON.stringify(Object.assign({}, A, opts.local))); localStorage.setItem(K + ':last', JSON.stringify(A.id)); } }
+        const store = {}; Object.keys(opts.cloud || {}).forEach(id => { store[id] = { json: JSON.stringify(Object.assign({}, A, opts.cloud[id])), savedAt: opts.cloud[id].savedAt, name: opts.cloud[id].name }; });
+        let fails = opts.failPuts || 0; window.__puts = 0;
+        window.SheetCloud = { redirectResult: () => Promise.resolve(null), onUser: cb => setTimeout(() => cb(opts.signedOut ? null : { uid: 'u1', name: 'Pat', email: 'p@x' }), 0), current: () => opts.signedOut ? null : ({ uid: 'u1' }),
+          list: () => Promise.resolve(Object.keys(store).map(id => ({ id, name: store[id].name, savedAt: store[id].savedAt, meta: {} }))), get: id => Promise.resolve(store[id] || null),
+          put: (id, rec) => { window.__puts++; if (fails > 0) { fails--; return Promise.reject(Object.assign(new Error('offline'), { code: 'unavailable' })); } store[id] = Object.assign({}, rec); return Promise.resolve({ size: 1 }); },
+          partiesMine: () => Promise.resolve(opts.members ? [{ id: 'gm_P', name: 'Table', gms: ['u1'], owner: 'u1', code: 'c'.repeat(20), gmCode: 'g'.repeat(20) }] : []),
+          watchMembers: (pid, cb) => { setTimeout(() => cb(opts.members.map(m => Object.assign({}, m, { updatedAt: Date.now() - (m.ageMin || 0) * 60000 }))), 0); return () => {}; },
+          shareGet: () => Promise.resolve({ json: JSON.stringify(Object.assign({}, A, { id: 'theirs000', name: 'Their Hero' })), savedAt: 1000 }) }; }, [A, opts]);
+      await p.goto(FILE + (url || '')); await p.waitForTimeout(300); await p.evaluate(() => window.dispatchEvent(new Event('sheet-cloud-ready'))); await p.waitForTimeout(600); return [cx, p]; };
+    const act = (p, a, ds) => p.evaluate(([a, ds]) => { const b = document.createElement('button'); b.dataset.a = a; Object.assign(b.dataset, ds || {}); document.getElementById('main').appendChild(b); b.click(); }, [a, ds]);
+
+    /* Save a copy to my characters, from a share link */
+    let [cx, p] = await fake({ signedOut: true }, '?share=theirs000');
+    const roBtn = await p.locator('[data-a="roCopy"]').count();
+    await p.click('[data-a="roCopy"]'); await p.waitForTimeout(400);
+    const stored = await p.evaluate(() => Object.keys(localStorage).filter(k => k.startsWith('spheres-sheet-v1:') && !/:(last|tab)$/.test(k)).map(k => JSON.parse(localStorage.getItem(k))));
+    check('a shared sheet can be saved as your own copy', [roBtn, (await p.innerText('#cname')).trim(), await p.locator('.tag', { hasText: 'Read-only' }).count(), stored.length, stored[0] && stored[0].id !== 'theirs000', stored[0] && !stored[0].share && (stored[0].parties || []).length === 0].join(' '), '1 Their Hero (copy) 0 1 true true');
+    await cx.close();
+
+    /* this device is ahead of the account: a tag and Send now */
+    [cx, p] = await fake({ local: { name: 'Tova', savedAt: 9e12 }, cloud: { [A.id]: { name: 'Tova', savedAt: 1000 } }, failPuts: 99 });
+    await act(p, 'home'); await p.waitForTimeout(400);
+    const row = p.locator('.charrow', { hasText: 'Tova' }).first();
+    check('a character with changes the account doesn’t have is marked', [await row.locator('.tag', { hasText: 'Not yet in your account' }).count(), await row.locator('[data-a="uploadChar"]', { hasText: 'Send now' }).count()].join(' '), '1 1');
+    check('…and the save that failed offers Retry', [await p.locator('#cloudRetry').isVisible(), /Couldn|offline|unavailable/i.test(await p.locator('#cloudStat').innerText())].join(' '), 'true true');
+    await p.evaluate(() => { window.SheetCloud.put = (id, rec) => { window.__puts++; return Promise.resolve({ size: 1 }); }; });
+    await p.click('#cloudRetry'); await p.waitForTimeout(600);
+    check('Retry sends it, and the warning goes', [await p.locator('#cloudRetry').isVisible(), (await p.locator('#cloudStat').innerText()).trim()].join(' | '), 'false | Saved to your account');
+    await cx.close();
+    [cx, p] = await fake({ local: { name: 'Tova', savedAt: 9e12 }, cloud: { [A.id]: { name: 'Tova', savedAt: 1000 } } });
+    await act(p, 'home'); await p.waitForTimeout(800);
+    check('once it has been sent, no mark', await p.locator('.charrow .tag', { hasText: 'Not yet in your account' }).count(), '0');
+    await cx.close();
+
+    /* the GM's dashboard: sort, compact view, "not live" */
+    const members = [
+      { key: 'u2_a', name: 'Aldo', player: 'Ann', hp: { cur: 30, max: 30 }, ac: 15, init: 1, ageMin: 1 },
+      { key: 'u3_b', name: 'Bree', player: 'Bob', hp: { cur: 5, max: 40 }, ac: 17, init: 4, ageMin: 2 },
+      { key: 'u4_c', name: 'Cass', player: 'Cy', hp: { cur: 20, max: 40 }, ac: 12, init: 9, ageMin: 25 }];
+    [cx, p] = await fake({ members }, '?beta');
+    await act(p, 'partyOpen', { id: 'gm_P' }); await p.waitForTimeout(500);
+    const order = () => p.$$eval('.pcard', cs => cs.map(c => (c.querySelector('h2,b') || {}).textContent).join(','));
+    check('dashboard: sorted by name first', await order(), 'Aldo,Bree,Cass');
+    await p.click('[data-a="partySort"][data-k="hp"]'); await p.waitForTimeout(200);
+    check('dashboard: “Most hurt” first', await order(), 'Bree,Cass,Aldo');
+    await p.click('[data-a="partySort"][data-k="init"]'); await p.waitForTimeout(200);
+    check('dashboard: by initiative', await order(), 'Cass,Bree,Aldo');
+    check('dashboard: a sheet not updated for 25 minutes is marked “not live”', [await p.locator('.pcard.stale').count(), await p.locator('.pcard.stale', { hasText: 'Cass' }).count()].join(' '), '1 1');
+    await p.click('[data-a="partyCompact"]'); await p.waitForTimeout(200);
+    check('dashboard: compact view', [await p.locator('.pgrid.compact .pcard.compact').count(), await p.locator('.pcard .ptiles').count()].join(' '), '3 0');
+    await p.reload(); await p.waitForTimeout(300); await p.evaluate(() => window.dispatchEvent(new Event('sheet-cloud-ready'))); await p.waitForTimeout(500);
+    await act(p, 'partyOpen', { id: 'gm_P' }); await p.waitForTimeout(500);
+    check('dashboard: the sort and the view are remembered', [await order(), await p.locator('.pgrid.compact').count()].join(' '), 'Cass,Bree,Aldo 1');
+    await cx.close();
+  }
+
   check('no page errors', errors.length ? errors.join(' | ') : 'none', 'none');
   await browser.close();
   console.log(`\n${pass} passed, ${fail} failed`);
