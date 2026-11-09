@@ -905,7 +905,9 @@ function check(what, got, want) {
     const cx2 = await browser.newContext(), p2 = await cx2.newPage(); p2.on('pageerror', e => errors.push(e.message));
     await p2.addInitScript(c => { if (!sessionStorage.getItem('i')) { sessionStorage.setItem('i', 1); localStorage.setItem('spheres-sheet-v1:' + c.id, JSON.stringify(Object.assign(c, { name: 'Browser copy', savedAt: Date.now() }))); } }, JSON.parse(JSON.stringify(A)));
     await p2.goto('file://' + tmp); await p2.waitForTimeout(500);
-    const asked = await p2.locator('.dlg-back').count(); await p2.keyboard.press('Escape'); await p2.waitForTimeout(400);
+    const asked = await p2.locator('.dlg-back').count();
+    check('“Two saves found” shows both copies side by side', /File copy[\s\S]*Browser copy/.test(await p2.locator('.dlg table').innerText().catch(() => '')) && /Hit points/.test(await p2.locator('.dlg table').innerText().catch(() => '')), true);
+    await p2.keyboard.press('Escape'); await p2.waitForTimeout(400);
     check('closing “Two saves found” keeps the newer copy', asked + ' ' + (await p2.innerText('#cname')).trim() + ' ' + await p2.evaluate(id => JSON.parse(localStorage.getItem('spheres-sheet-v1:' + id)).name, A.id), '1 Browser copy Browser copy');
     /* the same character again, differing only in when it was saved: no question */
     const same = await p2.evaluate(id => JSON.parse(localStorage.getItem('spheres-sheet-v1:' + id)), A.id); same.savedAt = 1000;
@@ -1007,6 +1009,69 @@ function check(what, got, want) {
     check('formulas: “.5*4” and “half of close” (25 ft at CL 0)', await tile('Will'), '+14');
     await mk([], { conds: { Sickened: true, Nauseated: true } }); await show();
     check('Nauseated doesn’t hide Sickened’s −2', await tile('Will'), '−2');
+  }
+
+  console.log('Undo, redo and importing');
+  {
+    const K = 'spheres-sheet-v1';
+    const fresh = async () => { await page.evaluate(K => { localStorage.clear(); const id = 'zz-imp'; localStorage.setItem(K + ':' + id, JSON.stringify({ app: 'spheres-sheet', v: 1, id, name: 'Imp', savedAt: 5000, classes: {}, levels: [] })); localStorage.setItem(K + ':last', JSON.stringify(id)); }, K); await page.reload(); await page.waitForTimeout(400); };
+    const act = a => page.evaluate(a => { const b = document.createElement('button'); b.dataset.a = a; document.getElementById('main').appendChild(b); b.click(); }, a);
+    const name = async () => (await page.innerText('#cname')).trim();
+    await fresh(); await go('Character', 'Build');
+    await page.fill('[data-f="name"]', 'Imp Two'); await page.press('[data-f="name"]', 'Tab'); await page.waitForTimeout(200);
+    await page.fill('[data-f="name"]', 'Imp Three'); await page.press('[data-f="name"]', 'Tab'); await page.waitForTimeout(200);
+    check('Undo shows how many steps it can go back', (await page.locator('#undoBtn').innerText()).replace(/\s+/g, ' ').trim(), 'Undo 2');
+    await page.click('#undoBtn'); await page.waitForTimeout(200);
+    check('undo, then a Redo button appears', [await name(), (await page.locator('#redoBtn').innerText()).replace(/\s+/g, ' ').trim()].join(' | '), 'Imp Two | Redo 1');
+    await page.click('#redoBtn'); await page.waitForTimeout(200);
+    check('Redo puts the change back', [await name(), await page.locator('#redoBtn').count()].join(' '), 'Imp Three 0');
+    await page.locator('h1').click(); await page.keyboard.press('Control+z'); await page.waitForTimeout(200); await page.keyboard.press('Control+y'); await page.waitForTimeout(200);
+    check('Ctrl+Z then Ctrl+Y', await name(), 'Imp Three');
+    await page.keyboard.press('Control+z'); await page.waitForTimeout(200);
+    await page.fill('[data-f="name"]', 'Imp Four'); await page.press('[data-f="name"]', 'Tab'); await page.waitForTimeout(200);
+    check('a new edit after undo clears Redo', await page.locator('#redoBtn').count(), '0');
+
+    const paste = async text => { await act('importJson'); await page.waitForTimeout(200); await page.evaluate(t => { document.querySelector('.dlg textarea[name="j"]').value = t; }, text); await page.click('.dlg button:has-text("Import")'); await page.waitForTimeout(400); };
+    const alertText = async () => { const t = (await page.locator('.dlg').last().innerText().catch(() => '')).replace(/\s+/g, ' '); await page.locator('.dlg button:has-text("OK")').last().click().catch(() => {}); await page.waitForTimeout(150); return t; };
+    await paste('{"app":"spheres-sheet",\n"name": "X",,}');
+    check('a broken file says where (line)', /isn’t a valid file.*line 2/.test(await alertText()), true);
+    await paste('{"app":"someone-else","name":"X"}');
+    check('a file from something else says what it says it is', /“someone-else”/.test(await alertText()), true);
+    await paste('[1,2]');
+    check('a list instead of a character says so', /holds a list, not a character/.test(await alertText()), true);
+    await paste(JSON.stringify({ app: 'spheres-sheet', v: 1, id: 'zz-rep', name: 'Repaired', classes: {}, levels: [{ cls: '' }, null, 7], mods: 'oops' }));
+    const toastT = await page.locator('#toast').innerText().catch(() => '');
+    check('repairs made while importing are reported', [await name(), /levels: 2 damaged rows left out.*mods: wasn’t the right kind/.test(toastT) || toastT].join(' '), 'Repaired true');
+
+    /* the same character again: compare, then Replace or Keep both */
+    const again = JSON.stringify({ app: 'spheres-sheet', v: 1, id: 'zz-imp', name: 'Imp From File', savedAt: 9e12, classes: {}, levels: [] });
+    await paste(again);
+    const cmp = await page.locator('.dlg').last().innerText().catch(() => '');
+    check('importing a character already in the list asks, showing both', [/Already in your characters/.test(cmp), /Imp From File[\s\S]*Imp Four/.test(cmp), /Replace \(the file’s is newer\)/.test(cmp)].join(' '), 'true true true');
+    await page.click('.dlg button:has-text("Replace")'); await page.waitForTimeout(400);
+    const ids = async () => page.evaluate(K => Object.keys(localStorage).filter(k => k.startsWith(K + ':') && !/:(last|tab)$/.test(k)).map(k => JSON.parse(localStorage.getItem(k)).name).sort().join(','), K);
+    check('Replace swaps it in, without a second copy', [await name(), await ids()].join(' | '), 'Imp From File | Imp From File,Repaired');
+    await paste(again); await page.click('.dlg button:has-text("Keep both")'); await page.waitForTimeout(400);
+    check('Keep both adds a copy', [await name(), await ids()].join(' | '), 'Imp From File (imported) | Imp From File,Imp From File (imported),Repaired');
+
+    /* a sheet saved as a file (.html) imports the character inside it */
+    const fs = require('fs');
+    const html = fs.readFileSync(path.resolve(__dirname, '..', 'public', 'index.html'), 'utf8');
+    const saved = html.replace(/(<script type="application\/json" id="savedState">)[\s\S]*?(<\/script>)/, (m, a, b) => a + JSON.stringify({ app: 'spheres-sheet', v: 1, id: 'zz-html', name: 'From HTML <b>', classes: {}, levels: [] }).replace(/</g, '\\u003c') + b);
+    await paste(saved);
+    check('a saved .html sheet imports its character', await name(), 'From HTML <b>');
+    await paste(html);
+    check('an empty saved sheet says so', /saved before a character was made/.test(await alertText()), true);
+
+    /* dropping a file on the page */
+    const drop = (text, fname) => page.evaluate(([text, fname]) => { const dt = new DataTransfer(); dt.items.add(new File([text], fname, { type: 'application/json' }));
+      document.dispatchEvent(new DragEvent('dragenter', { dataTransfer: dt, bubbles: true }));
+      const shown = document.body.classList.contains('dropping');
+      document.getElementById('main').dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true })); return shown; }, [text, fname]);
+    const shown = await drop(JSON.stringify({ app: 'spheres-sheet', v: 1, id: 'zz-drop', name: 'Dropped', classes: {}, levels: [] }), 'dropped.json'); await page.waitForTimeout(500);
+    check('dropping a file shows the drop area and imports it', [shown, await name(), await page.evaluate(() => document.body.classList.contains('dropping'))].join(' '), 'true Dropped false');
+    await drop('not json', 'x.json'); await page.waitForTimeout(400);
+    check('dropping something that isn’t a character says why', /isn’t a valid file/.test(await alertText()), true);
   }
 
   check('no page errors', errors.length ? errors.join(' | ') : 'none', 'none');

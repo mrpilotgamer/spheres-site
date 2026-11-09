@@ -95,7 +95,7 @@ also need the sign-in emulator, `npx firebase emulators:exec --config firebase.e
 --project demo-spheres "node tests/party-check.js"` (same for `save-check.js`). `firebase.emulators.json` is
 `firebase.json` plus the auth and emulator settings; it's only for tests. `tests/config-check.js` (5 checks, no installs)
 fails if the two configs' hosting settings drift apart. GitHub runs all six (since 2026-11-09).
-Last full run: 2026-11-09 (review fixes), `check.js` 313, `talents-check.js` 31, `config-check.js` 5, `rules-check.js` 90,
+Last full run: 2026-11-09 (feature batch 1), `check.js` 330, `talents-check.js` 31, `config-check.js` 5, `rules-check.js` 90,
 `party-check.js` 36, `save-check.js` 12: all passed.
 
 **Rollback:** Firebase console → Hosting → release history → roll back. With GitHub: also revert the commit (the
@@ -481,6 +481,29 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
 ---
 
 ## Open items and ideas
+
+- **Feature batch 1 (2026-11-09): undo, redo, importing.**
+  - **Redo:** `redoH` holds undone steps (whole-character JSON, like `hist`); `histStep` moves one between the two stacks, always
+    keeping the current share link and party list. A new edit (`remember`) clears redo; every `hist=[]` also clears `redoH`.
+    Undo shows its step count; a Redo button appears while there is something to redo. Keys: Ctrl+Z, Ctrl+Shift+Z, Ctrl+Y
+    (not while typing in a field, where the browser's own undo works).
+  - **Comparing copies:** `copyCompare([[label, character], …])` draws name, saved, level and class, hit points and the last log
+    entry side by side, differences in bold. Used by "Two saves found", "Changed in two places" and "Already in your characters".
+  - **Importing:** `parseImport(text, isChar)` takes a .json export, a backup, or (characters only) a sheet saved as a file
+    (.html: reads its `savedState`), and says what's wrong otherwise (where JSON breaks, by line; a file from something else;
+    an empty saved sheet). `importChar` reports what loading repaired (`importRepairs`: rows left out, parts reset) and, when
+    the id is already in the list, shows both and asks: Replace (keeps the list copy's share link and parties) or Keep both
+    (a copy named "… (imported)"); Replace is suggested when the file's is newer, with a warning when it's older.
+  - **Drag and drop:** dropping a file anywhere imports it (`body.dropping` shows the drop area); with an import box open, the
+    file fills the box instead. Nothing happens in the read-only viewer.
+
+- **Maybe later (pinned 2026-11-09, from the code review's feature list; not planned yet):**
+  - **GM "what changed" highlight:** HP drops and new conditions since the GM last looked, highlighted on party cards.
+  - **Several practitioner modifiers:** the wiki lets a creature with more than one use the highest; today it's one `pracAbil`.
+  - **Class presets for granted talents and caster level:** Hedgewitch and Shifter paths (bonus combat or skill talents);
+    Wraith, Elementalist and Eliciter (a class-level caster level for one sphere). Manual today.
+  - **Warleader talents:** the Alternate Justicar's separate track (1 per level) isn't counted.
+  - **Joins per invite code:** limit how many characters can join with one code (needs a server function).
 
 - **Review fixes, 2026-11-09.** From a code review; each has a check under "Review fixes" or "Damaged saves" in `check.js`.
   - DR "bypassed by" and source text are escaped on the Sheet tab and in print; they reach other people through share links and parties.
