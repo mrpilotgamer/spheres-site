@@ -892,6 +892,19 @@ function talFor(p,n){ p=TALP_OLD[p]||p; return p==='1'?n:p==='0.75'?Math.floor(n
 function drawbackSP(d,n){ if(d<=0||n<=0) return 0; return d===1?1+Math.floor(n/6):d===2?1+Math.floor(n/3):d===3?Math.ceil(n/2):d===4?1+Math.floor(n*2/3):n; }
 function tradOn(ch,k){ var t=ch.traditions||{}; return k!=='trade'&&t.mode==='unified'?true:!!(t[k]&&t[k].on); }
 function tradName(ch,k){ var t=ch.traditions||{}; return k!=='trade'&&t.mode==='unified'?(t.unifiedName||'Unified tradition'):((t[k]&&t[k].name)||''); }
+/* Trade traditions and multiclassing (Trade Traditions page): the tradition comes with your first class. Each later class
+   gives one (trade) talent from the Vocation sphere instead of its class skills. Trade rank: from the first class's skill
+   ranks per level (5 + Int or more = adroit), and it rises to adroit if a later class has more skill ranks per level than
+   the first (you then gain the adroit bonus talents). Only while the tradition replaces class skills. */
+function tradeMulti(c){ var o={extra:[],first:null,rank:'',why:''}, T=(c.traditions||{}).trade; if(!T||!tradOn(c,'trade')||T.replace===false) return o;
+  var seen={}, order=[]; (c.levels||[]).forEach(function(l){ var k=l&&l.cls; if(k&&own(c.classes||{},k)&&!seen[k]){ seen[k]=1; order.push(k); } });
+  if(!order.length) return o; var cls=function(id){ return c.classes[id]||{}; }, first=cls(order[0]), r0=n0(first.skills);
+  o.first=first; o.extra=order.slice(1).map(cls);
+  var up=o.extra.filter(function(k){ return n0(k.skills)>r0; })[0];
+  if(r0>=5){ o.rank='adroit'; o.why=(first.name||'Your first class')+' has '+r0+' + Int skill ranks per level'; }
+  else if(up){ o.rank='adroit'; o.why=(up.name||'A later class')+' has more skill ranks per level ('+n0(up.skills)+') than '+(first.name||'your first class')+' ('+r0+')'; }
+  else { o.rank='competent'; o.why=(first.name||'Your first class')+' has '+r0+' + Int skill ranks per level'; }
+  return o; }
 /* a tradition's grants that are in force (adroit-only grants need adroit trade rank) */
 function tradGrants(ch,k){ var t=(ch.traditions||{})[k]; if(!t||!tradOn(ch,k)) return []; return (t.grants||[]).filter(function(g){ return !(k==='trade'&&g.adroit&&t.rank!=='adroit'); }); }
 /* the wiki adds Artistry and Lore "if your game uses background skills": the sheet always has them */
@@ -1269,7 +1282,7 @@ function deriveCore(ch,H){
       if(k.cast==='adv'&&kb){ var kx={cast:kb.cast,martial:'none',skill:'none',talents:kb.talents,util:kb.util,utilx:''}, dt=classTalents(kx,nb+n)-classTalents(kx,nb); if(dt){ talents+=dt; talLines.push({src:k.name+' '+n+' (as '+kb.name+')',v:dt,type:'base'}); } }
     }
     else if(k.cast&&k.cast!=='none'){ castLv+=n; cl+=clFor(PERSX.tropes.mentor&&/troubadour/i.test(k.name||'')?'high':k.cast,n); } /* Mentor trope: full caster level */
-    var ct=classTalentSplit(k,n); talents+=ct.any; utilT+=ct.util; if(ct.any) var bx=n0(k.bonusTalents)+talxFor(k,n); talLines.push({src:k.name+' '+n+(bx?' (incl. '+bx+' bonus)':''),v:ct.any,type:'base'});
+    var ct=classTalentSplit(k,n); talents+=ct.any; utilT+=ct.util; if(ct.any){ var bx=n0(k.bonusTalents)+talxFor(k,n); talLines.push({src:k.name+' '+n+(bx?' (incl. '+bx+' bonus)':''),v:ct.any,type:'base'}); }
     if(ct.util) utilLines.push({src:k.name+' '+n,v:ct.util,type:'base'});
     (k.classSkills||[]).forEach(function(s){ cs[s]=1; });
   });
@@ -1298,6 +1311,8 @@ function deriveCore(ch,H){
   if(D.trad.bonus2) talLines.push({src:'Bonus magic talents (casting)',v:2,type:'base'});
   if(sphD) talLines.push({src:'Sphere-specific drawbacks',v:sphD,type:'base'});
   talents+=D.trad.bonus2+sphD;
+  /* trade tradition and multiclassing: each class after the first gives one Vocation trade talent instead of its class skills */
+  D.tradeMC=tradeMulti(ch); if(D.tradeMC.extra.length){ talLines.push({src:'Trade talents for new classes ('+D.tradeMC.extra.map(function(k){ return k.name||'class'; }).join(', ')+')',v:D.tradeMC.extra.length,type:'base'}); talents+=D.tradeMC.extra.length; }
   /* combat and skill sphere drawbacks: a bonus talent (or more) in their sphere, no tradition needed */
   ['combat','skill'].forEach(function(tk){ var n=(ch.sphDrawbacks||[]).filter(function(d){ return (d.tk||'combat')===tk&&dbOn(d); }).reduce(function(a,d){ return a+Math.max(1,n0(d.weight,1)); },0);
     if(n){ talLines.push({src:(tk==='combat'?'Combat':'Skill')+' sphere drawbacks',v:n,type:'base'}); talents+=n; } });
@@ -2264,7 +2279,7 @@ function shareCard(){ if(!BETA) return ''; var h='<section class="card"><h2>Shar
   if(!HOSTED) return h+'<p class="note">Sharing works on the website, not in a downloaded file.</p></section>';
   if(!CL.user) return h+'<p class="note">Sign in with Google to share this character or put it in a party.</p>'+(CL.ready?'<div class="row"><button data-a="signIn">Sign in with Google</button></div>':'')+'</section>';
   h+='<h3>Read-only link</h3>';
-  if(ch.share&&mine(ch.share)) h+='<p class="note">Anyone with this link can see this character, but not change it. It updates within a minute of your changes.</p><div class="row"><input type="text" readonly value="'+esc(shareURL(ch.share.id))+'" style="flex:1 1 220px" aria-label="Share link" onclick="this.select()"><button class="mini" data-a="shareCopy">Copy</button><button class="mini danger" data-a="shareOff">Stop sharing</button></div>';
+  if(ch.share&&mine(ch.share)) h+='<p class="note">Anyone with this link can see this character, but not change it. It updates within a minute of your changes.</p><div class="row"><input type="text" readonly value="'+esc(shareURL(ch.share.id))+'" style="flex:1 1 220px" aria-label="Share link" data-selall="1"><button class="mini" data-a="shareCopy">Copy</button><button class="mini danger" data-a="shareOff">Stop sharing</button></div>';
   else h+='<p class="note">A link anyone can open to see this character, read-only. You can stop sharing anytime.</p><div class="row"><button data-a="shareOn">Create a share link</button></div>';
   var ps=(ch.parties||[]).filter(mine);
   h+='<h3>Parties</h3>'+(ps.length?'<div class="list">'+ps.map(function(p){ return '<div class="li"><span style="flex:1">'+esc(p.name||'Party')+'</span><button class="mini danger" data-a="partyLeave" data-id="'+esc(p.pid)+'">Leave</button></div>'; }).join('')+'</div><p class="note">Its GMs see a summary of this character and can open the sheet read-only.</p>':'<p class="note">Not in a party. To join one, open the invite link your GM sends you.</p>');
@@ -3023,7 +3038,11 @@ function tradeBody(){
         '<p class="note" style="margin:6px 0">When two of your (trade) talents grant the same class skill, you may swap the overlap for another class skill, up to 1 swap for every 2 (trade) talents. Each overlap you <b>don’t</b> swap gives that class skill <b>+4</b> instead of +3. Tick those here. (Each trade tradition marks them with *, “increased class skill bonus”.)</p>'+
         (t.replace===false?'<p class="note warn">Only used while the trade tradition replaces your class skills (the box above).</p>':'')+
         '<div class="skgrid" style="max-height:none">'+SKILLS.filter(function(x){ return have.indexOf(x[0])>=0; }).map(function(x){ return '<label class="ck"><input type="checkbox" data-in="traditions.trade.plus4" data-v="'+x[0]+'"'+(p4.indexOf(x[0])>=0?' checked':'')+'> '+x[1]+'</label>'; }).join('')+'</div></details>'; })()+
-    '<p class="note">Multiclassing: each new class gives one trade talent (Vocation sphere) instead of its class skills; add it on the Talents tab.</p>';
+    (function(){ var M=D&&D.tradeMC||tradeMulti(ch), h='';
+      if(M.rank&&M.rank!==(t.rank||'competent')) h+='<p class="note warn">Your classes make your trade rank <b>'+M.rank+'</b>: '+esc(M.why)+'. <button class="link" data-a="tradeRankSet" data-k="'+M.rank+'">Set it to '+M.rank+'</button></p>';
+      else if(M.rank) h+='<p class="note">Trade rank '+M.rank+': '+esc(M.why)+'.</p>';
+      h+='<p class="note">Multiclassing: each class after your first gives one trade talent (Vocation sphere) instead of its class skills'+(M.extra.length?'. Yours: <b>'+M.extra.length+'</b> ('+esc(M.extra.map(function(k){ return k.name||'class'; }).join(', '))+'), already added to your talent count; pick '+(M.extra.length>1?'them':'it')+' on the Talents tab':'; they’re added to your talent count automatically')+'.</p>';
+      return h; })();
 }
 function tradCard(k,title,body,nameField,notesField){
   var on=k==='unified'?true:ch.traditions[k].on, h='<section class="card"><div class="cardhead"><h2>'+title+'</h2>';
@@ -4733,6 +4752,7 @@ var A={
   r20copy:function(el){ var m=roll20Macros()[+el.dataset.i]; if(!m) return 'skip'; copyText(m.text).then(function(ok){ toast(ok?'Copied “'+m.name+'”. Paste it into a new Ability in Roll20.':'Couldn’t copy: open “Show the text” and copy it by hand.'); }); return 'skip'; },
   r20all:function(){ var t=roll20Macros().map(function(m){ return '=== '+m.name+' ===\n'+m.text; }).join('\n\n'); download(slug(ch.name||'character')+'-roll20-macros.txt',t,'text/plain'); return 'skip'; },
   roExit:function(){ roExit(); return 'skip'; },
+  tradeRankSet:function(el){ var r=el.dataset.k; if(r!=='adroit'&&r!=='competent') return 'skip'; ch.traditions.trade.rank=r; say('Trade rank: '+r+'.'); },
   /* the viewed sheet becomes a new character of your own (new id, no share link or parties); the original is never touched */
   roCopy:function(){ if(!UI.ro||!ch) return 'skip'; var c=JSON.parse(JSON.stringify(ch)); noLinks(c); delete c.histSnap; c.history=[];
     c.id=uidG(); c.name=(c.name||'Character')+' (copy)'; c.meta=Object.assign(metaOf(c),{pin:false});
@@ -4909,6 +4929,8 @@ var A={
   importJson:function(){ return pickFile('Import a character','A character exported from this sheet, a sheet saved as a file (.html), or a “Back up all characters” file. You can also drop a file anywhere on the page.',true).then(function(o){ return o?importChar(o):null; }); },
   levelUp:function(){ return levelUpFlow(); }
 };
+/* boxes that select all their text on click (the share link); a listener, not an onclick="" attribute, so a script policy can block those */
+document.addEventListener('click',function(e){ var t=e.target; if(t&&t.dataset&&t.dataset.selall&&t.select) t.select(); });
 /* ---------- importing ---------- */
 /* text from a file or a paste → {o} or {err: a message that says what's wrong}. Takes this sheet's .json exports, backups,
    and a sheet saved as a file (.html: the character inside it) */
