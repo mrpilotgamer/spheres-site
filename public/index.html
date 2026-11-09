@@ -236,6 +236,7 @@ table.modt .c-sec select{max-width:11rem}
 .dlg-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end;margin-top:14px}
 .opt{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:3px 0}
 .dlg-msg{white-space:pre-line}
+body.dropping::after{content:'Drop the file to import it';position:fixed;inset:12px;border:3px dashed var(--gold);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:600;background:rgba(5,4,8,.86);color:#fff;z-index:300;pointer-events:none}
 .assoc{margin:8px 0 6px;padding:8px 10px;border:1px dashed var(--rule2);border-radius:var(--r)}
 .assoc select{max-width:15rem}
 .thpre{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
@@ -1638,9 +1639,18 @@ function sanitizeChar(o){
   if(b.possess&&b.possess.mode!=='passive') b.possess.mode='active';
   return b;
 }
+/* a side-by-side summary of two or more copies of a character (name, saved, level and class, hit points, log size),
+   so choosing between them isn't a guess between two times. Differences are in bold. */
+function copySum(c){ var o={name:c.name||'Unnamed',saved:c.savedAt?new Date(c.savedAt).toLocaleString():'unknown',cls:'',hp:'',log:''};
+  try{ var x=safeChar(c); if(!x) return o; o.cls=((x.levels||[]).length?'Level '+x.levels.length+' · ':'')+(classLineOf(x)||'no class yet'); var Dx=derive(x); o.hp=(Dx.hpMax-n0((x.hp||{}).dmg))+' / '+Dx.hpMax+' hp';
+    o.log=x.log&&x.log[0]?String(x.log[0].t).slice(0,80):''; }catch(e){} return o; }
+function copyCompare(list){ var S=list.map(function(x){ return copySum(x[1]); }), rows=[['name','Name'],['saved','Saved'],['cls','Level'],['hp','Hit points'],['log','Last log entry']];
+  return '<table class="cmp" style="width:100%;border-collapse:collapse;margin:8px 0;font-size:13px"><tr><th></th>'+list.map(function(x){ return '<th style="text-align:left">'+esc(x[0])+'</th>'; }).join('')+'</tr>'+
+    rows.map(function(r){ var vals=S.map(function(o){ return o[r[0]]; }), diff=vals.some(function(v){ return v!==vals[0]; }); if(vals.every(function(v){ return !v; })) return '';
+      return '<tr><td class="note" style="padding:2px 8px 2px 0">'+r[1]+'</td>'+vals.map(function(v){ return '<td style="padding:2px 8px 2px 0">'+(diff&&r[0]!=='saved'?'<b>'+esc(v||'—')+'</b>':esc(v||'—'))+'</td>'; }).join('')+'</tr>'; }).join('')+'</table>'; }
 /* sanitizeChar for data from outside (a file, a backup, a share link, the account): null instead of an error if
    the data is too damaged to clean, so callers can say so instead of leaving a blank page. Never saves anything. */
-function safeChar(o){ try{ return sanitizeChar(o); }catch(e){ try{ console.error(e); }catch(x){} return null; } }
+function safeChar(o){ safeChar.err=''; try{ return sanitizeChar(o); }catch(e){ safeChar.err=String(e&&e.message||e).slice(0,200); try{ console.error(e); }catch(x){} return null; } }
 var DAMAGED='Part of that character is damaged, so the sheet can’t open it. Nothing was changed; the original file or saved copy is untouched.';
 var _exp={evalF:evalF,safeChar:safeChar,derive:derive,blankChar:blankChar,blankClass:blankClass,sanitizeChar:sanitizeChar,stackLines:stackLines};
 
@@ -1897,7 +1907,7 @@ var PAGE_SRC=null; try{ (function(){ var R=document.documentElement.cloneNode(tr
   if(H) Array.prototype.slice.call(H.children).forEach(function(e){ var t=e.tagName; if(t==='META'||t==='TITLE'||t==='STYLE'&&!e.id&&!e.className||t==='LINK'&&/^https:\/\/fonts\.(googleapis|gstatic)\.com\//.test(e.getAttribute('href')||'')) return; e.remove(); });
   if(B) Array.prototype.slice.call(B.children).forEach(function(e){ if(e.tagName==='SCRIPT'&&!e.hasAttribute('src')||KEEP[e.id]||e.classList.contains('top')&&e.tagName==='HEADER') return; e.remove(); });
   PAGE_SRC='<!DOCTYPE html>\n'+R.outerHTML; })(); }catch(e){}
-var ch=null, D=null, hist=[];
+var ch=null, D=null, hist=[], redoH=[]; /* undo steps (JSON before each edit) and the steps undone, for redo */
 var UI={tab:'sheet',amt:5,allSk:false,sphOpen:{},home:false,lastIn:{play:'sheet',char:'build',adv:'mods'},condQ:'',openNew:null,toast:null};
 var TABS=[['sheet','Sheet & combat'],['build','Build'],['trad','Traditions'],['skills','Skills'],['talents','Talents'],['picks','Feats & features'],['comp','Companions'],['gear','Gear'],['notes','Notes'],['mods','Modifiers'],['acts','Actions & resources'],['rules','House rules'],['save','Save & print'],['poss','Possession'],['shape','Shapeshift'],['ws','Workshop'],['pers','Personas'],['hist','History']];
 /* the tabs come in three groups; each group remembers the tab you last had open in it */
@@ -2038,7 +2048,7 @@ function syncOpen(){
   if(!CL.user||!ch||pushT||pushing||UI.ro) return; var id=ch.id;
   window.SheetCloud.get(id).then(function(r){ if(!ch||ch.id!==id) return;
     if(r&&r.json&&(r.savedAt||0)>(ch.savedAt||0)){ var c=null; try{ c=safeChar(JSON.parse(r.json)); }catch(e){} if(!c) return; c.savedAt=r.savedAt;
-      var take=function(){ ch=c; hist=[]; log('Loaded the newer copy from your account.'); lsSet(KEY+':'+ch.id,ch); setSynced(ch.id,r.savedAt); setStat('Up to date with your account'); paint(); };
+      var take=function(){ ch=c; hist=[]; redoH=[]; log('Loaded the newer copy from your account.'); lsSet(KEY+':'+ch.id,ch); setSynced(ch.id,r.savedAt); setStat('Up to date with your account'); paint(); };
       if(!syncConflict(ch,c)){ take(); return; }
       syncAsk(ch,c).then(function(v){ if(!ch||ch.id!==id) return;
         if(v==='acct') take();
@@ -2054,7 +2064,7 @@ var STATUSES=[['active','Active'],['npc','NPC'],['concept','Concept'],['retired'
 var ARCHIVED={retired:1,dead:1};
 /* the newest full copy of a character: this device's or the account's */
 function syncAsk(loc,cl){ var d=function(t){ return esc(new Date(t||0).toLocaleString()); };
-  return modal({title:'Changed in two places',html:'<p class="dlg-msg">'+esc(loc.name||'This character')+' was changed on this device ('+d(loc.savedAt)+') and, separately, in your account from another device ('+d(cl.savedAt)+'). Which should stay?</p><p class="note">“Keep both” makes this device’s version a separate character.</p>',
+  return modal({title:'Changed in two places',html:'<p class="dlg-msg">'+esc(loc.name||'This character')+' was changed on this device ('+d(loc.savedAt)+') and, separately, in your account from another device ('+d(cl.savedAt)+'). Which should stay?</p>'+copyCompare([['This device',loc],['Your account',cl]])+'<p class="note">“Keep both” makes this device’s version a separate character.</p>',
     buttons:[{label:'This device’s',value:'dev'},{label:'Keep both',value:'both'},{label:'Your account’s (newer)',value:'acct',primary:true}]}).then(function(r){ return r&&r.value||'both'; }); }
 function charFull(id){ if(ch&&ch.id===id) return Promise.resolve(JSON.parse(JSON.stringify(ch))); var loc=lsGet(KEY+':'+id);
   if(CL.user&&(CL.list||[]).some(function(x){ return x.id===id; })) return window.SheetCloud.get(id).then(function(r){ var cl=null; try{ cl=r&&r.json?JSON.parse(r.json):null; if(cl) cl.savedAt=r.savedAt; }catch(e){} return loc&&(!cl||(loc.savedAt||0)>=(cl.savedAt||0))?loc:cl; }).catch(function(){ return loc; });
@@ -2073,7 +2083,7 @@ function homeList(){ var map={}, add=function(x,where){ var m=map[x.id]||(map[x.
   if(ch&&!UI.ro&&!map[ch.id]&&(ch.levels||[]).length) add({id:ch.id,name:ch.name,summary:[classLineOf(ch),ch.race].filter(Boolean).join(' · '),savedAt:ch.savedAt||0,meta:metaOf(ch),level:ch.levels.length,parties:partyNames(ch)},'local');
   return Object.keys(map).map(function(k){ var m=map[k]; if(m.savedAt<0) m.savedAt=0; return m; }); }
 function campaigns(list){ var o={}; (list||homeList()).forEach(function(x){ if(x.meta.campaign) o[x.meta.campaign]=1; }); return Object.keys(o).sort(function(a,b){ return a.localeCompare(b); }); }
-function openChar(c,push){ var c1=safeChar(c); if(!c1){ alertBox(DAMAGED); return; } histNow(); if(pushT&&ch&&ch.id!==c.id) cloudPush(); ch=c1; hist=[]; UI.home=false; UI.tab='sheet'; lsSet(KEY+':'+ch.id,ch); lsSet(KEY+':last',ch.id); if(push) cloudPush(); else if(CL.user) setStat('Saved to your account'); paint(); window.scrollTo(0,0); }
+function openChar(c,push){ var c1=safeChar(c); if(!c1){ alertBox(DAMAGED); return; } histNow(); if(pushT&&ch&&ch.id!==c.id) cloudPush(); ch=c1; hist=[]; redoH=[]; UI.home=false; UI.tab='sheet'; lsSet(KEY+':'+ch.id,ch); lsSet(KEY+':last',ch.id); if(push) cloudPush(); else if(CL.user) setStat('Saved to your account'); paint(); window.scrollTo(0,0); }
 window.addEventListener('sheet-cloud-ready',function(){ CL.ready=true; if(LINK&&LINK.kind==='share') linkGo();
   var redir=false; try{ redir=sessionStorage.getItem('sheetAuthRedirect')==='1'; sessionStorage.removeItem('sheetAuthRedirect'); }catch(e){}
   var rr=window.SheetCloud.redirectResult?window.SheetCloud.redirectResult():Promise.resolve(null);
@@ -2148,8 +2158,8 @@ function publishCopies(c){ if(!CL.user||!window.SheetCloud||!window.SheetCloud.s
     pubThrottle('sp:'+lk,30000,function(){ (PUB.mp[lk]||Promise.resolve()).then(function(){ return window.SheetCloud.sheetPut(p.pid,key,R()); }).catch(function(){}); }); }); }
 /* ---------- read-only viewer (a share link, or a GM opening a party member) ---------- */
 var RO_OK={why:1,sphToggle:1,allSk:1,fhelp:1,roExit:1,signIn:1};
-function roOpen(c,info){ var c1=safeChar(c); if(!c1){ alertBox(DAMAGED); return; } histNow(); if(pushT&&!UI.ro) cloudPush(); if(!UI.ro) UI.roPrev={ch:ch,hist:hist,tab:UI.tab,home:UI.home}; ch=c1; hist=[]; UI.ro=info; UI.home=false; UI.tab='sheet'; paint(); window.scrollTo(0,0); }
-function roExit(){ var p=UI.roPrev||{}; UI.ro=null; UI.roPrev=null; ch=p.ch||null; hist=p.hist||[]; UI.tab=p.tab||'sheet'; UI.home=!ch||!!p.home; paint(); window.scrollTo(0,0); }
+function roOpen(c,info){ var c1=safeChar(c); if(!c1){ alertBox(DAMAGED); return; } histNow(); if(pushT&&!UI.ro) cloudPush(); if(!UI.ro) UI.roPrev={ch:ch,hist:hist,tab:UI.tab,home:UI.home}; ch=c1; hist=[]; redoH=[]; UI.ro=info; UI.home=false; UI.tab='sheet'; paint(); window.scrollTo(0,0); }
+function roExit(){ var p=UI.roPrev||{}; UI.ro=null; UI.roPrev=null; ch=p.ch||null; hist=p.hist||[]; redoH=[]; UI.tab=p.tab||'sheet'; UI.home=!ch||!!p.home; paint(); window.scrollTo(0,0); }
 /* nothing in a viewed sheet can be changed: fields off, buttons other than looking (breakdowns, folding) off */
 function roLock(root){ if(!UI.ro||!root) return; root.querySelectorAll('[draggable]').forEach(function(e){ e.removeAttribute('draggable'); }); root.querySelectorAll('input,select,textarea').forEach(function(e){ e.disabled=true; }); root.querySelectorAll('[data-a]').forEach(function(b){ if(!RO_OK[b.dataset.a]) b.disabled=true; }); }
 /* ---------- links: a share link opens the viewer; invite links ask which character joins (after signing in) ---------- */
@@ -2241,8 +2251,13 @@ var toastT=null;
 /* undo: true only for the message an edit just made (runAction's showToast), so "Signed in" or an error never offers to undo something else */
 function toast(t,undoable){ var el=$('toast'); if(!el) return; el.innerHTML='<span>'+esc(t)+'</span>'+(undoable&&hist.length?'<button class="mini" data-a="undo">Undo</button>':'')+'<button class="mini" data-a="toastX" aria-label="Dismiss">×</button>'; el.hidden=false; clearTimeout(toastT); toastT=setTimeout(function(){ el.hidden=true; },6000); }
 function toastHide(){ var el=$('toast'); if(el) el.hidden=true; clearTimeout(toastT); }
-function remember(before){ if(before!==JSON.stringify(ch)){ hist.push(before); if(hist.length>HISTMAX) hist.shift(); } }
-function undo(){ if(!hist.length||UI.ro) return; var keepS=ch.share, keepP=ch.parties; ch=sanitizeChar(JSON.parse(hist.pop())); if(keepS) ch.share=keepS; else delete ch.share; ch.parties=keepP||[]; save(); paint(); }
+/* a new edit makes the undone steps unreachable, so it clears redo */
+function remember(before){ if(before!==JSON.stringify(ch)){ hist.push(before); if(hist.length>HISTMAX) hist.shift(); redoH=[]; } }
+/* undo and redo swap whole-character snapshots; the share link and party list always stay as they are now (they live in the cloud) */
+function histStep(from,to){ if(!from.length||UI.ro||!ch) return; var keepS=ch.share, keepP=ch.parties; to.push(JSON.stringify(ch)); if(to.length>HISTMAX) to.shift();
+  ch=sanitizeChar(JSON.parse(from.pop())); if(keepS) ch.share=keepS; else delete ch.share; ch.parties=keepP||[]; save(); paint(); }
+function undo(){ histStep(hist,redoH); }
+function redo(){ histStep(redoH,hist); }
 function grp(id){ return (ch.groups||[]).filter(function(g){return g.id===id;})[0]; }
 function getPath(o,p){ return p.split('.').reduce(function(a,k){ return a==null?undefined:a[k]; },o); }
 function setPath(o,p,v){ var ks=p.split('.'), a=o; for(var i=0;i<ks.length-1;i++){ if(a[ks[i]]==null) a[ks[i]]=/^\d+$/.test(ks[i+1])?[]:{}; a=a[ks[i]]; } a[ks[ks.length-1]]=v; }
@@ -2305,7 +2320,7 @@ function renderTop(){
   var HP=hpObj(), cur=D.hpMax-n0(HP.dmg), pct=D.hpMax?Math.max(0,Math.min(100,cur/D.hpMax*100)):0, PH=possHost();
   $('quick').innerHTML=(D.form?'<span class="tag gold">In form: '+esc(D.form.name)+'</span>':'')+(PH?'<span class="tag gold">Possessing '+esc(PH.name||'a host')+' ('+(possActive()?'active':'passive')+')</span>':'')+'<div class="minihp"><span class="note">HP <b style="color:var(--ink)">'+cur+'</b> / '+D.hpMax+(n0(HP.temp)?' · temp '+n0(HP.temp):'')+(n0(HP.non)?' · nonlethal '+n0(HP.non):'')+'</span><div class="bar"><i class="'+(pct<=25?'crit':pct<=50?'low':'')+'" style="width:'+pct+'%"></i></div></div>'+
     (UI.ro?'<span class="tag gold">Read-only</span><span class="note">'+esc(UI.ro.label||'')+'</span><button class="primary" data-a="roExit">'+esc(UI.ro.back||'Close')+'</button>':
-    (ch.rules.xp&&xpInfo().ready?'<span class="tag gold">Can level up</span>':'')+'<button class="primary" data-a="levelUp">Level up</button>'+(CL.user?'':'<button data-a="saveFile">Save file</button>')+'<button data-a="undo" id="undoBtn"'+(hist.length?'':' disabled')+'>Undo</button>'+acctHTML());
+    (ch.rules.xp&&xpInfo().ready?'<span class="tag gold">Can level up</span>':'')+'<button class="primary" data-a="levelUp">Level up</button>'+(CL.user?'':'<button data-a="saveFile">Save file</button>')+'<button data-a="undo" id="undoBtn"'+(hist.length?' title="Undo ('+hist.length+' step'+(hist.length>1?'s':'')+' back; Ctrl+Z)"':' disabled')+'>Undo'+(hist.length?' <span class="note">'+hist.length+'</span>':'')+'</button>'+(redoH.length?'<button data-a="redo" id="redoBtn" title="Redo ('+redoH.length+'; Ctrl+Shift+Z or Ctrl+Y)">Redo <span class="note">'+redoH.length+'</span></button>':'')+acctHTML());
   var g=groupOf(UI.tab), G=TGROUPS.filter(function(x){ return x[0]===g; })[0];
   $('tabbar').hidden=false;
   $('tabs').innerHTML='<div class="tabgroups">'+TGROUPS.filter(function(x){ return tabsShown(x).length; }).map(function(x){ return '<button data-tgrp="'+x[0]+'" aria-pressed="'+(x[0]===g)+'">'+x[1]+'</button>'; }).join('')+'</div>'+
@@ -4509,7 +4524,7 @@ var A={
     confirmBox('Delete '+(o.name?'“'+o.name+'”':'this character')+'?',(inCloud?'It’s removed from your Google account and this device. ':'It’s removed from this device. ')+'This can’t be undone, so export it first (Save & print tab) if you might want it back.','Delete',true).then(function(ok){ if(!ok) return;
       var loc=lsGet(KEY+':'+id), open0=ch&&ch.id===id?ch:null;
       try{ localStorage.removeItem(KEY+':'+id); }catch(e){}
-      if(ch&&ch.id===id){ ch=null; hist=[]; try{ localStorage.removeItem(KEY+':last'); }catch(e){} }
+      if(ch&&ch.id===id){ ch=null; hist=[]; redoH=[]; try{ localStorage.removeItem(KEY+':last'); }catch(e){} }
       var done=function(){ CL.list=(CL.list||[]).filter(function(x){return x.id!==id;}); UI.home=true; paint(); };
       /* its share link and party copies go too, so nobody keeps reading a character its player deleted */
       if(CL.user) unlinkChar(id,[open0,loc],inCloud).then(function(){ return inCloud?window.SheetCloud.del(id):null; }).then(done).catch(function(e){ alertBox('Couldn’t delete it from your account: '+(e&&e.code||'offline')); done(); });
@@ -4534,6 +4549,7 @@ var A={
     else { data[k]=strip(T[k]); if(k==='casting') data.castAbil=ch.castAbil; }
     download(slug(data.name||k+'-tradition')+'.tradition.json',JSON.stringify(data,null,1),'application/json'); return 'skip'; },
   undo:function(){ toastHide(); undo(); return 'skip'; },
+  redo:function(){ toastHide(); redo(); return 'skip'; },
   fhelp:function(){ return modal({title:'Formula guide',html:fGuideHTML(true)+'<label class="opt" style="display:block;margin-top:10px"><span>Try one</span> <input type="text" name="try" placeholder="hd, minimum 3" style="width:100%"></label><p id="tryout" class="note">&nbsp;</p>',
     buttons:[{label:'Close',value:null,primary:true}],onOpen:function(root){ var i=root.querySelector('[name=try]'), o=root.querySelector('#tryout'); i.addEventListener('input',function(){ o.innerHTML=fRes(i.value); }); }}).then(function(){return null;}); },
   why:function(el){ var k=el.dataset.k; return modal({title:(D.bd[k]||{}).label||'Breakdown',html:whyHTML(k),buttons:[{label:'Close',value:null,primary:true}]}).then(function(){return null;}); },
@@ -4847,17 +4863,65 @@ var A={
       var fix=function(x,isMod){ if(!x.group||ok[x.group]) return; var old=keep[x.group], nid=old&&byName[String(old.name).toLowerCase()]; if(nid){ x.group=nid; return; } x.group=''; if(isMod&&x.when==='toggle'){ x.when='always'; lost++; } };
       ch.mods.forEach(function(m){ fix(m,true); }); (ch.dr||[]).forEach(function(d){ fix(d,false); }); (ch.actions||[]).forEach(function(a){ fix(a,false); });
       log('Imported the table rules.'+(lost?' '+plural(lost,'modifier')+' from a rule that’s gone moved to Always on.':'')); }; }); },
-  newChar:function(){ return Promise.resolve(function(){ ch=sanitizeChar(blankChar()); /* the same clean-up a loaded character gets */ ch.name='New character'; hist=[]; UI.home=false; UI.tab='build'; log('New character. Fill in the Build tab, then Level up.'); }); },
-  example:function(el){ var k=el.dataset.k; return Promise.resolve(function(){ ch=sanitizeChar(k==='striker'?exampleStriker():exampleIncanter()); ch.id=uidG(); hist=[]; UI.home=false; UI.tab='sheet'; log('Loaded the example: '+ch.name+'.'); }); },
+  newChar:function(){ return Promise.resolve(function(){ ch=sanitizeChar(blankChar()); /* the same clean-up a loaded character gets */ ch.name='New character'; hist=[]; redoH=[]; UI.home=false; UI.tab='build'; log('New character. Fill in the Build tab, then Level up.'); }); },
+  example:function(el){ var k=el.dataset.k; return Promise.resolve(function(){ ch=sanitizeChar(k==='striker'?exampleStriker():exampleIncanter()); ch.id=uidG(); hist=[]; redoH=[]; UI.home=false; UI.tab='sheet'; log('Loaded the example: '+ch.name+'.'); }); },
   saveFile:function(){ saveFileFlow(); return 'skip'; },
   exportJson:function(){ save(); download(slug(ch.name||'character')+'-'+stamp()+'.json',JSON.stringify(noLinks(JSON.parse(JSON.stringify(ch)))),'application/json'); return 'skip'; },
-  importJson:function(){ return pickFile('Import a character','A character exported from this sheet, or a “Back up all characters” file.').then(function(o){ if(!o) return null;
-    if(o.app==='spheres-sheet-backup'&&Array.isArray(o.chars)){ restoreBackup(o.chars); return null; }
-    if(o.app!=='spheres-sheet'){ alertBox('That isn’t a character from this sheet.'); return null; }
-    var c1=safeChar(noLinks(o)); if(!c1){ alertBox(DAMAGED); return null; }
-    return function(){ var dup=homeList().some(function(x){ return x.id===c1.id; }); ch=c1; if(dup){ ch.id=uidG(); ch.name=(ch.name||'Character')+' (imported)'; } hist=[]; UI.home=false; UI.tab='sheet'; log('Imported '+(ch.name||'a character')+(dup?' as a separate copy (that one was already in your list).':'.')); }; }); },
+  importJson:function(){ return pickFile('Import a character','A character exported from this sheet, a sheet saved as a file (.html), or a “Back up all characters” file. You can also drop a file anywhere on the page.',true).then(function(o){ return o?importChar(o):null; }); },
   levelUp:function(){ return levelUpFlow(); }
 };
+/* ---------- importing ---------- */
+/* text from a file or a paste → {o} or {err: a message that says what's wrong}. Takes this sheet's .json exports, backups,
+   and a sheet saved as a file (.html: the character inside it) */
+function parseImport(text,isChar){ text=String(text==null?'':text);
+  if(!text.trim()) return {err:'Nothing to import: choose a file or paste its text.'};
+  if(text.length>IMPORT_MAX) return {err:'That file is too big to be from this sheet ('+Math.round(text.length/1048576)+' MB; the limit is '+Math.round(IMPORT_MAX/1048576)+' MB).'};
+  var src=text;
+  if(isChar&&/^\s*</.test(text)){ var m=/<script type="application\/json" id="savedState">([\s\S]*?)<\/script>/.exec(text);
+    if(!m) return {err:'That page isn’t a sheet saved from this site: there’s no character inside it.'};
+    if(m[1].trim()==='null') return {err:'That saved sheet is empty: it was saved before a character was made in it.'}; src=m[1]; }
+  var o; try{ o=JSON.parse(src); }catch(e){ var msg=String(e&&e.message||'it can’t be read'), pos=/position (\d+)/.exec(msg), at='';
+    if(pos&&!/line \d+/.test(msg)){ var i=+pos[1], before=src.slice(0,i); at=' (line '+before.split('\n').length+', character '+(i-before.lastIndexOf('\n'))+')'; }
+    return {err:'That text isn’t a valid file'+at+': '+msg+'. If you copied and pasted it, check nothing is missing at the start or the end.'}; }
+  if(!o||typeof o!=='object'||Array.isArray(o)) return {err:'That file holds '+(Array.isArray(o)?'a list':o===null?'nothing':'a single '+typeof o)+', not '+(isChar?'a character':'something this sheet exported')+'.'};
+  if(!isChar) return {o:o};
+  if(o.app==='spheres-sheet-backup') return Array.isArray(o.chars)?{o:o}:{err:'That backup file has no list of characters in it.'};
+  if(o.app!=='spheres-sheet') return {err:'That isn’t a character from this sheet'+(o.app?' (it says it’s from “'+String(o.app).slice(0,40)+'”).':': files from this sheet start with {"app":"spheres-sheet".')};
+  return {o:o}; }
+/* what loading changed in a file's character: lists with rows left out, and parts of the wrong kind that were reset */
+function importRepairs(o,c){ var out=[]; Object.keys(o).forEach(function(k){ if(!own(c,k)||k==='parties'||k==='share') return; var a=o[k], b=c[k];
+    if(Array.isArray(a)&&Array.isArray(b)){ if(b.length<a.length) out.push(k+': '+plural(a.length-b.length,'damaged row')+' left out'); }
+    else if(a!=null&&(Array.isArray(a)!==Array.isArray(b)||(typeof a==='object')!==(b!==null&&typeof b==='object'))) out.push(k+': wasn’t the right kind, reset'); });
+  return out; }
+/* an imported character, or a backup. Already in the list: show both and ask whether to replace it or keep both. */
+function importChar(o){
+  if(o.app==='spheres-sheet-backup'){ restoreBackup(o.chars); return Promise.resolve(null); }
+  var c1=safeChar(noLinks(JSON.parse(JSON.stringify(o)))); if(!c1){ alertBox(DAMAGED+(safeChar.err?' (What went wrong: '+safeChar.err+')':'')); return Promise.resolve(null); }
+  var fix=importRepairs(o,c1), note=fix.length?'Repaired while importing: '+fix.slice(0,6).join('; ')+(fix.length>6?'; and '+(fix.length-6)+' more':'')+'.':'';
+  var done=function(mode){ return function(){
+    if(mode==='copy'){ c1.id=uidG(); c1.name=(c1.name||'Character')+' (imported)'; }
+    if(mode==='replace'){ var old=ch&&ch.id===c1.id?ch:lsGet(KEY+':'+c1.id); if(old){ if(old.share) c1.share=old.share; c1.parties=Array.isArray(old.parties)?old.parties:[]; } }
+    histNow(); ch=c1; hist=[]; redoH=[]; UI.home=false; UI.tab='sheet';
+    log('Imported '+(ch.name||'a character')+(mode==='copy'?' as a separate copy (that one was already in your list).':mode==='replace'?', replacing the copy that was in your list.':'.'));
+    if(note){ log(note); UI.toast=note; } }; };
+  var have=homeList().filter(function(x){ return x.id===c1.id; })[0];
+  if(!have) return Promise.resolve(done('new'));
+  return charFull(c1.id).then(function(old){ old=old||have; var newer=(c1.savedAt||0)>(old.savedAt||0), older=(c1.savedAt||0)<(old.savedAt||0);
+    return modal({title:'Already in your characters',html:'<p class="dlg-msg">'+esc(c1.name||'This character')+' is already in your list. Replace it with the file’s version, or keep both?</p>'+copyCompare([['From the file',c1],['In your list',old]])+(older?'<p class="note warn">The file’s version is older than the one in your list.</p>':''),
+      buttons:[{label:'Cancel',value:null},{label:'Keep both',value:'copy',primary:!newer},{label:'Replace'+(newer?' (the file’s is newer)':''),value:'replace',primary:newer}]})
+      .then(function(r){ return r&&r.value?done(r.value):null; }); }); }
+/* drop a file anywhere on the page to import it (in an open import box, it fills the box instead) */
+function fileText(f){ return new Promise(function(res,rej){ if(f.size>IMPORT_MAX){ rej(new Error('That file is too big to be from this sheet ('+Math.round(f.size/1048576)+' MB; the limit is '+Math.round(IMPORT_MAX/1048576)+' MB).')); return; } var r=new FileReader(); r.onload=function(){ res(String(r.result||'')); }; r.onerror=function(){ rej(new Error('Couldn’t read that file.')); }; r.readAsText(f); }); }
+var dropDepth=0;
+function dragHasFiles(e){ var t=e.dataTransfer&&e.dataTransfer.types; return !!t&&[].indexOf.call(t,'Files')>=0; }
+document.addEventListener('dragenter',function(e){ if(!dragHasFiles(e)) return; dropDepth++; if(!UI.ro) document.body.classList.add('dropping'); });
+document.addEventListener('dragleave',function(e){ if(!dragHasFiles(e)) return; dropDepth=Math.max(0,dropDepth-1); if(!dropDepth) document.body.classList.remove('dropping'); });
+document.addEventListener('dragover',function(e){ if(dragHasFiles(e)) e.preventDefault(); });
+document.addEventListener('drop',function(e){ if(!dragHasFiles(e)) return; e.preventDefault(); dropDepth=0; document.body.classList.remove('dropping');
+  var f=e.dataTransfer.files&&e.dataTransfer.files[0]; if(!f||UI.ro) return;
+  var box=document.querySelector('.dlg-back textarea[name="j"]');
+  fileText(f).then(function(t){ if(box){ box.value=t; return; } if(document.querySelector('.dlg-back')) return;
+    var p=parseImport(t,true); if(p.err){ alertBox(p.err); return; } runAction(function(){ return importChar(p.o); }); }, function(err){ alertBox(err.message); }); });
 /* share links and party memberships stay with the account that made them: never taken from a file */
 function noLinks(c){ if(c&&typeof c==='object'){ delete c.share; c.parties=[]; } return c; }
 function restoreBackup(cs){ var n0c=cs.length; cs=cs.filter(function(c){ return c&&c.app==='spheres-sheet'&&c.id; }).map(function(c){ var s0=c.savedAt; c=safeChar(noLinks(c)); if(c) c.savedAt=typeof s0==='number'?s0:0; return c; }).filter(Boolean);
@@ -4865,7 +4929,7 @@ function restoreBackup(cs){ var n0c=cs.length; cs=cs.filter(function(c){ return 
   var nw=cs.filter(function(c){ return !(c.id in have); }).length, upd=cs.filter(function(c){ return c.id in have&&(c.savedAt||0)>have[c.id]; }).length, old=cs.length-nw-upd;
   confirmBox('Restore '+plural(cs.length,'character')+'?',plural(nw,'new character')+', '+plural(upd,'newer copy','newer copies')+' replacing what’s here'+(old?', and '+old+' skipped because what you have is the same or newer':'')+'.'+(bad?' '+plural(bad,'entry','entries')+' in the file '+(bad===1?'is':'are')+' damaged and will be left out.':''),'Restore').then(function(ok){ if(!ok) return;
     var todo=cs.filter(function(c){ return !(c.id in have)||(c.savedAt||0)>have[c.id]; });
-    Promise.all(todo.map(function(c){ c.savedAt=c.savedAt||Date.now(); lsSet(KEY+':'+c.id,c); if(ch&&ch.id===c.id){ ch=c; hist=[]; } if(!CL.user) return; var rec=cloudRec(c); return window.SheetCloud.put(c.id,rec).then(function(){ CL.list=(CL.list||[]).filter(function(x){ return x.id!==c.id; }).concat([listRec(c,rec)]); }); }))
+    Promise.all(todo.map(function(c){ c.savedAt=c.savedAt||Date.now(); lsSet(KEY+':'+c.id,c); if(ch&&ch.id===c.id){ ch=c; hist=[]; redoH=[]; } if(!CL.user) return; var rec=cloudRec(c); return window.SheetCloud.put(c.id,rec).then(function(){ CL.list=(CL.list||[]).filter(function(x){ return x.id!==c.id; }).concat([listRec(c,rec)]); }); }))
       .then(function(){ toast('Restored '+plural(todo.length,'character')+'.'); }).catch(function(e){ alertBox('Some characters didn’t reach your account: '+cloudErrMsg(e)); }).then(function(){ UI.home=true; paint(); }); }); }
 function slug(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'sheet'; }
 function download(name,text,type){ try{ var b=new Blob([text],{type:type||'application/octet-stream'}), a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=name; document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); },1500); return true; }catch(e){ return false; } }
@@ -4873,13 +4937,13 @@ function stamp(){ var d0=new Date(); return d0.toISOString().slice(0,10)+'-'+Str
 function alertBox(msg){ return modal({title:'Hmm',html:'<p class="dlg-msg">'+esc(msg)+'</p>',buttons:[{label:'OK',value:null,primary:true}]}); }
 /* a character is usually well under 1 MB; a backup of many characters can be several. Anything far bigger isn't one of ours. */
 var IMPORT_MAX=32*1048576;
-function pickFile(title,note){
-  return modal({title:title,html:'<p class="note">'+esc(note)+'</p><input type="file" name="file" accept=".json,application/json,text/plain" aria-label="Choose a file"><textarea name="j" aria-label="Or paste the text here" placeholder="…or paste the text here" style="margin-top:8px;min-height:7rem"></textarea>',
+/* isChar: a character import (also takes a saved .html sheet, and says what's wrong if it isn't a character) */
+function pickFile(title,note,isChar){
+  return modal({title:title,html:'<p class="note">'+esc(note)+'</p><input type="file" name="file" accept="'+(isChar?'.json,.html,.htm,application/json,text/html,text/plain':'.json,application/json,text/plain')+'" aria-label="Choose a file"><textarea name="j" aria-label="Or paste the text here" placeholder="…or paste the text here" style="margin-top:8px;min-height:7rem"></textarea>',
     buttons:[{label:'Cancel',value:null},{label:'Import',value:'ok',primary:true}],
     onOpen:function(root){ root.querySelector('[name=file]').addEventListener('change',function(e){ var f=e.target.files&&e.target.files[0]; if(!f) return; var r=new FileReader(); r.onload=function(){ root.querySelector('[name=j]').value=String(r.result||''); }; r.readAsText(f); }); },
     read:function(root){ return rd(root).s('j'); }})
-    .then(function(r){ if(r.value!=='ok') return null; if(!String(r.data||'').trim()){ alertBox('Nothing to import: choose a file or paste its text.'); return null; }
-      if(String(r.data).length>IMPORT_MAX){ alertBox('That file is too big to be from this sheet ('+Math.round(String(r.data).length/1048576)+' MB; the limit is '+Math.round(IMPORT_MAX/1048576)+' MB).'); return null; } try{ var o=JSON.parse(r.data); if(o&&typeof o==='object') return o; }catch(e){} alertBox('That text isn’t a valid file.'); return null; });
+    .then(function(r){ if(r.value!=='ok') return null; var p=parseImport(r.data,isChar); if(p.err){ alertBox(p.err); return null; } return p.o; });
 }
 function saveFileFlow(){
   if(!PAGE_SRC){ alertBox('This browser can’t read the page’s own source, so it can’t build a file. Use Export instead.'); return; }
@@ -5163,9 +5227,10 @@ document.addEventListener('keydown',function(e){
   if(e.target&&e.target.getAttribute&&e.target.getAttribute('role')==='tab'&&/^(ArrowLeft|ArrowRight|Home|End)$/.test(e.key)){
     var tl=[].slice.call(e.target.parentNode.querySelectorAll('[role=tab]')), ix=tl.indexOf(e.target), nx=e.key==='Home'?0:e.key==='End'?tl.length-1:(ix+(e.key==='ArrowRight'?1:-1)+tl.length)%tl.length;
     e.preventDefault(); var id=tl[nx].dataset.tab; goTab(id); paint(); var nb=$('tab-'+id); if(nb) nb.focus(); return; }
-  if(!(e.ctrlKey||e.metaKey)||e.shiftKey||String(e.key).toLowerCase()!=='z') return;
+  var k=String(e.key).toLowerCase(), isUndo=k==='z'&&!e.shiftKey, isRedo=k==='z'&&e.shiftKey||k==='y'&&!e.shiftKey;
+  if(!(e.ctrlKey||e.metaKey)||!(isUndo||isRedo)) return;
   var t=e.target, tag=t&&t.tagName; if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT'||document.querySelector('.dlg-back')) return;
-  e.preventDefault(); undo();
+  e.preventDefault(); if(isUndo) undo(); else redo();
 });
 
 /* ===================== BOOT ===================== */
@@ -5178,7 +5243,7 @@ document.addEventListener('keydown',function(e){
     var sameBut=function(a,b){ try{ var x=Object.assign({},a), y=Object.assign({},b); delete x.savedAt; delete y.savedAt; return JSON.stringify(x)===JSON.stringify(y); }catch(e){ return false; } };
     if(loc&&loc.savedAt&&emb.savedAt&&loc.savedAt!==emb.savedAt&&!sameBut(loc,emb)){
       ch=safeChar(emb); if(!ch){ ch=safeChar(loc); paint(); alertBox(DAMAGED); return; } render();
-      modal({title:'Two saves found',html:'<p class="dlg-msg">This file holds '+esc(emb.name||'the character')+' as saved '+esc(new Date(emb.savedAt).toLocaleString())+'.\nThis browser has a copy from '+esc(new Date(loc.savedAt).toLocaleString())+'.\n\nWhich should the sheet use?</p>',
+      modal({title:'Two saves found',html:'<p class="dlg-msg">This file and this browser both hold '+esc(emb.name||'the character')+', saved at different times. Which should the sheet use?</p>'+copyCompare([['The file',emb],['This browser',loc]]),
         buttons:[{label:'The file’s',value:'emb'},{label:'This browser’s'+(loc.savedAt>emb.savedAt?' (newer)':''),value:'loc',primary:loc.savedAt>emb.savedAt}]})
         /* closing the dialog without choosing (Esc, a click outside) keeps the newer copy, never the older one */
         .then(function(r){ var pick=r&&r.value||(loc.savedAt>emb.savedAt?'loc':'emb'); if(pick==='loc'){ ch=safeChar(loc)||ch; } save(); paint(); });
