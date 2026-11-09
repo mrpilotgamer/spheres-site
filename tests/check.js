@@ -1081,7 +1081,9 @@ function check(what, got, want) {
     const A = await ex('striker');
     /* a fake account: opts.cloud = {id: {name, savedAt}}, opts.failPuts = how many saves fail first, opts.members = party members */
     const fake = async (opts, url) => { const cx = await browser.newContext({ viewport: { width: 1280, height: 1000 } }), p = await cx.newPage(); p.on('pageerror', e => errors.push(e.message));
-      await p.addInitScript(([A, opts]) => { const K = 'spheres-sheet-v1'; if (!sessionStorage.getItem('i')) { sessionStorage.setItem('i', 1); localStorage.clear();
+      /* set up once per test page: the "done" mark lives in localStorage (what a reload must keep), not sessionStorage,
+         which file:// pages don't reliably keep across a reload */
+      await p.addInitScript(([A, opts]) => { const K = 'spheres-sheet-v1'; if (!localStorage.getItem('__testInit')) { localStorage.clear(); localStorage.setItem('__testInit', '1');
           if (opts.local) { localStorage.setItem(K + ':' + A.id, JSON.stringify(Object.assign({}, A, opts.local))); localStorage.setItem(K + ':last', JSON.stringify(A.id)); } }
         const store = {}; Object.keys(opts.cloud || {}).forEach(id => { store[id] = { json: JSON.stringify(Object.assign({}, A, opts.cloud[id])), savedAt: opts.cloud[id].savedAt, name: opts.cloud[id].name }; });
         let fails = opts.failPuts || 0; window.__puts = 0;
@@ -1133,9 +1135,15 @@ function check(what, got, want) {
     check('dashboard: a sheet not updated for 25 minutes is marked “not live”', [await p.locator('.pcard.stale').count(), await p.locator('.pcard.stale', { hasText: 'Cass' }).count()].join(' '), '1 1');
     await p.click('[data-a="partyCompact"]'); await p.waitForTimeout(200);
     check('dashboard: compact view', [await p.locator('.pgrid.compact .pcard.compact').count(), await p.locator('.pcard .ptiles').count()].join(' '), '3 0');
-    await p.reload(); await p.waitForTimeout(300); await p.evaluate(() => window.dispatchEvent(new Event('sheet-cloud-ready'))); await p.waitForTimeout(500);
-    await act(p, 'partyOpen', { id: 'gm_P' }); await p.waitForTimeout(500);
-    check('dashboard: the sort and the view are remembered', [await order(), await p.locator('.pgrid.compact').count()].join(' '), 'Cass,Bree,Aldo 1');
+    /* wait for real conditions, not fixed times: the choice is stored, the page is back, the party is drawn with its 3 cards */
+    const kept = await p.waitForFunction(() => localStorage.getItem('spheres-party-view'), null, { timeout: 5000 }).then(h => h.jsonValue()).catch(() => null);
+    await p.reload(); await p.waitForFunction(() => window.SheetCloud && document.getElementById('main'), null, { timeout: 10000 });
+    await p.evaluate(() => window.dispatchEvent(new Event('sheet-cloud-ready')));
+    await p.waitForFunction(() => document.querySelector('[data-a="partyOpen"]') || document.querySelector('.pcard'), null, { timeout: 10000 }).catch(() => {});
+    await act(p, 'partyOpen', { id: 'gm_P' });
+    await p.waitForFunction(() => document.querySelectorAll('.pcard').length === 3, null, { timeout: 10000 }).catch(() => {});
+    const res = [await order(), await p.locator('.pgrid.compact').count()].join(' ');
+    check('dashboard: the sort and the view are remembered', res === 'Cass,Bree,Aldo 1' ? res : res + ' (stored before reload: ' + kept + ', after: ' + await p.evaluate(() => localStorage.getItem('spheres-party-view')) + ')', 'Cass,Bree,Aldo 1');
     await cx.close();
   }
 

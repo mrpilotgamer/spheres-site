@@ -27,7 +27,7 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 22
-      - uses: actions/setup-java@v4   # the Firebase emulators need Java
+      - uses: actions/setup-java@v5   # the Firebase emulators need Java
         with:
           distribution: temurin
           java-version: 21
