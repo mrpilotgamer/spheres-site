@@ -127,7 +127,7 @@ def split_spheres(name, k, pslug, body):
 
 
 def talent_section(name):
-    return bool(re.search(r'talents?\b', name, re.I)) and not re.search(r'talent types?', name, re.I) \
+    return bool(re.search(r'talents?\b', name, re.I)) and not re.search(r'talents? types?', name, re.I) \
         and not re.search(r'\bfeats?\b', name, re.I)
 
 

@@ -922,6 +922,40 @@ function check(what, got, want) {
     check('a file with broken level rows imports', (await page.innerText('#cname')).trim(), 'Imported');
   }
 
+  console.log('Class talents (checked against the wiki class tables)');
+  {
+    /* the class list itself */
+    const html = require('fs').readFileSync(path.resolve(__dirname, '..', 'public', 'index.html'), 'utf8');
+    const LIB = JSON.parse(html.match(/<script type="application\/json" id="classLib">(.*?)<\/script>/)[1]);
+    const lib = n => LIB.find(x => x.n === n && x.c === 'Spheres');
+    const pick = (e, ...k) => k.map(x => String(e[x] == null ? '' : e[x])).join('/');
+    check('class list: Braggart is martial only', pick(lib('Braggart'), 'cast', 'mart'), 'none/expert');
+    check('class list: Etherslinger has no sphere casting', pick(lib('Etherslinger'), 'cast'), 'none');
+    check('class list: Thaumaturge, a talent every 2 levels', pick(lib('Thaumaturge'), 'cast', 'tal'), 'high/0.5');
+    check('class list: Troubadour, ½ combat + magic at 5th and every 4', pick(lib('Troubadour'), 'tal', 'tx'), '0.5/m5');
+    check('class list: Magemage, a talent every level', pick(lib('Magemage'), 'tal'), '1');
+    check('class list: Mageknight, bonus talent at 1st', pick(lib('Mageknight'), 'bt'), '1');
+    check('class list: Incanter, bonus talent at odd levels', pick(lib('Incanter'), 'tx'), 'odd');
+    check('class list: Hive, ½ rounded up', pick(lib('Hive'), 'tal'), '0.5up');
+    check('class list: Cyborg uses prestige saves', pick(lib('Cyborg'), 'pre'), 'true');
+
+    /* the talent totals those settings give (Talents used tile: 0 / total, incl. the 2 bonus magic talents for casters) */
+    const cases = [
+      ['Troubadour 20', { cast: 'low', martial: 'proficient', talents: '0.5', talx: 'm5' }, 20, 16],
+      ['Troubadour 4', { cast: 'low', martial: 'proficient', talents: '0.5', talx: 'm5' }, 4, 4],
+      ['Thaumaturge 20', { cast: 'high', talents: '0.5' }, 20, 12],
+      ['Incanter 13', { cast: 'high', talents: 'auto', talx: 'odd' }, 13, 22],
+      ['Mageknight 1', { cast: 'low', talents: 'auto', bonusTalents: 1 }, 1, 3],
+      ['Hive 5', { cast: 'mid', talents: '0.5up', prestige: true }, 5, 5],
+      ['Magemage 5', { cast: 'low', talents: '1', prestige: true }, 5, 7]];
+    for (const [what, k, n, want] of cases) {
+      await page.evaluate(([k, n]) => { const id = 'zz-cls'; localStorage.setItem('spheres-sheet-v1:' + id, JSON.stringify({ app: 'spheres-sheet', v: 1, id, name: 'Cls', classes: { c1: Object.assign({ name: 'C', hd: 8, bab: '3/4', good: ['will'], skills: 4 }, k) },
+        levels: Array.from({ length: n }, () => ({ cls: 'c1', hp: 5, picks: [] })) })); localStorage.setItem('spheres-sheet-v1:last', JSON.stringify(id)); }, [k, n]);
+      await page.reload(); await page.waitForTimeout(300); await go('Character', 'Talents');
+      check('talents: ' + what, (await tile('Talents used')).replace(/^\d+ \/ /, ''), String(want));
+    }
+  }
+
   check('no page errors', errors.length ? errors.join(' | ') : 'none', 'none');
   await browser.close();
   console.log(`\n${pass} passed, ${fail} failed`);
