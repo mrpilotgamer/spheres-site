@@ -660,7 +660,7 @@ var CONDS=[
 var BODY_TOGGLES={'Haste':1,'Enlarge Person':1,'Reduce Person':1,'Mage Armor':1,'Shield (spell)':1};
 var CONDM={}; CONDS.forEach(function(c){ CONDM[c[0]]=c; });
 /* a condition's effects don't count while a worse version of it is on (exhausted includes fatigued, and so on) */
-var COND_WORSE={Fatigued:['Exhausted'],Shaken:['Frightened','Panicked'],Frightened:['Panicked'],Dazzled:['Blinded'],Grappled:['Pinned'],Staggered:['Paralyzed','Helpless'],Sickened:['Nauseated']};
+var COND_WORSE={Fatigued:['Exhausted'],Shaken:['Frightened','Panicked'],Frightened:['Panicked'],Dazzled:['Blinded'],Grappled:['Pinned'],Staggered:['Paralyzed','Helpless']};
 function condCovered(ch,k){ return (COND_WORSE[k]||[]).some(function(w){ return ch.conds&&ch.conds[w]; }); }
 var LOSE_DEX={'Flat-footed':1,Blinded:1,Stunned:1,Cowering:1,Pinned:1,Paralyzed:1,Helpless:1};
 function condExtra(ch,key){ return Object.keys(ch.conds||{}).filter(function(k){ return ch.conds[k]&&!condCovered(ch,k)&&CONDM[k]&&CONDM[k][3]&&CONDM[k][3][key]!=null; }).map(function(k){ return [k,CONDM[k][3][key]]; }); }
@@ -688,7 +688,7 @@ var HOUSE=[
    Friendly forms are translated first: "hd, minimum 3" → max(hd, 3); "1 per 2 levels" → floor(lvl/2). */
 var FUN={floor:Math.floor,ceil:Math.ceil,min:Math.min,max:Math.max,abs:Math.abs,round:Math.round};
 var WORDS=[[/\bcaster\s+levels?\b/g,'cl'],[/\bcharacter\s+levels?\b/g,'lvl'],[/\bhit\s*dice\b/g,'hd'],[/\bbase\s+attack(\s+bonus)?\b/g,'bab'],[/\blevels?\b/g,'lvl'],
-  [/\bstrength\b/g,'str'],[/\bdexterity\b/g,'dex'],[/\bconstitution\b/g,'con'],[/\bintelligence\b/g,'int'],[/\bwisdom\b/g,'wis'],[/\bcharisma\b/g,'cha'],[/\bhalf\s+of\s+/g,'half '],[/\bhalf\s+([a-z_]+)\b/g,'floor($1/2)']];
+  [/\bstrength\b/g,'str'],[/\bdexterity\b/g,'dex'],[/\bconstitution\b/g,'con'],[/\bintelligence\b/g,'int'],[/\bwisdom\b/g,'wis'],[/\bcharisma\b/g,'cha'],[/\bhalf\s+of\s+/g,'half '],[/\bhalf\s+([a-z_][a-z_0-9]*(?:\.[a-z_0-9]+)?)(?![a-z_0-9.])/g,'floor($1/2)']];
 function fNorm(src){
   var s=String(src).toLowerCase().replace(/−/g,'-').replace(/×/g,'*').replace(/÷/g,'/').replace(/\s+/g,' ').trim();
   WORDS.forEach(function(w){ s=s.replace(w[0],w[1]); });
@@ -707,7 +707,7 @@ function fParse(src,V){
   var s=fNorm(src), i=0, err='';
   function fail(msg){ err=msg; throw 0; }
   function sp(){ while(i<s.length&&/\s/.test(s[i])) i++; }
-  function num(){ sp(); var m=/^\d+(\.\d+)?/.exec(s.slice(i)); if(!m) return null; i+=m[0].length; return parseFloat(m[0]); }
+  function num(){ sp(); var m=/^(\d+(\.\d+)?|\.\d+)/.exec(s.slice(i)); if(!m) return null; i+=m[0].length; return parseFloat(m[0]); }
   function prim(){
     sp(); var c=s[i];
     if(c==='('){ i++; var v=expr(); sp(); if(s[i]!==')') fail('A bracket is opened but never closed.'); i++; return v; }
@@ -795,8 +795,14 @@ function tempLim(s){ return !!s&&String(s.act==null?'':s.act).trim()!==''; }
 function tempOn(c,p){ var s=isTemp(c,p)?tempSrc(c,p.temp):null; return !s||s.on!==false&&(!tempLim(s)||!!p.on); }
 function tempN(s,k){ var t=String(s[k]==null?'':s[k]).trim(); if(!t) return null; var v=evalF(t,D.V); return isNaN(v)?0:Math.max(0,Math.floor(v)); }
 /* names of temporary talents that are switched off right now (their modifiers pause) */
+function tempOnNames(c){ var o=[]; if(!c) return o; pickRefsOf(c).forEach(function(p){ var n=String(p.name||'').trim(); if(n&&!(isTemp(c,p)&&!tempOn(c,p))) o.push(n.toLowerCase()); }); return o; }
 function tempOffNames(c){ var o=[]; if(!c||!(c.tempSrc||[]).length) return o; pickRefsOf(c).forEach(function(p){ if(isTemp(c,p)&&!tempOn(c,p)&&String(p.name||'').trim()) o.push(String(p.name).trim().toLowerCase()); }); return o; }
-function tempPaused(m){ if(!TOFF.length||!m||!m.src) return false; var s=String(m.src).toLowerCase(); return TOFF.some(function(n){ return s.indexOf(n)===0; }); }
+/* a modifier or action pauses when its source starts with an inactive temporary talent's name as whole words ("Prep A strike"
+   for Prep A, not "Powerful" for Power), unless it starts with the longer name of another pick you have that is on
+   ("Power Attack" belongs to the Power Attack feat, not to a temporary talent called Power) */
+var TON=[];
+function tempPaused(m){ if(!TOFF.length||!m||!m.src) return false; var s=String(m.src).toLowerCase().trim(), at=function(n){ return s.indexOf(n)===0&&!/^[a-z0-9]/.test(s.slice(n.length)); };
+  return TOFF.some(function(n){ return at(n)&&!TON.some(function(o){ return o.length>n.length&&at(o); }); }); }
 function tempPicks(id){ var o=[]; pickRefs().forEach(function(r){ if(r.p.temp===id) o.push(r); }); return o; }
 function tempSlots(s){ var v=evalF(String(s.slots==null||s.slots===''?'0':s.slots),D.V); return isNaN(v)?0:Math.max(0,Math.floor(v)); }
 /* [name, how many, one-at-a-time word, active at once, uses per day]; lvl.<class> is that class's level */
@@ -830,23 +836,33 @@ function activeMod(ch,m){
 }
 function modsFor(ch,targets,V,cache){
   var out=[];
-  (ch.mods||[]).concat(gearMods(ch)).forEach(function(m){ if(targets.indexOf(m.target)<0||!activeMod(ch,m)) return; var v=evalF(m.val,V); out.push({src:m.src||'Modifier',v:isNaN(v)?0:v,type:m.type||'untyped',bad:isNaN(v),perm:m.when!=='toggle'}); });
+  (ch.mods||[]).concat(gearMods(ch)).forEach(function(m){ if(targets.indexOf(m.target)<0||!activeMod(ch,m)) return; var v=evalF(m.val,V); var nm=String(m.src||'').trim(), anon=!nm||nm==='New modifier'||nm==='Modifier'; out.push({src:nm||'Modifier',sk:anon?'\u0000'+(m.id||'i'+out.length):'',v:isNaN(v)?0:v,type:m.type||'untyped',bad:isNaN(v),perm:m.when!=='toggle'}); });
   Object.keys(ch.conds||{}).forEach(function(k){ if(!ch.conds[k]||!CONDM[k]||condCovered(ch,k)) return; var hit=CONDM[k][1].filter(function(x){ return targets.indexOf(x[0])>=0; }); if(hit.length) out.push({src:k,v:Math.min.apply(null,hit.map(function(x){return x[1];})),type:'untyped',cond:true}); });
   var pxs=PERSX.base&&PERSX.t>0?persSave(PERSX.t):0; if(pxs&&targets.indexOf('saves')>=0) out.push({src:'Performer’s Synergy (base persona)',v:pxs,type:'morale'});
   var nl=n0(ch.negLevels); if(nl>0&&['atk','saves','skills','cmb','cmd','cl','msb','init'].some(function(t){ return targets.indexOf(t)>=0; })) out.push({src:'Negative levels ('+nl+')',v:-nl,type:'untyped',cond:true});
   return out;
 }
 /* Same source never counts twice; same type takes the highest (dodge, untyped, circumstance and all penalties add). */
+/* spell resistance and DR from different sources don't stack: the best one counts (penalties still apply) */
+function bestOf(lines){ var bi=-1, neg=0; lines.forEach(function(l,i){ if(l.v>0&&(bi<0||l.v>lines[bi].v)) bi=i; });
+  lines.forEach(function(l,i){ l.counts=l.v<0||i===bi||!l.v; delete l.why; if(l.v<0) neg+=l.v; if(!l.counts) l.why='doesn’t stack: the best one counts'; });
+  return (bi<0?0:lines[bi].v)+neg; }
+/* size changes don't stack (Enlarge Person + Size Change is one size larger, not two): the biggest increase and the biggest decrease count */
+function sizeSteps(lines){ var up=-1, dn=-1; lines.forEach(function(l,i){ if(l.v>0&&(up<0||l.v>lines[up].v)) up=i; if(l.v<0&&(dn<0||l.v<lines[dn].v)) dn=i; });
+  lines.forEach(function(l,i){ l.counts=i===up||i===dn||!l.v; delete l.why; if(!l.counts) l.why='size changes don’t stack: the biggest counts'; });
+  return (up<0?0:lines[up].v)+(dn<0?0:lines[dn].v); }
+/* l.sk, when set, is the line's source for stacking (a modifier row nobody named is its own source); l.why says why a line doesn't count */
 function stackLines(lines){
-  var bySrc={};
-  lines.forEach(function(l,i){ if(l.v<0) return; var k=l.src+'|'+l.type; if(bySrc[k]==null||l.v>lines[bySrc[k]].v) bySrc[k]=i; });
-  var best={};
-  lines.forEach(function(l,i){ if(l.v<0||ALWAYS_STACK[l.type]) return; if(bySrc[l.src+'|'+l.type]!==i) return; if(best[l.type]==null||l.v>lines[best[l.type]].v) best[l.type]=i; });
+  var bySrc=Object.create(null), key=function(l){ return (l.sk||l.src)+'|'+l.type; };
+  lines.forEach(function(l,i){ if(l.v<0) return; var k=key(l); if(bySrc[k]==null||l.v>lines[bySrc[k]].v) bySrc[k]=i; });
+  var best=Object.create(null);
+  lines.forEach(function(l,i){ if(l.v<0||ALWAYS_STACK[l.type]) return; if(bySrc[key(l)]!==i) return; if(best[l.type]==null||l.v>lines[best[l.type]].v) best[l.type]=i; });
+  var worstSz=-1; lines.forEach(function(l,i){ if(l.v<0&&l.type==='size'&&(worstSz<0||l.v<lines[worstSz].v)) worstSz=i; });
   var total=0;
   lines.forEach(function(l,i){
-    var counts=l.v<0||(bySrc[l.src+'|'+l.type]===i&&(ALWAYS_STACK[l.type]||best[l.type]===i));
-    if(l.v>=0&&ALWAYS_STACK[l.type]&&bySrc[l.src+'|'+l.type]!==i) counts=false;
-    l.counts=counts; if(counts) total+=l.v;
+    var same=l.v>=0&&bySrc[key(l)]!==i, counts=l.v<0?(l.type!=='size'||i===worstSz):(!same&&(ALWAYS_STACK[l.type]||best[l.type]===i));
+    l.counts=counts; delete l.why; if(!counts) l.why=same?'same source':l.v<0?'a bigger size penalty counts':'a bigger '+l.type+' bonus counts';
+    if(counts) total+=l.v;
   });
   return total;
 }
@@ -1178,7 +1194,8 @@ function shapeView(c0,f,acl,D0){
   /* an attack you keep in every form (a bestial trait) takes the place of the form's attack of the same name: one bite per head */
   function anm(n){ return String(n||'').toLowerCase().replace(/^\s*\d+\s*/,'').replace(/\(.*?\)/g,'').trim().replace(/s$/,''); }
   info.replaced={}; info.fx=[];
-  var adc=10+Math.floor(acl/2); try{ if(D&&D.dc!=null) adc=D.dc+stackLines(modsFor(ch,['dc.sphere.alteration'],D.V))+Math.floor(acl/2)-Math.floor(n0(D.clEff)/2); }catch(e){}
+  /* the form's DCs come from the character being shaped (D0, c0: this derive), not the last one drawn */
+  var adc=10+Math.floor(acl/2), DX=D0||D, cX=D0?c0:ch; try{ if(DX&&DX.dc!=null) adc=DX.dc+stackLines(modsFor(cX,['dc.sphere.alteration'],DX.V))+Math.floor(acl/2)-Math.floor(n0(DX.clEff)/2); }catch(e){}
   var x={c:acl,c5:c5,dc:adc,hd:(c0.levels||[]).length,
     atk:function(n,cnt,d,kind,extra){ var own=weapons.filter(function(w){ return anm(w.name)===anm(n); })[0]; if(own){ var nt=n+': your own '+(own.name||n)+' takes the place of the form’s.'; info.replaced[own.id]=1; if(info.notes.indexOf(nt)<0) info.notes.push(nt); return; } formW.push({id:'sf'+(k++),name:(cnt>1?cnt+' ':'')+n,count:cnt,kind:kind,hand:'main',base:'bab',abil:'str',dmgAbil:'str',mult:1,dice:dice(d),dtype:'',crit:'×2',range:'',enh:0,mw:false,atk:'',dmg:'',notes:extra||'',_form:true}); },
     rock:function(){ formW.push({id:'sf'+(k++),name:'Rock',kind:'ranged',hand:'main',base:'bab',abil:'dex',dmgAbil:'str',mult:1.5,dice:dice('2d6'),dtype:'B',crit:'×2',range:(20+10*Math.floor(acl/2))+' ft.',enh:0,mw:false,atk:'',dmg:'',notes:'Rock throwing',_form:true}); },
@@ -1221,7 +1238,7 @@ function shapeView(c0,f,acl,D0){
   return {c:out,info:info};
 }
 function derive(ch){
-  TOFF=tempOffNames(ch); PERSX=persState(ch);
+  TOFF=tempOffNames(ch); TON=TOFF.length?tempOnNames(ch):[]; PERSX=persState(ch);
   var D0=deriveCore(ch,null), c=possActive(ch)?possHost(ch):null;
   if(!c){ var f=shapeForm(ch); if(!f) return D0; var acl=shapeCL(ch,D0), sv=shapeView(ch,f,acl,D0), D1=deriveCore(sv.c,null); D1.form=sv.info; D1.formW=sv.info.attacks; D1.ownHpMax=D0.hpMax; return D1; }
   var W=D0.wLvl||D0.lvl, hmods=(c.mods||[]).filter(function(m){ return m.on!==false&&hostModOk(c,m,W); }), hc=Object.assign({},c,{mods:hmods});
@@ -1331,7 +1348,7 @@ function deriveCore(ch,H){
   if(D.hpMax<1&&L) D.hpMax=1;
   /* armor and AC */
   /* size: base plus any size steps from buffs (Enlarge Person = +1) */
-  var bIdx=Math.max(0,SIZEK.indexOf(ch.size||'M')), szM=modsFor(ch,['size'],V), szS=stackLines(szM), cIdx=Math.max(0,Math.min(8,bIdx+szS));
+  var bIdx=Math.max(0,SIZEK.indexOf(ch.size||'M')), szM=modsFor(ch,['size'],V), szS=sizeSteps(szM), cIdx=Math.max(0,Math.min(8,bIdx+szS));
   D.size=SIZEK[cIdx]; D.sizeSteps=cIdx-bIdx; D.bd.size={lines:[{src:'Base size: '+SIZES[SIZEK[bIdx]][0],v:0,type:'base',counts:true}].concat(szM),total:SIZES[D.size][0],label:'Size'};
   var ar=ch.armor||{}, sh=ch.shield||{}, SZ=SIZES[D.size], sizeAC=SZ[1];
   var MA=MATS[ar.mat]||{}, MS=MATS[sh.mat]||{};
@@ -1385,11 +1402,11 @@ function deriveCore(ch,H){
   var savAb={fort:(ch.hpAb==='cha'?'cha':'con'),ref:'dex',will:'wis'};
   ['fort','ref','will'].forEach(function(s){ var hs=H&&s!=='will', hb=hs?H[s]-(s==='fort'?H.mod.con:H.mod.dex):0;
     D[s]=tot(s,{fort:'Fortitude',ref:'Reflex',will:'Will'}[s],[{src:hs?'Host body: '+(H.c.name||'host')+' (base save)':'Base save',v:hs?hb:base[s],type:'base'},{src:ABS[hs?(s==='fort'?'con':'dex'):savAb[s]],v:D.mod[hs?(s==='fort'?'con':'dex'):savAb[s]],type:'base'}],chain(s)); });
-  if(R.srSave){ D.sr0=modsFor(ch,['sr'],V); var srv=stackLines(D.sr0); if(srv>=5) ['fort','ref','will'].forEach(function(s){ (D.sit[s]=D.sit[s]||[]).push({src:'Spell resistance '+srv+' (house rule)',v:Math.floor(srv/5),type:'vs magic'}); }); }
-  D.sr=stackLines(modsFor(ch,['sr'],V)); D.bd.sr={lines:modsFor(ch,['sr'],V),total:D.sr,label:'Spell resistance'}; stackLines(D.bd.sr.lines);
+  if(R.srSave){ D.sr0=modsFor(ch,['sr'],V); var srv=bestOf(D.sr0); if(srv>=5) ['fort','ref','will'].forEach(function(s){ (D.sit[s]=D.sit[s]||[]).push({src:'Spell resistance '+srv+' (house rule)',v:Math.floor(srv/5),type:'vs magic'}); }); }
+  D.bd.sr={lines:modsFor(ch,['sr'],V),label:'Spell resistance'}; D.sr=D.bd.sr.total=bestOf(D.bd.sr.lines);
   /* damage reduction: the best value for each bypass; DR/— also takes modifiers */
   D.dr={}; (ch.dr||[]).concat(apropDR(ch)).concat(MA.dr&&MA.dr[armCat]?[{src:MA.n+' armor',val:String(MA.dr[ar.type]||MA.dr[armCat]),bypass:''}]:[]).forEach(function(d){ if(d.group){ var g=(ch.groups||[]).filter(function(x){return x.id===d.group;})[0]||(ch.customRules||[]).filter(function(r){return r.id===d.group;})[0]; if(!g||!g.on) return; } var v=evalF(d.val,V); if(isNaN(v)||v<=0) return; var bp=String(d.bypass==null?'':d.bypass).trim()||'—'; if(!D.dr[bp]||D.dr[bp].v<v) D.dr[bp]={v:v,src:d.src==null?'':String(d.src)}; });
-  var drm=stackLines(modsFor(ch,['dr'],V)); if(drm>0&&(!D.dr['—']||D.dr['—'].v<drm)) D.dr['—']={v:drm,src:'Modifiers'};
+  var drm=bestOf(modsFor(ch,['dr'],V)); if(drm>0&&(!D.dr['—']||D.dr['—'].v<drm)) D.dr['—']={v:drm,src:'Modifiers'};
   D.hardness=stackLines(modsFor(ch,['hardness'],V)); D.bd.hardness={lines:modsFor(ch,['hardness'],V),total:D.hardness,label:'Hardness'}; stackLines(D.bd.hardness.lines);
   D.resist={}; [['fire','Fire'],['cold','Cold'],['acid','Acid'],['elec','Electricity'],['sonic','Sonic']].forEach(function(r){ var l=modsFor(ch,['resist.'+r[0]],V), v=0, bi=-1; l.forEach(function(x,i){ if(x.v>v){ v=x.v; bi=i; } }); l.forEach(function(x,i){ x.counts=i===bi; }); /* resistances never stack: the best one counts */ if(v>0){ D.resist[r[0]]=v; D.bd['resist.'+r[0]]={lines:l,total:v,label:r[1]+' resistance'}; } });
   D.init=tot('init','Initiative',[{src:'Dex',v:D.mod.dex,type:'base'}],['init']);
@@ -4263,7 +4280,7 @@ function rSave(){
 function amt(){ var e=$('amt'); var v=e?parseInt(e.value,10):NaN; return isNaN(v)?0:Math.max(0,v); }
 function whyHTML(k){
   var b=D.bd[k]; if(!b) return '<p class="empty">No breakdown for this.</p>';
-  var h='<div class="why">'+b.lines.map(function(l){ return '<div class="'+(l.counts===false&&l.type!=='first'?'off':'')+'"><span>'+esc(l.src)+(l.type&&l.type!=='base'&&l.type!=='dex'&&l.type!=='first'?' <span class="tag">'+esc(l.type)+'</span>':'')+'</span><b>'+(l.type==='first'&&!l.v?'':l.type==='base'&&b.lines[0]===l&&!/^(Ranks|BAB|Base save|Casting|MSB|Caster)/.test(l.src)?l.v:sgn(l.v))+'</b></div>'; }).join('')+
+  var h='<div class="why">'+b.lines.map(function(l){ return '<div class="'+(l.counts===false&&l.type!=='first'?'off':'')+'"><span>'+esc(l.src)+(l.type&&l.type!=='base'&&l.type!=='dex'&&l.type!=='first'?' <span class="tag">'+esc(l.type)+'</span>':'')+(l.why&&l.counts===false?' <span class="note">('+esc(l.why)+')</span>':'')+'</span><b>'+(l.type==='first'&&!l.v?'':l.type==='base'&&b.lines[0]===l&&!/^(Ranks|BAB|Base save|Casting|MSB|Caster)/.test(l.src)?l.v:sgn(l.v))+'</b></div>'; }).join('')+
     '<div class="tot"><span>Total</span><span class="goldtxt">'+(/^(ac|cmd|hp|speed|cl|sp|dc|mdc|msd|str|dex|con|int|wis|cha|sr|talents|util)$/.test(k)?b.total:sgn(b.total))+(k==='speed'?' ft':'')+'</span></div></div>';
   if(b.note) h+='<p class="note">'+esc(b.note)+'</p>';
   if(D.sit[k]) h+='<p class="sit">Situational, not included: '+D.sit[k].map(function(x){ return sgn(x.v)+' '+esc(x.src)+(x.note?' ('+esc(x.note)+')':''); }).join('; ')+'</p>';

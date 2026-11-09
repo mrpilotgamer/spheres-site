@@ -956,6 +956,34 @@ function check(what, got, want) {
     }
   }
 
+  console.log('Stacking');
+  {
+    const mk = (mods, extra) => page.evaluate(([mods, extra]) => { const id = 'zz-stk'; localStorage.setItem('spheres-sheet-v1:' + id, JSON.stringify(Object.assign({ app: 'spheres-sheet', v: 1, id, name: 'Stk', classes: {}, levels: [],
+      mods: mods.map((m, i) => Object.assign({ id: 'm' + i, type: 'untyped', when: 'always', group: '' }, m)) }, extra || {}))); localStorage.setItem('spheres-sheet-v1:last', JSON.stringify(id)); }, [mods, extra]);
+    const show = async () => { await page.reload(); await page.waitForTimeout(300); await go('Play', 'Sheet'); };
+    await mk([{ src: 'New modifier', target: 'saves', val: '2' }, { src: 'New modifier', target: 'saves', val: '1' }]); await show();
+    check('two unnamed untyped modifiers both count', await tile('Will'), '+3');
+    await mk([{ src: 'Bless', target: 'saves', val: '2' }, { src: 'Bless', target: 'saves', val: '1' }]); await show();
+    check('the same named source still counts once', await tile('Will'), '+2');
+    await mk([{ src: 'Enlarge Person', target: 'size', val: '1' }, { src: 'Size Change', target: 'size', val: '1', type: 'size' },
+      { src: 'Enlarge Person', target: 'str', val: '2', type: 'size' }, { src: 'Size Change', target: 'str', val: '2', type: 'size' },
+      { src: 'Enlarge Person', target: 'dex', val: '-2', type: 'size' }, { src: 'Size Change', target: 'dex', val: '-2', type: 'size' }]); await show();
+    check('two size increases: one size larger, one Str bonus, one Dex penalty (AC 10 −1 Dex −1 size)', [await tile('Str'), await tile('Dex'), await tile('AC')].join(' '), '12 8 8');
+    await mk([{ src: 'Enlarge Person', target: 'size', val: '1' }, { src: 'Reduce Person', target: 'size', val: '-1' }]); await show();
+    check('a size increase and decrease cancel', await tile('AC'), '10');
+    await mk([{ src: 'Racial', target: 'sr', val: '17', type: 'racial' }, { src: 'Spell Resistance spell', target: 'sr', val: '22' }, { src: 'R2', target: 'dr', val: '2' }, { src: 'R3', target: 'dr', val: '3' }]); await show();
+    check('spell resistance and DR/— take the best, not the sum', [await tile('SR'), await tile('DR')].join(' '), '22 3/—');
+    await mk([{ src: 'Power: bonus', target: 'saves', val: '1' }],
+      { tempSrc: [{ id: 't1', name: 'Source', slots: '1', on: false }], extraPicks: [{ kind: 'talent', name: 'Power', sphere: 'Destruction', tkind: 'magic', temp: 't1' }, { kind: 'feat', name: 'Power Attack' }],
+        actions: [{ id: 'a1', name: 'Power Attack', act: 'free' }, { id: 'a2', name: 'Power blast', act: 'standard' }] }); await show();
+    const greyed = async n => page.locator('.act', { hasText: n }).first().locator('[data-a="useAct"]').isDisabled();
+    check('a temporary talent that’s off pauses “Power: bonus” and “Power blast”, not the Power Attack feat’s action', [await tile('Will'), await greyed('Power blast'), await greyed('Power Attack')].join(' '), '+0 true false');
+    await mk([{ src: 'Half', target: 'saves', val: '.5*4' }, { src: 'Half2', target: 'saves', val: 'half of close' }]); await show();
+    check('formulas: “.5*4” and “half of close” (25 ft at CL 0)', await tile('Will'), '+14');
+    await mk([], { conds: { Sickened: true, Nauseated: true } }); await show();
+    check('Nauseated doesn’t hide Sickened’s −2', await tile('Will'), '−2');
+  }
+
   check('no page errors', errors.length ? errors.join(' | ') : 'none', 'none');
   await browser.close();
   console.log(`\n${pass} passed, ${fail} failed`);

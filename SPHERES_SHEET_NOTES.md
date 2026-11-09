@@ -94,7 +94,7 @@ won't match the installed browser), then:
 also need the sign-in emulator, `npx firebase emulators:exec --config firebase.emulators.json --only firestore,auth
 --project demo-spheres "node tests/party-check.js"` (same for `save-check.js`). `firebase.emulators.json` is
 `firebase.json` plus the auth and emulator settings; it's only for tests. GitHub doesn't run these three.
-Last full run: 2026-11-09 (review fixes), `check.js` 286, `talents-check.js` 31 (the others unchanged since the playtest batch: `rules-check.js` 70, `party-check.js` 31,
+Last full run: 2026-11-09 (review fixes, class data, stacking), `check.js` 310, `talents-check.js` 31 (the others unchanged since the playtest batch: `rules-check.js` 70, `party-check.js` 31,
 `save-check.js` 12): all passed.
 
 **Rollback:** Firebase console → Hosting → release history → roll back. With GitHub: also revert the commit (the
@@ -422,7 +422,10 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
 
 **Pathfinder core:**
 - **Stacking:** same-type bonuses don't stack; untyped, dodge, circumstance and penalties add up.
-  The same source never counts twice.
+  The same source never counts twice; a modifier row still called "New modifier" (or unnamed) is its own source (`l.sk`).
+  Lines that don't count say why in the breakdown (`l.why`). Size changes don't stack: the biggest increase and the biggest
+  decrease count (`sizeSteps`), and only the biggest size-typed penalty counts. Spell resistance and DR/— modifiers take the
+  best one (`bestOf`), like resistances. Hardness modifiers still add (2026-11-09: left as is, talents say "+N hardness").
 - **AC:** touch and flat-footed computed; armor max Dex applies; masterwork reduces the armor
   check penalty by 1.
 - **Size:** Fine to Colossal, affecting AC, attack, CMB/CMD, Stealth and Fly. Tiny or smaller
@@ -486,6 +489,16 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
     outside (boot, import, backup restore, share and party views, opening a character) goes through `safeChar`, which returns null
     instead of throwing, so the sheet says the character is damaged instead of showing a blank page. Restore compares ids with
     `Object.create(null)`, so ids like `toString` aren't skipped. A failing import or other promise action now shows a message.
+  - **Class data (checked against the wiki class tables):** Braggart and Etherslinger aren't spherecasters; Thaumaturge ½
+    talent per level, Magemage 1; Troubadour ½ (combat) plus magic talents at 5th and every 4 levels; Incanter +1 at odd levels;
+    Mageknight 1 bonus talent; Hive ½ rounded up (`'0.5up'`); Cyborg prestige saves. New class setting `talx` ("More talents from
+    class features": `odd`, `m5`, see `TALX`/`talxFor`); class-list entries can carry `bt` (bonus talents), `tx` (`talx`) and
+    `nt` (a note). Characters made from the old entries keep their old class settings: edit the class on the Build tab.
+  - **Build script:** "Talents Types" headings aren't talent sections (removed the fake Death talent "Dominion"; 4217 talents).
+  - **Stacking and formulas:** see "Stacking" above. Temporary-talent pausing (`tempPaused`) needs a word break after the name
+    and skips sources that start with a longer pick you have that is on (`TON`): "Power Attack" isn't paused by a temporary
+    talent "Power" when you have the Power Attack feat. Shapeshift DCs use this derive's numbers, not the last drawn. Nauseated
+    no longer hides Sickened. Formulas read leading decimals (`.5*lvl`) and `half of ranks.diplomacy`.
 
 - **Raised undead (Death sphere Reanimate), 2026-11-05.** Undead companions can be worked out from a corpse.
   - **Data (2026-11-05, v3):** `c.rean = {tmpl:'skeleton'|'zombie'|'none', vars:[ids], what, flysrc:'wings'|'magic', hands, ex,
