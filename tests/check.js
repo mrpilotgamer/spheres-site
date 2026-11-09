@@ -840,13 +840,86 @@ function check(what, got, want) {
     ['a null log row and a numeric sphere', { log: [null], levels: [{ picks: [{ kind: 'talent', name: 'A', sphere: 5 }] }] }],
     ['broken skill abilities and trade overlaps', { skillAbil: { intim: { a: 'luck' }, bluff: 'x', climb: null, diplo: { a: 'str', why: 5 } }, traditions: { trade: { on: true, plus4: 'handle' } } }],
     ['broken wiki links', { extraPicks: [{ kind: 'talent', name: 'A', sphere: 'Nature', ref: 'x' }, { kind: 'talent', name: 'B', ref: { s: 5, n: null } }], traditions: { casting: { on: true, drawbacks: [{ name: 'C', ref: [] }] } }, sphDrawbacks: [{ sphere: 'Nature', name: 'D', ref: { s: 'drawbacks' } }] }],
-    ['“constructor” as a theme, condition and form', { theme: { preset: 'constructor' }, conds: { constructor: true }, forms: [{ id: 'f', tf: 'constructor' }] }]];
+    ['“constructor” as a theme, condition and form', { theme: { preset: 'constructor' }, conds: { constructor: true }, forms: [{ id: 'f', tf: 'constructor' }] }],
+    ['level picks and ranks that are not lists', { levels: [{ picks: 'y', ranks: 'x', cls: 5 }, { picks: { a: 1 } }] }],
+    ['a numeric DR bypass and source', { dr: [{ val: '5', bypass: 5, src: 7 }] }],
+    ['fields of the wrong kind', { name: 'Damaged', race: { x: 1 }, player: ['a'], notes: 'x', abil: 'x', baseSpeed: { a: 1 } }]];
   for (const [what, extra] of damaged) {
     const before = errors.length;
     await page.evaluate(x => { const id = 'dmg1'; localStorage.setItem('spheres-sheet-v1:' + id, JSON.stringify(Object.assign({ app: 'spheres-sheet', v: 1, id, name: 'Damaged' }, x))); localStorage.setItem('spheres-sheet-v1:last', JSON.stringify(id)); }, extra);
     await page.reload(); await page.waitForTimeout(300);
     for (const t of ['sheet', 'build', 'trad', 'skills', 'talents', 'picks', 'comp', 'gear', 'mods', 'acts', 'save']) await page.evaluate(tt => { const b = document.querySelector('#tabbar [data-tab="' + tt + '"]'); if (b) b.click(); }, t);
     check('opens with ' + what, (await page.innerText('#cname')).trim() + (errors.length > before ? ' + errors' : ''), 'Damaged');
+  }
+
+  console.log('Review fixes');
+  {
+    /* DR text is escaped on the sheet and in print (it reaches other people through share links and parties) */
+    await page.evaluate(() => { const id = 'zz-xss'; localStorage.setItem('spheres-sheet-v1:' + id, JSON.stringify({ app: 'spheres-sheet', v: 1, id, name: 'Xss', levels: [], classes: {},
+      dr: [{ val: '5', bypass: '<img src=x onerror="window.__xss=1">', src: '<b id="xssb">S</b>' }] })); localStorage.setItem('spheres-sheet-v1:last', JSON.stringify(id)); });
+    await page.reload(); await page.waitForTimeout(400);
+    await page.evaluate(() => { const b = document.querySelector('#tabbar [data-tab="sheet"]'); if (b) b.click(); }); await page.waitForTimeout(200);
+    const dr = await tile('DR').catch(() => 'no tile');
+    check('DR text shows as text, not markup', dr + ' ' + await page.evaluate(() => !!window.__xss || !!document.getElementById('xssb')), '5/<img src=x onerror="window.__xss=1"> false');
+    await page.evaluate(() => { window.print = () => {}; const b = document.createElement('button'); b.dataset.a = 'print'; document.getElementById('main').appendChild(b); b.click(); }); await page.waitForTimeout(300);
+    check('…and in the print view', await page.evaluate(() => !!window.__xss || !!document.querySelector('#printView img') || !/<img src=x/.test(document.getElementById('printView').textContent)), false);
+
+    /* a fake account, for the cloud fixes */
+    const ex = async k => { const cx = await browser.newContext(), p = await cx.newPage(); await p.goto(FILE); await p.waitForTimeout(300); await p.click(`button[data-k="${k}"]`); await p.waitForTimeout(400);
+      const c = await p.evaluate(() => JSON.parse(localStorage.getItem('spheres-sheet-v1:' + JSON.parse(localStorage.getItem('spheres-sheet-v1:last'))))); await cx.close(); return c; };
+    const A = await ex('striker'), B = await ex('incanter');
+    const cloudPage = async (signedIn, theirs) => { const cx = await browser.newContext(), p = await cx.newPage(); p.on('pageerror', e => errors.push(e.message));
+      await p.addInitScript(([A, B, signedIn, theirs]) => { const K = 'spheres-sheet-v1'; if (!sessionStorage.getItem('i')) { sessionStorage.setItem('i', 1); localStorage.clear(); [A, B].forEach(c => localStorage.setItem(K + ':' + c.id, JSON.stringify(c))); localStorage.setItem(K + ':last', JSON.stringify(A.id)); }
+        const store = {}; window.__store = store; window.__puts = [];
+        window.SheetCloud = { redirectResult: () => Promise.resolve(null), onUser: cb => setTimeout(() => cb(signedIn ? { uid: 'u1', name: 'Pat', email: 'p@x' } : null), 0), current: () => signedIn ? { uid: 'u1' } : null,
+          list: () => Promise.resolve(Object.keys(store).map(id => ({ id, name: JSON.parse(store[id].json).name, savedAt: store[id].savedAt, meta: {} }))), get: id => Promise.resolve(store[id] || null),
+          put: (id, rec) => new Promise(r => setTimeout(() => { store[id] = rec; window.__puts.push(id + ':' + JSON.parse(rec.json).name); r({ size: 1000 }); }, 1500)),
+          partiesMine: () => Promise.resolve([]), shareGet: () => Promise.resolve({ json: JSON.stringify(theirs), savedAt: Date.now() }) }; }, [A, B, signedIn, theirs]);
+      return [cx, p]; };
+    const clickA = (p, a, id) => p.evaluate(([a, id]) => { const b = document.createElement('button'); b.dataset.a = a; if (id) b.dataset.id = id; document.getElementById('main').appendChild(b); b.click(); }, [a, id]);
+    const toBuild = p => p.evaluate(() => { const b = document.createElement('button'); b.dataset.tab = 'build'; document.getElementById('main').appendChild(b); b.click(); });
+
+    /* opening a share link straight after an edit doesn't save the shared character as yours */
+    const theirs = JSON.parse(JSON.stringify(B)); theirs.id = 'theirs12345'; theirs.name = 'Their Char'; delete theirs.histSnap;
+    let [cx, p] = await cloudPage(false, theirs);
+    await p.goto(FILE + '?share=theirs12345'); await p.waitForTimeout(400);
+    await toBuild(p); await p.waitForTimeout(150); await p.fill('[data-f="name"]', 'Tova Edited'); await p.press('[data-f="name"]', 'Tab'); await p.waitForTimeout(150);
+    await p.evaluate(() => window.dispatchEvent(new Event('sheet-cloud-ready'))); await p.waitForTimeout(4800);
+    check('a viewed share link isn’t saved into your characters', await p.evaluate(() => (document.getElementById('cname').textContent || '') + ' ' + Object.keys(localStorage).some(k => /theirs12345/.test(k))), 'Their Char false');
+    await cx.close();
+
+    /* switching characters while a save is on its way still sends the one you edited */
+    [cx, p] = await cloudPage(true, null);
+    await p.goto(FILE); await p.waitForTimeout(300); await p.evaluate(() => window.dispatchEvent(new Event('sheet-cloud-ready'))); await p.waitForTimeout(300);
+    await toBuild(p); await p.waitForTimeout(150); await p.fill('[data-f="name"]', 'A edited'); await p.press('[data-f="name"]', 'Tab'); await p.waitForTimeout(100);
+    await clickA(p, 'openChar', B.id); await p.waitForTimeout(6000);
+    check('an edit made mid-save reaches the account after switching characters', await p.evaluate(id => window.__store[id] && JSON.parse(window.__store[id].json).name, A.id), 'A edited');
+    await cx.close();
+
+    /* closing “Two saves found” without choosing keeps the newer copy */
+    const fs = require('fs'), os = require('os');
+    const tmp = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'sheet-')), 'saved.html');
+    const html = fs.readFileSync(path.resolve(__dirname, '..', 'public', 'index.html'), 'utf8');
+    const emb = Object.assign(JSON.parse(JSON.stringify(A)), { name: 'File copy', savedAt: 1000 });
+    fs.writeFileSync(tmp, html.replace(/(<script type="application\/json" id="savedState">)[\s\S]*?(<\/script>)/, (m, a, b) => a + JSON.stringify(emb).replace(/</g, '\\u003c') + b));
+    const cx2 = await browser.newContext(), p2 = await cx2.newPage(); p2.on('pageerror', e => errors.push(e.message));
+    await p2.addInitScript(c => { if (!sessionStorage.getItem('i')) { sessionStorage.setItem('i', 1); localStorage.setItem('spheres-sheet-v1:' + c.id, JSON.stringify(Object.assign(c, { name: 'Browser copy', savedAt: Date.now() }))); } }, JSON.parse(JSON.stringify(A)));
+    await p2.goto('file://' + tmp); await p2.waitForTimeout(500);
+    const asked = await p2.locator('.dlg-back').count(); await p2.keyboard.press('Escape'); await p2.waitForTimeout(400);
+    check('closing “Two saves found” keeps the newer copy', asked + ' ' + (await p2.innerText('#cname')).trim() + ' ' + await p2.evaluate(id => JSON.parse(localStorage.getItem('spheres-sheet-v1:' + id)).name, A.id), '1 Browser copy Browser copy');
+
+    /* a damaged character inside a saved file opens instead of leaving a blank page */
+    emb.levels = [{ picks: 'y' }]; emb.id = { a: 1 };
+    fs.writeFileSync(tmp, html.replace(/(<script type="application\/json" id="savedState">)[\s\S]*?(<\/script>)/, (m, a, b) => a + JSON.stringify(emb).replace(/</g, '\\u003c') + b));
+    const p3 = await cx2.newPage(); p3.on('pageerror', e => errors.push(e.message)); await p3.goto('file://' + tmp); await p3.waitForTimeout(500);
+    check('a damaged character in a saved file still opens', (await p3.innerText('#cname')).trim(), 'File copy');
+    await cx2.close(); fs.rmSync(path.dirname(tmp), { recursive: true, force: true });
+
+    /* importing a damaged file says so instead of failing silently */
+    await page.evaluate(() => { const b = document.createElement('button'); b.dataset.a = 'importJson'; document.getElementById('main').appendChild(b); b.click(); }); await page.waitForTimeout(200);
+    await page.fill('.dlg textarea[name="j"]', JSON.stringify({ app: 'spheres-sheet', id: 'toString', name: 'Imported', levels: [{ picks: 'y' }] }));
+    await page.click('.dlg button:has-text("Import")'); await page.waitForTimeout(400);
+    check('a file with broken level rows imports', (await page.innerText('#cname')).trim(), 'Imported');
   }
 
   check('no page errors', errors.length ? errors.join(' | ') : 'none', 'none');

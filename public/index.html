@@ -1385,7 +1385,7 @@ function deriveCore(ch,H){
   if(R.srSave){ D.sr0=modsFor(ch,['sr'],V); var srv=stackLines(D.sr0); if(srv>=5) ['fort','ref','will'].forEach(function(s){ (D.sit[s]=D.sit[s]||[]).push({src:'Spell resistance '+srv+' (house rule)',v:Math.floor(srv/5),type:'vs magic'}); }); }
   D.sr=stackLines(modsFor(ch,['sr'],V)); D.bd.sr={lines:modsFor(ch,['sr'],V),total:D.sr,label:'Spell resistance'}; stackLines(D.bd.sr.lines);
   /* damage reduction: the best value for each bypass; DR/— also takes modifiers */
-  D.dr={}; (ch.dr||[]).concat(apropDR(ch)).concat(MA.dr&&MA.dr[armCat]?[{src:MA.n+' armor',val:String(MA.dr[ar.type]||MA.dr[armCat]),bypass:''}]:[]).forEach(function(d){ if(d.group){ var g=(ch.groups||[]).filter(function(x){return x.id===d.group;})[0]||(ch.customRules||[]).filter(function(r){return r.id===d.group;})[0]; if(!g||!g.on) return; } var v=evalF(d.val,V); if(isNaN(v)||v<=0) return; var bp=(d.bypass||'—').trim()||'—'; if(!D.dr[bp]||D.dr[bp].v<v) D.dr[bp]={v:v,src:d.src||''}; });
+  D.dr={}; (ch.dr||[]).concat(apropDR(ch)).concat(MA.dr&&MA.dr[armCat]?[{src:MA.n+' armor',val:String(MA.dr[ar.type]||MA.dr[armCat]),bypass:''}]:[]).forEach(function(d){ if(d.group){ var g=(ch.groups||[]).filter(function(x){return x.id===d.group;})[0]||(ch.customRules||[]).filter(function(r){return r.id===d.group;})[0]; if(!g||!g.on) return; } var v=evalF(d.val,V); if(isNaN(v)||v<=0) return; var bp=String(d.bypass==null?'':d.bypass).trim()||'—'; if(!D.dr[bp]||D.dr[bp].v<v) D.dr[bp]={v:v,src:d.src==null?'':String(d.src)}; });
   var drm=stackLines(modsFor(ch,['dr'],V)); if(drm>0&&(!D.dr['—']||D.dr['—'].v<drm)) D.dr['—']={v:drm,src:'Modifiers'};
   D.hardness=stackLines(modsFor(ch,['hardness'],V)); D.bd.hardness={lines:modsFor(ch,['hardness'],V),total:D.hardness,label:'Hardness'}; stackLines(D.bd.hardness.lines);
   D.resist={}; [['fire','Fire'],['cold','Cold'],['acid','Acid'],['elec','Electricity'],['sonic','Sonic']].forEach(function(r){ var l=modsFor(ch,['resist.'+r[0]],V), v=0, bi=-1; l.forEach(function(x,i){ if(x.v>v){ v=x.v; bi=i; } }); l.forEach(function(x,i){ x.counts=i===bi; }); /* resistances never stack: the best one counts */ if(v>0){ D.resist[r[0]]=v; D.bd['resist.'+r[0]]={lines:l,total:v,label:r[1]+' resistance'}; } });
@@ -1524,7 +1524,8 @@ function own(o,k){ return !!o&&Object.prototype.hasOwnProperty.call(o,k); }
 function rulesFix(r){ if(!r||typeof r!=='object') return r; if(r.intPool||r.wisConc||r.wisDur||r.highDC) r.divCast=true; ['intPool','wisConc','wisDur','highDC'].forEach(function(k){ delete r[k]; }); return r; }
 function sanitizeChar(o){
   var b=blankChar(); if(!o||typeof o!=='object') return b;
-  Object.keys(b).forEach(function(k){ if(o[k]===undefined||o[k]===null) return; if(typeof b[k]==='object'&&!Array.isArray(b[k])&&b[k]!==null){ if(typeof o[k]==='object'&&!Array.isArray(o[k])) b[k]=Object.assign(b[k],o[k]); } else if(Array.isArray(b[k])){ if(Array.isArray(o[k])) b[k]=o[k]; } else b[k]=o[k]; });
+  Object.keys(b).forEach(function(k){ if(o[k]===undefined||o[k]===null) return; if(typeof b[k]==='object'&&!Array.isArray(b[k])&&b[k]!==null){ if(typeof o[k]==='object'&&!Array.isArray(o[k])) b[k]=Object.assign(b[k],o[k]); } else if(Array.isArray(b[k])){ if(Array.isArray(o[k])) b[k]=o[k]; } else if(typeof b[k]==='string'){ if(typeof o[k]==='string') b[k]=o[k]; else if(typeof o[k]==='number'||typeof o[k]==='boolean') b[k]=String(o[k]); } else if(typeof b[k]==='number'||typeof b[k]==='boolean'){ if(typeof o[k]!=='object') b[k]=o[k]; } else b[k]=o[k]; });
+  if(typeof b.id!=='string'||!/^[A-Za-z0-9_-]{1,96}$/.test(b.id)) b.id=uidG();
   Object.keys(b.classes).forEach(function(id){ var k=b.classes[id]=Object.assign(blankClass(),b.classes[id]); k.talents=own(TALP_OLD,k.talents)?TALP_OLD[k.talents]:own(TALP,k.talents)?k.talents:'auto';
     if(!Array.isArray(k.classSkills)) k.classSkills=[]; k.classSkills=k.classSkills.filter(function(x){ return typeof x==='string'; }); if(!Array.isArray(k.good)) k.good=[]; k.name=String(k.name==null?'':k.name); });
   Object.keys(b.conds).forEach(function(k){ if(!own(CONDM,k)||!b.conds[k]) delete b.conds[k]; });
@@ -1532,7 +1533,9 @@ function sanitizeChar(o){
   var t0=o.traditions&&typeof o.traditions==='object'?o.traditions:{}; b.traditions=Object.assign(blankTrads(),t0);
   ['casting','martial','trade'].forEach(function(k){ var x=b.traditions[k]=Object.assign(blankTrad(k),t0[k]&&typeof t0[k]==='object'?t0[k]:{});
     Object.keys(blankTrad(k)).forEach(function(f){ if(Array.isArray(blankTrad(k)[f])&&!Array.isArray(x[f])) x[f]=[]; }); });
-  b.levels=b.levels.filter(function(l){ return l&&typeof l==='object'; }).map(function(l){ return Object.assign({cls:'',hp:0,fcb:'none',inc:'',ranks:{},picks:[],note:''},l); });
+  b.levels=b.levels.filter(function(l){ return l&&typeof l==='object'; }).map(function(l){ l=Object.assign({cls:'',hp:0,fcb:'none',inc:'',ranks:{},picks:[],note:''},l);
+    l.picks=(Array.isArray(l.picks)?l.picks:[]).filter(function(x){ return x&&typeof x==='object'; }); if(!l.ranks||typeof l.ranks!=='object'||Array.isArray(l.ranks)) l.ranks={};
+    ['cls','fcb','inc','note'].forEach(function(f){ if(l[f]!=null&&typeof l[f]!=='string') l[f]=String(l[f]); }); return l; });
   var rows=function(a){ return (Array.isArray(a)?a:[]).filter(function(x){ return x&&typeof x==='object'; }); };
   ['mods','weapons','resources','actions','groups','gear','containers','dr','extraSkills','companions','customRules','rulings','extraPicks','forms','history'].forEach(function(k){ b[k]=rows(b[k]); });
   b.forms.forEach(function(f){ f.traits=rows(f.traits); if(!own(TF,f.tf)) f.tf='blank'; });
@@ -1576,6 +1579,7 @@ function sanitizeChar(o){
   b.resources.forEach(function(r){ if(['long','short','none','short0','long0'].indexOf(r.reset)<0) r.reset='long'; r.name=str(r.name); });
   b.groups.forEach(function(g){ g.name=str(g.name); });
   b.mods.forEach(function(m){ m.src=str(m.src); m.target=str(m.target); });
+  b.dr.forEach(function(d){ ['src','val','bypass','group'].forEach(function(f){ if(d[f]!=null) d[f]=str(d[f]); }); });
   b.actions.forEach(function(a){ ['name','save','text','sphere','range','dur','unit','cost','dc'].forEach(function(f){ if(a[f]!=null&&typeof a[f]!=='string') a[f]=String(a[f]); }); });
   b.actions.forEach(function(a){ if(a.fx!=null&&(typeof a.fx!=='object'||Array.isArray(a.fx))) delete a.fx; if(a.aug!=null) a.aug=rows(a.aug); fxMigrate(a); });
   if(b.shape&&(typeof b.shape!=='object'||!b.forms.some(function(f){ return f.id===b.shape.form; }))) b.shape=null;
@@ -1605,7 +1609,11 @@ function sanitizeChar(o){
   if(b.possess&&b.possess.mode!=='passive') b.possess.mode='active';
   return b;
 }
-var _exp={evalF:evalF,derive:derive,blankChar:blankChar,blankClass:blankClass,sanitizeChar:sanitizeChar,stackLines:stackLines};
+/* sanitizeChar for data from outside (a file, a backup, a share link, the account): null instead of an error if
+   the data is too damaged to clean, so callers can say so instead of leaving a blank page. Never saves anything. */
+function safeChar(o){ try{ return sanitizeChar(o); }catch(e){ try{ console.error(e); }catch(x){} return null; } }
+var DAMAGED='Part of that character is damaged, so the sheet can’t open it. Nothing was changed; the original file or saved copy is untouched.';
+var _exp={evalF:evalF,safeChar:safeChar,derive:derive,blankChar:blankChar,blankClass:blankClass,sanitizeChar:sanitizeChar,stackLines:stackLines};
 
 /* ===================== EXAMPLE CHARACTERS ===================== */
 function tidyTalents(c,tk){ c.levels.forEach(function(l){ (l.picks||[]).forEach(function(p){ if(p.kind!=='talent') return; if(p.sphere) p.name=p.name.replace(/^[^:]+:\s*/,''); if(!p.tkind) p.tkind=p.sphere==='Equipment'?'combat':tk; }); }); }
@@ -1945,13 +1953,13 @@ function histSync(c){ c=c||ch; if(!c) return false; ensureIds(c); var now=histKe
   Object.keys(old).forEach(function(k){ if(!now[k]){ histPush(c,{t:'remove',k:k,cat:old[k].c,text:old[k].n}); n++; } });
   c.histSnap=now; return n>0; }
 var histT=null;
-function histSoon(){ clearTimeout(histT); histT=setTimeout(function(){ histT=null; if(ch&&histSync(ch)){ lsSet(KEY+':'+ch.id,ch); cloudSoon(); if(UI.tab==='hist'&&!UI.home) paintSoon(); } },4000); }
+function histSoon(){ var c=ch; clearTimeout(histT); histT=setTimeout(function(){ histT=null; if(!c||UI.ro&&ch===c) return; if(histSync(c)){ lsSet(KEY+':'+c.id,c); if(c===ch&&!UI.ro){ cloudSoon(); if(UI.tab==='hist'&&!UI.home) paintSoon(); } else cloudPush(c); } },4000); }
 function histNow(){ if(UI.ro) return; if(histT){ clearTimeout(histT); histT=null; } if(ch&&histSync(ch)){ lsSet(KEY+':'+ch.id,ch); cloudSoon(); } }
 var lsWarned=false;
 function save(){ if(!ch||UI.ro) return; histSoon(); ch.savedAt=Date.now(); var okL=lsSet(KEY+':'+ch.id,ch); lsSet(KEY+':last',ch.id); if(!okL&&!lsWarned){ lsWarned=true; toast('This browser’s storage for the sheet is full or blocked, so this device isn’t keeping a copy.'+(CL.user?' Your account still has it.':' Sign in or use Save file to keep it.')); } cloudSoon(); }
 /* ===================== CLOUD (Google account) ===================== */
 var HOSTED=/^https?:$/.test(location.protocol);
-var CL={ready:false,failed:false,user:null,list:null,status:'',bad:false,sent:{},hiddenAt:0}, pushT=null, pushing=false, pushAgain=false;
+var CL={ready:false,failed:false,user:null,list:null,status:'',bad:false,sent:{},hiddenAt:0}, pushT=null, pushing=false, pushQ=[];
 function classLineOf(c){ var cc=classCounts(c); return Object.keys(cc).map(function(id){ return ((c.classes[id]||{}).name||id)+' '+cc[id]; }).join(' / '); }
 function metaOf(c){ var m=(c&&c.meta)||{}; return {campaign:String(m.campaign||'').trim(),status:STATN[m.status]?m.status:'active',pin:!!m.pin}; }
 function partyNames(c){ return (c&&Array.isArray(c.parties)?c.parties:[]).filter(function(x){ return x&&(!CL.user||x.uid===CL.user.uid); }).map(function(x){ return {pid:String(x.pid||''),name:String(x.name||'').slice(0,80)}; }); }
@@ -1971,14 +1979,18 @@ function setStat(t,bad){ CL.status=t; CL.bad=!!bad; var el=$('cloudStat'); if(el
    sends a waiting save straight away. */
 var SAVE_WAIT=8000, SAVE_MAX=30000, pushFirst=0;
 function cloudSoon(){ if(!CL.user||!ch||UI.ro) return; setStat('Saving…'); if(!pushT) pushFirst=Date.now(); clearTimeout(pushT); pushT=setTimeout(cloudPush,Math.max(0,Math.min(SAVE_WAIT,pushFirst+SAVE_MAX-Date.now()))); }
-function cloudPush(){
-  clearTimeout(pushT); pushT=null; if(!CL.user||!ch||UI.ro) return; if(pushing){ pushAgain=true; return; }
-  var c=ch, sig=sentSig(c); if(CL.sent[sig.k]===sig.v){ setStat('Saved to your account'); return; }
+/* c: the character to send (default: the open one). A push asked for while another is running waits in pushQ,
+   one entry per character, so switching characters mid-push still sends the one that was edited. */
+function cloudPush(c){
+  if(!c||c===ch){ clearTimeout(pushT); pushT=null; } c=c||(UI.ro?null:ch); if(!CL.user||!c) return;
+  if(pushing){ pushQ=pushQ.filter(function(x){ return x.id!==c.id; }).concat([c]); return; }
+  var sig=sentSig(c); if(CL.sent[sig.k]===sig.v){ setStat('Saved to your account'); pushNext(); return; }
   pushing=true; var rec=cloudRec(c);
   window.SheetCloud.put(c.id,rec).then(function(res){ CL.sent[sig.k]=sig.v; sizeNote(c,res); setStat('Saved to your account'); try{ publishCopies(c); }catch(e){} if(CL.list){ CL.list=CL.list.filter(function(x){return x.id!==c.id;}).concat([listRec(c,rec)]); } })
     .catch(function(e){ setStat(cloudErrMsg(e,c),true); if(e&&e.code==='sheet/too-big'&&!CL.warned['big'+c.id]){ CL.warned['big'+c.id]=1; alertBox(cloudErrMsg(e,c)); } })
-    .then(function(){ pushing=false; if(pushAgain){ pushAgain=false; cloudPush(); } });
+    .then(function(){ pushing=false; pushNext(); });
 }
+function pushNext(){ var nx=pushQ.shift(); if(!nx) return; if(ch&&!UI.ro&&nx.id===ch.id) nx=ch; cloudPush(nx); }
 function refreshList(){ if(!CL.user) return; window.SheetCloud.list().then(function(l){ CL.list=l; if(UI.home||!ch) paint(); }).catch(function(e){ CL.list=[]; setStat('Couldn’t load your characters ('+(e&&e.code||'offline')+')',true); if(UI.home||!ch) paint(); }); }
 /* the open character: take the account's copy if it's newer (edited on another device), otherwise send ours */
 function syncOpen(){
@@ -2011,7 +2023,7 @@ function homeList(){ var map={}, add=function(x,where){ var m=map[x.id]||(map[x.
   if(ch&&!UI.ro&&!map[ch.id]&&(ch.levels||[]).length) add({id:ch.id,name:ch.name,summary:[classLineOf(ch),ch.race].filter(Boolean).join(' · '),savedAt:ch.savedAt||0,meta:metaOf(ch),level:ch.levels.length,parties:partyNames(ch)},'local');
   return Object.keys(map).map(function(k){ var m=map[k]; if(m.savedAt<0) m.savedAt=0; return m; }); }
 function campaigns(list){ var o={}; (list||homeList()).forEach(function(x){ if(x.meta.campaign) o[x.meta.campaign]=1; }); return Object.keys(o).sort(function(a,b){ return a.localeCompare(b); }); }
-function openChar(c,push){ if(pushT&&ch&&ch.id!==c.id) cloudPush(); ch=sanitizeChar(c); hist=[]; UI.home=false; UI.tab='sheet'; lsSet(KEY+':'+ch.id,ch); lsSet(KEY+':last',ch.id); if(push) cloudPush(); else if(CL.user) setStat('Saved to your account'); paint(); window.scrollTo(0,0); }
+function openChar(c,push){ var c1=safeChar(c); if(!c1){ alertBox(DAMAGED); return; } histNow(); if(pushT&&ch&&ch.id!==c.id) cloudPush(); ch=c1; hist=[]; UI.home=false; UI.tab='sheet'; lsSet(KEY+':'+ch.id,ch); lsSet(KEY+':last',ch.id); if(push) cloudPush(); else if(CL.user) setStat('Saved to your account'); paint(); window.scrollTo(0,0); }
 window.addEventListener('sheet-cloud-ready',function(){ CL.ready=true; if(LINK&&LINK.kind==='share') linkGo();
   var redir=false; try{ redir=sessionStorage.getItem('sheetAuthRedirect')==='1'; sessionStorage.removeItem('sheetAuthRedirect'); }catch(e){}
   var rr=window.SheetCloud.redirectResult?window.SheetCloud.redirectResult():Promise.resolve(null);
@@ -2028,7 +2040,7 @@ window.addEventListener('focus',function(){ if(CL.ready&&!CL.user&&window.SheetC
    on another device. A quick look at Roll20 and back costs nothing. Sign-in and opening a character always check. */
 var SYNC_AWAY=60000;
 document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='hidden'){ CL.hiddenAt=Date.now(); histNow(); if(pushT) cloudPush(); pubFlush(); } else if(Date.now()-(CL.hiddenAt||0)>=SYNC_AWAY) syncOpen(); });
-window.addEventListener('beforeunload',function(e){ if(pushT){ cloudPush(); } if(pushing||pushT){ e.preventDefault(); e.returnValue=''; } });
+window.addEventListener('beforeunload',function(e){ if(pushT){ cloudPush(); } if(pushing||pushT||pushQ.length){ e.preventDefault(); e.returnValue=''; } });
 /* ===================== SHARING AND PARTIES (beta) =====================
    Share links: a read-only copy of one character (shares/{id}) that anyone with the link can open.
    Parties: a GM's live dashboard of the characters that joined (parties/{id}/members), each with a read-only copy (sheets/).
@@ -2079,7 +2091,7 @@ function publishCopies(c){ if(!CL.user||!window.SheetCloud||!window.SheetCloud.s
     pubThrottle('sp:'+lk,30000,function(){ (PUB.mp[lk]||Promise.resolve()).then(function(){ return window.SheetCloud.sheetPut(p.pid,key,R()); }).catch(function(){}); }); }); }
 /* ---------- read-only viewer (a share link, or a GM opening a party member) ---------- */
 var RO_OK={why:1,sphToggle:1,allSk:1,fhelp:1,roExit:1,signIn:1};
-function roOpen(c,info){ if(pushT&&!UI.ro) cloudPush(); if(!UI.ro) UI.roPrev={ch:ch,hist:hist,tab:UI.tab,home:UI.home}; ch=sanitizeChar(c); hist=[]; UI.ro=info; UI.home=false; UI.tab='sheet'; paint(); window.scrollTo(0,0); }
+function roOpen(c,info){ var c1=safeChar(c); if(!c1){ alertBox(DAMAGED); return; } histNow(); if(pushT&&!UI.ro) cloudPush(); if(!UI.ro) UI.roPrev={ch:ch,hist:hist,tab:UI.tab,home:UI.home}; ch=c1; hist=[]; UI.ro=info; UI.home=false; UI.tab='sheet'; paint(); window.scrollTo(0,0); }
 function roExit(){ var p=UI.roPrev||{}; UI.ro=null; UI.roPrev=null; ch=p.ch||null; hist=p.hist||[]; UI.tab=p.tab||'sheet'; UI.home=!ch||!!p.home; paint(); window.scrollTo(0,0); }
 /* nothing in a viewed sheet can be changed: fields off, buttons other than looking (breakdowns, folding) off */
 function roLock(root){ if(!UI.ro||!root) return; root.querySelectorAll('[draggable]').forEach(function(e){ e.removeAttribute('draggable'); }); root.querySelectorAll('input,select,textarea').forEach(function(e){ e.disabled=true; }); root.querySelectorAll('[data-a]').forEach(function(b){ if(!RO_OK[b.dataset.a]) b.disabled=true; }); }
@@ -2336,7 +2348,7 @@ function rSheet(){
     tileB('ac','AC',D.ac,'touch '+D.touch+' · flat-footed '+D.ff,trend('ac'))+tileB('fort','Fortitude',sgn(D.fort),'',trend('fort'))+tileB('ref','Reflex',sgn(D.ref),'',trend('ref'))+tileB('will','Will',sgn(D.will),'',trend('will'))+
     tileB('cmd','CMD',D.cmd,'',trend('cmd'))+tileB('init','Initiative',sgn(D.init),'',trend('init'))+tileB('speed','Speed',D.speed+' ft',(D.speed?'run '+D.run+' · charge '+D.charge:Object.keys(D.moves).length?'no land speed':'can’t move'),trend('speed'))+
       Object.keys(D.moves).map(function(m){ return tileB('speed.'+m,{climb:'Climb',swim:'Swim',fly:'Fly',burrow:'Burrow'}[m],D.moves[m]+' ft',m==='fly'?(D.flyMan||'average'):''); }).join('')+
-      (Object.keys(D.dr).length?tile('DR',Object.keys(D.dr).map(function(b){ return D.dr[b].v+'/'+b; }).join(', '),Object.keys(D.dr).map(function(b){return D.dr[b].src;}).filter(Boolean).join(', ')):'')+
+      (Object.keys(D.dr).length?tile('DR',Object.keys(D.dr).map(function(b){ return esc(D.dr[b].v+'/'+b); }).join(', '),Object.keys(D.dr).map(function(b){return D.dr[b].src;}).filter(Boolean).map(esc).join(', ')):'')+
       (D.hardness>0?tileB('hardness','Hardness',D.hardness,'subtract from each hit'):'')+
       Object.keys(D.resist).map(function(r){ return tileB('resist.'+r,'Resist '+{fire:'fire',cold:'cold',acid:'acid',elec:'electricity',sonic:'sonic'}[r],D.resist[r]); }).join('')+(D.sr?tileB('sr','SR',D.sr,R_note()):'')+'</div>';
   var sits=['ac','fort','ref','will'].map(function(k){ return D.sit[k]?'<div><b>'+({ac:'AC',fort:'Fort',ref:'Ref',will:'Will'})[k]+':</b> '+sitNote(k)+'</div>':''; }).join('');
@@ -4144,7 +4156,7 @@ function printHTML(){
   h+='<div class="stats">'+AB.map(function(a){ return '<div><div class="k">'+ABS[a]+'</div><div class="big">'+scTxt(a)+'</div>'+mdTxt(a)+'</div>'; }).join('')+'</div><div class="grid" style="margin-top:8pt"><div>';
   h+='<div class="blk"><h2>Hit points</h2>Max <span class="big">'+D.hpMax+'</span> &nbsp; Current <span class="box"></span> &nbsp; Temp <span class="box" style="min-width:28pt"></span> &nbsp; Nonlethal <span class="box" style="min-width:28pt"></span></div>';
   if(possHost()) h+='<div class="blk"><b>Possessing '+esc(possHost().name||'a host')+' ('+(possActive()?'active':'passive')+')</b>'+(possActive()?': Str, Dex, Con, AC, Fort, Ref, HP and size are the host’s.':'')+'</div>';
-  h+='<div class="blk"><h2>Defense</h2>'+T([['Armor class','<b>'+D.ac+'</b> (touch '+D.touch+', flat-footed '+D.ff+')'],['Fortitude / Reflex / Will',sgn(D.fort)+' / '+sgn(D.ref)+' / '+sgn(D.will)],['CMD',D.cmd],['Initiative',sgn(D.init)],['Speed',D.speed+' ft'+(Object.keys(D.moves).length?', '+Object.keys(D.moves).map(function(m){ return m+' '+D.moves[m]+' ft'; }).join(', '):'')+' · run '+D.run+' · charge '+D.charge]].concat(Object.keys(D.dr).length?[['DR',Object.keys(D.dr).map(function(b){ return D.dr[b].v+'/'+b; }).join(', ')]]:[]).concat(Object.keys(D.resist).length?[['Resistances',Object.keys(D.resist).map(function(r){ return r+' '+D.resist[r]; }).join(', ')]]:[]).concat(D.sr?[['Spell resistance',D.sr]]:[]))+
+  h+='<div class="blk"><h2>Defense</h2>'+T([['Armor class','<b>'+D.ac+'</b> (touch '+D.touch+', flat-footed '+D.ff+')'],['Fortitude / Reflex / Will',sgn(D.fort)+' / '+sgn(D.ref)+' / '+sgn(D.will)],['CMD',D.cmd],['Initiative',sgn(D.init)],['Speed',D.speed+' ft'+(Object.keys(D.moves).length?', '+Object.keys(D.moves).map(function(m){ return m+' '+D.moves[m]+' ft'; }).join(', '):'')+' · run '+D.run+' · charge '+D.charge]].concat(Object.keys(D.dr).length?[['DR',Object.keys(D.dr).map(function(b){ return esc(D.dr[b].v+'/'+b); }).join(', ')]]:[]).concat(Object.keys(D.resist).length?[['Resistances',Object.keys(D.resist).map(function(r){ return r+' '+D.resist[r]; }).join(', ')]]:[]).concat(D.sr?[['Spell resistance',D.sr]]:[]))+
     ((ch.cardNotes||{}).defence?'<div class="small">'+esc(ch.cardNotes.defence)+'</div>':'')+'</div>';
   h+='<div class="blk"><h2>Attacks</h2><div class="small">BAB '+sgn(D.bab)+' · CMB '+sgn(D.cmb)+'</div>'+T((ch.weapons||[]).map(function(w){ var a=D.atk[w.id]||{its:[],dice:''}; return [esc(w.name||'Weapon'),a.its.map(sgn).join('/'),esc(a.dice||'')+(a.dmg?sgn(a.dmg):''),esc([w.crit,w.range,w.dtype].filter(Boolean).join(' '))]; }),['Weapon','Attack','Damage','Crit / range'])+
     (ch.profs?'<div class="small">Proficiencies: '+esc(ch.profs)+'</div>':'')+((ch.cardNotes||{}).attacks?'<div class="small">'+esc(ch.cardNotes.attacks)+'</div>':'')+'</div>';
@@ -4776,16 +4788,18 @@ var A={
   importJson:function(){ return pickFile('Import a character','A character exported from this sheet, or a “Back up all characters” file.').then(function(o){ if(!o) return null;
     if(o.app==='spheres-sheet-backup'&&Array.isArray(o.chars)){ restoreBackup(o.chars); return null; }
     if(o.app!=='spheres-sheet'){ alertBox('That isn’t a character from this sheet.'); return null; }
-    return function(){ var dup=homeList().some(function(x){ return x.id===o.id; }); ch=sanitizeChar(noLinks(o)); if(dup){ ch.id=uidG(); ch.name=(ch.name||'Character')+' (imported)'; } hist=[]; UI.home=false; UI.tab='sheet'; log('Imported '+(ch.name||'a character')+(dup?' as a separate copy (that one was already in your list).':'.')); }; }); },
+    var c1=safeChar(noLinks(o)); if(!c1){ alertBox(DAMAGED); return null; }
+    return function(){ var dup=homeList().some(function(x){ return x.id===c1.id; }); ch=c1; if(dup){ ch.id=uidG(); ch.name=(ch.name||'Character')+' (imported)'; } hist=[]; UI.home=false; UI.tab='sheet'; log('Imported '+(ch.name||'a character')+(dup?' as a separate copy (that one was already in your list).':'.')); }; }); },
   levelUp:function(){ return levelUpFlow(); }
 };
 /* share links and party memberships stay with the account that made them: never taken from a file */
 function noLinks(c){ if(c&&typeof c==='object'){ delete c.share; c.parties=[]; } return c; }
-function restoreBackup(cs){ cs=cs.filter(function(c){ return c&&c.app==='spheres-sheet'&&c.id; }).map(noLinks); var have={}; homeList().forEach(function(x){ have[x.id]=x.savedAt||0; });
+function restoreBackup(cs){ var n0c=cs.length; cs=cs.filter(function(c){ return c&&c.app==='spheres-sheet'&&c.id; }).map(function(c){ var s0=c.savedAt; c=safeChar(noLinks(c)); if(c) c.savedAt=typeof s0==='number'?s0:0; return c; }).filter(Boolean);
+  var bad=n0c-cs.length, have=Object.create(null); homeList().forEach(function(x){ have[x.id]=x.savedAt||0; });
   var nw=cs.filter(function(c){ return !(c.id in have); }).length, upd=cs.filter(function(c){ return c.id in have&&(c.savedAt||0)>have[c.id]; }).length, old=cs.length-nw-upd;
-  confirmBox('Restore '+plural(cs.length,'character')+'?',plural(nw,'new character')+', '+plural(upd,'newer copy','newer copies')+' replacing what’s here'+(old?', and '+old+' skipped because what you have is the same or newer':'')+'.','Restore').then(function(ok){ if(!ok) return;
+  confirmBox('Restore '+plural(cs.length,'character')+'?',plural(nw,'new character')+', '+plural(upd,'newer copy','newer copies')+' replacing what’s here'+(old?', and '+old+' skipped because what you have is the same or newer':'')+'.'+(bad?' '+plural(bad,'entry','entries')+' in the file '+(bad===1?'is':'are')+' damaged and will be left out.':''),'Restore').then(function(ok){ if(!ok) return;
     var todo=cs.filter(function(c){ return !(c.id in have)||(c.savedAt||0)>have[c.id]; });
-    Promise.all(todo.map(function(c0){ var c=sanitizeChar(c0); c.savedAt=c0.savedAt||Date.now(); lsSet(KEY+':'+c.id,c); if(ch&&ch.id===c.id){ ch=c; hist=[]; } if(!CL.user) return; var rec=cloudRec(c); return window.SheetCloud.put(c.id,rec).then(function(){ CL.list=(CL.list||[]).filter(function(x){ return x.id!==c.id; }).concat([listRec(c,rec)]); }); }))
+    Promise.all(todo.map(function(c){ c.savedAt=c.savedAt||Date.now(); lsSet(KEY+':'+c.id,c); if(ch&&ch.id===c.id){ ch=c; hist=[]; } if(!CL.user) return; var rec=cloudRec(c); return window.SheetCloud.put(c.id,rec).then(function(){ CL.list=(CL.list||[]).filter(function(x){ return x.id!==c.id; }).concat([listRec(c,rec)]); }); }))
       .then(function(){ toast('Restored '+plural(todo.length,'character')+'.'); }).catch(function(e){ alertBox('Some characters didn’t reach your account: '+cloudErrMsg(e)); }).then(function(){ UI.home=true; paint(); }); }); }
 function slug(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'sheet'; }
 function download(name,text,type){ try{ var b=new Blob([text],{type:type||'application/octet-stream'}), a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=name; document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); },1500); return true; }catch(e){ return false; } }
@@ -4979,7 +4993,8 @@ function runAction(f,el){
   var before=ch?JSON.stringify(ch):'null', r=f(el);
   if(r==='skip') return;
   if(r==='ui'){ paint(); return; }
-  if(r&&typeof r.then==='function'){ r.then(function(mut){ if(typeof mut!=='function'){ paint(); return; } var pre=ch?JSON.stringify(ch):null, preId=ch&&ch.id; mut(); if(pre&&ch&&ch.id===preId) remember(pre); save(); paint(); showToast(); }); return; }
+  if(r&&typeof r.then==='function'){ r.then(function(mut){ if(typeof mut!=='function'){ paint(); return; } var pre=ch?JSON.stringify(ch):null, preId=ch&&ch.id; mut(); if(pre&&ch&&ch.id===preId) remember(pre); save(); paint(); showToast(); })
+    .catch(function(e){ try{ console.error(e); }catch(x){} alertBox('That didn’t work: '+(e&&e.message||e)+'. Nothing was saved.'); paint(); }); return; }
   if(ch&&before!=='null') remember(before); save(); paint(); showToast();
 }
 function showToast(){ if(UI.toast){ var m=UI.toast; UI.toast=null; toast(m); } }
@@ -5091,15 +5106,16 @@ document.addEventListener('keydown',function(e){
   if(emb&&emb.app==='spheres-sheet'){
     var loc=lsGet(KEY+':'+emb.id);
     if(loc&&loc.savedAt&&emb.savedAt&&loc.savedAt!==emb.savedAt){
-      ch=sanitizeChar(emb); render();
+      ch=safeChar(emb); if(!ch){ ch=safeChar(loc); paint(); alertBox(DAMAGED); return; } render();
       modal({title:'Two saves found',html:'<p class="dlg-msg">This file holds '+esc(emb.name||'the character')+' as saved '+esc(new Date(emb.savedAt).toLocaleString())+'.\nThis browser has a copy from '+esc(new Date(loc.savedAt).toLocaleString())+'.\n\nWhich should the sheet use?</p>',
         buttons:[{label:'The file’s',value:'emb'},{label:'This browser’s'+(loc.savedAt>emb.savedAt?' (newer)':''),value:'loc',primary:loc.savedAt>emb.savedAt}]})
-        .then(function(r){ if(r.value==='loc'){ ch=sanitizeChar(loc); } save(); paint(); });
+        /* closing the dialog without choosing (Esc, a click outside) keeps the newer copy, never the older one */
+        .then(function(r){ var pick=r&&r.value||(loc.savedAt>emb.savedAt?'loc':'emb'); if(pick==='loc'){ ch=safeChar(loc)||ch; } save(); paint(); });
       return;
     }
-    ch=sanitizeChar(emb);
+    ch=safeChar(emb); if(!ch){ paint(); alertBox(DAMAGED); return; }
   } else {
-    var last=lsGet(KEY+':last'); var o=last?lsGet(KEY+':'+last):null; if(o&&o.app==='spheres-sheet') ch=sanitizeChar(o);
+    var last=lsGet(KEY+':last'); var o=last?lsGet(KEY+':'+last):null; if(o&&o.app==='spheres-sheet'){ ch=safeChar(o); if(!ch){ paint(); alertBox(DAMAGED); return; } }
   }
   paint();
 })();

@@ -94,7 +94,7 @@ won't match the installed browser), then:
 also need the sign-in emulator, `npx firebase emulators:exec --config firebase.emulators.json --only firestore,auth
 --project demo-spheres "node tests/party-check.js"` (same for `save-check.js`). `firebase.emulators.json` is
 `firebase.json` plus the auth and emulator settings; it's only for tests. GitHub doesn't run these three.
-Last full run: 2026-11-08 (house rules), `check.js` 276, `talents-check.js` 31 (the others unchanged since the playtest batch: `rules-check.js` 70, `party-check.js` 31,
+Last full run: 2026-11-09 (review fixes), `check.js` 286, `talents-check.js` 31 (the others unchanged since the playtest batch: `rules-check.js` 70, `party-check.js` 31,
 `save-check.js` 12): all passed.
 
 **Rollback:** Firebase console → Hosting → release history → roll back. With GitHub: also revert the commit (the
@@ -475,6 +475,17 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
 ---
 
 ## Open items and ideas
+
+- **Review fixes, 2026-11-09.** From a code review; each has a check under "Review fixes" or "Damaged saves" in `check.js`.
+  - DR "bypassed by" and source text are escaped on the Sheet tab and in print; they reach other people through share links and parties.
+  - The 4-second history timer works on the character that was edited and does nothing while a shared or party sheet is open, and
+    `openChar`/`roOpen` flush it first. Before, opening a share link just after an edit saved the other player's character as yours.
+  - Cloud pushes asked for while one is running wait in `pushQ`, one per character, so switching characters mid-save still sends the edited one.
+  - Closing "Two saves found" without choosing keeps the newer copy (it used to take the file's and overwrite the browser's).
+  - `sanitizeChar` cleans level rows (`picks`, `ranks`), DR row fields, top-level fields of the wrong kind and invalid ids. Data from
+    outside (boot, import, backup restore, share and party views, opening a character) goes through `safeChar`, which returns null
+    instead of throwing, so the sheet says the character is damaged instead of showing a blank page. Restore compares ids with
+    `Object.create(null)`, so ids like `toString` aren't skipped. A failing import or other promise action now shows a message.
 
 - **Raised undead (Death sphere Reanimate), 2026-11-05.** Undead companions can be worked out from a corpse.
   - **Data (2026-11-05, v3):** `c.rean = {tmpl:'skeleton'|'zombie'|'none', vars:[ids], what, flysrc:'wings'|'magic', hands, ex,
