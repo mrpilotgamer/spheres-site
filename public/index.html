@@ -689,6 +689,9 @@ var HOUSE=[
     ['min4','Minimum 4 + Int skill ranks','Any class with fewer than 4 skill ranks per level gets 4 + Int instead.'],
     ['avgHP','Average hit points every level','The level-up dialog fills in the average (half the die + 1) instead of asking for a roll.'],
     ['maxFirst','Maximum hit points at 1st level','Standard rule; on by default.']]],
+  ['Companions',[
+    ['compLimit','Companion limits','In an encounter, active companions: 2 + 1 per 3 character levels; of those, companions that gain talents: 1 + 1 per 4 levels. Up to 4 identical companions that don’t gain talents can form a pack, which counts as one and acts on one turn (1 pack active; 2 from 10th level). A mount you’re riding counts only if it gains talents. The sheet warns; it never stops you.'],
+    ['packBonus','Pack attack bonus','With Companion limits: +2 on a pack’s attack roll when 2 or more members attack the same target.']]],
   ['Talents',[
     ['advLimit','Advanced talents: 1, +1 per 5 levels','Advanced, legendary and exceptional talents share one limit: 1 at 1st level, 2 at 5th, 3 at 10th, and so on. The Talents tab counts them (from the wiki’s lists, or ones you mark yourself) and warns when you go over.']]]
 ];
@@ -1596,6 +1599,7 @@ function sanitizeChar(o){
   b.log=(Array.isArray(b.log)?b.log.slice(0,200):[]).filter(function(x){ return x&&typeof x==='object'; }).map(function(x){ return {t:str(x.t),at:n0(x.at)}; });
   b.companions.forEach(function(c){ var bc=blankComp(c.kind||'conj'); c.abil=Object.assign({},bc.abil,c.abil&&typeof c.abil==='object'?c.abil:{}); c.inc=Object.assign({},bc.inc,c.inc&&typeof c.inc==='object'?c.inc:{});
     ['attacks','mods','traits'].forEach(function(f){ c[f]=rows(c[f]); }); if(!Array.isArray(c.good)) c.good=[];
+    if(['auto','yes','no'].indexOf(c.talents)<0) delete c.talents; if(typeof c.pack!=='string'||!/^p\d{1,3}$/.test(c.pack)) delete c.pack;
     if(c.coh!=null){ if(typeof c.coh!=='object'||Array.isArray(c.coh)) delete c.coh; else c.coh={prof:own(COH_P,c.coh.prof)?c.coh.prof:'',troop:!!c.coh.troop}; }
     if(c.rean!=null){ if(typeof c.rean!=='object'||Array.isArray(c.rean)) delete c.rean; else { var R=Object.assign(reanBlank(),c.rean), num=function(v,d){ v=Number(v); return isFinite(v)?v:d; };
       R.tmpl=R.tmpl==='skeleton'||R.tmpl==='none'?R.tmpl:'zombie'; R.vars=(Array.isArray(R.vars)?R.vars:[]).filter(function(v){ return typeof v==='string'&&RN_VARS[R.tmpl==='none'?'zombie':R.tmpl].concat(R.tmpl==='none'?RN_VARS.skeleton:[]).some(function(x){ return x[0]===v; }); }); R.v2=!!c.rean.v2;
@@ -2487,7 +2491,11 @@ function rSheet(){
   }
   /* companions */
   var cps=(ch.companions||[]).map(function(c,i){ return {c:c,i:i}; }).filter(function(x){ return x.c.on!==false&&x.c.kind!=='host'&&!(ch.possess&&ch.possess.host===x.c.id); });
-  if(cps.length) h+='<section class="card"><div class="cardhead"><h2>Companions</h2><button class="link" data-tab="comp">Open Companions</button></div>'+cps.map(function(x){ return '<div style="padding:6px 0;border-bottom:1px solid var(--soft)"><b>'+esc(x.c.name||'Unnamed')+'</b> <span class="note">'+esc(CKN[x.c.kind]||'')+'</span>'+(x.c.shape&&compStats(x.c).form?' <span class="tag gold">In form: '+esc(compStats(x.c).form.name)+'</span>':'')+(reanOn(x.c)&&x.c.rean.left!=null?' <span class="tag">'+esc(shapeLeft(x.c.rean))+' left</span>':'')+compSummary(x.c,x.i,true)+'</div>'; }).join('')+'</section>';
+  var LIM=compLimits(), packsDone={};
+  if(cps.length) h+='<section class="card"><div class="cardhead"><h2>Companions</h2>'+(LIM?'<span class="tag'+(LIM.over?' bad':'')+'" title="Companion limits (house rule)">'+LIM.active+' / '+LIM.cap+' active · '+LIM.tal+' / '+LIM.talCap+' with talents</span>':'')+'<button class="link" data-tab="comp">Open Companions</button></div>'+cps.map(function(x){
+      /* a pack (house rule): one block for all its members, drawn where its first member is */
+      if(LIM&&x.c.pack&&!compTalented(x.c)){ if(packsDone[x.c.pack]) return ''; packsDone[x.c.pack]=1; return packBlock(x.c.pack); }
+      return '<div style="padding:6px 0;border-bottom:1px solid var(--soft)"><b>'+esc(x.c.name||'Unnamed')+'</b> <span class="note">'+esc(CKN[x.c.kind]||'')+'</span>'+(x.c.shape&&compStats(x.c).form?' <span class="tag gold">In form: '+esc(compStats(x.c).form.name)+'</span>':'')+(reanOn(x.c)&&x.c.rean.left!=null?' <span class="tag">'+esc(shapeLeft(x.c.rean))+' left</span>':'')+compSummary(x.c,x.i,true)+'</div>'; }).join('')+'</section>';
   h+='</div><div class="col">';
   /* possession */
   if(possHost()) h+=possStrip();
@@ -3509,12 +3517,38 @@ function reanInfo(x,o){ var I=x._rean, R=x.rean, v=I.v, dt=I.dt, hd=I.hd, skel=I
 function reanPool(skip){ var act=(ch.companions||[]).filter(function(c){ return c.kind==='undead'&&c.on!==false&&c.id!==skip; }), used=0, sust=0;
   act.forEach(function(c){ var o=compStats(c); if(o.rean){ used+=o.rean.counts; if(c.rean.dur==='conc') sust++; } else used+=o.hd; });
   var dt=deathTal(), dcl=deathCL(); return {used:used,pool:[2,4,5][dt.greater]*dcl,sust:sust,n:act.length}; }
+/* ---------- house rule: companion limits (and packs) ----------
+   c.talents: 'auto' (from the kind) | 'yes' | 'no'.  c.pack: '' or a pack id ('p1', 'p2'…), for companions that don't gain talents.
+   "Active" is the companion's Present button. A mount you're riding (ch.mount) counts only if it gains talents. */
+var COMP_TAL={conj:1,cohort:1};
+function compTalented(c){ return c.talents==='yes'?true:c.talents==='no'?false:!!COMP_TAL[c.kind]; }
+function compInPlay(c){ return !!c&&c.kind!=='host'&&c.on!==false&&!(ch.possess&&ch.possess.host===c.id); }
+function riddenMount(c){ return !!(c&&ch.mount&&ch.mount.on&&ch.mount.id===c.id); }
+function packIds(){ var o=[]; (ch.companions||[]).forEach(function(c){ if(c.pack&&o.indexOf(c.pack)<0) o.push(c.pack); }); return o.sort(function(a,b){ return parseInt(a.slice(1),10)-parseInt(b.slice(1),10); }); }
+function packName(pid){ return 'Pack '+String(pid).slice(1); }
+function packMembers(pid){ return (ch.companions||[]).filter(function(c){ return c.pack===pid; }); }
+/* "the same creature with the same statistics": everything that makes its numbers, not its name, hit points taken or notes */
+function compSig(c){ var o={}; ['kind','form','size','hd','die','bab','good','abil','inc','noAb','hpAb','hpF','na','armor','shield','speed','attacks','mods','traits','coh'].forEach(function(k){ o[k]=c[k]; });
+  if(c.rean) o.rean={tmpl:c.rean.tmpl,vars:c.rean.vars,what:c.rean.what,flysrc:c.rean.flysrc,energy:c.rean.energy,hands:c.rean.hands}; return JSON.stringify(o); }
+function packProblems(pid){ var M=packMembers(pid), out=[]; if(M.length>4) out.push(M.length+' members (at most 4)');
+  if(M.some(compTalented)) out.push('a member that gains talents can’t be in a pack');
+  if(M.length>1&&M.some(function(c){ return compSig(c)!==compSig(M[0]); })) out.push('members aren’t identical (same creature, same statistics)');
+  return out; }
+function compLimits(){ if(!ch||!ch.rules||!ch.rules.compLimit) return null; var L=Math.max(1,(ch.levels||[]).length);
+  var R={L:L,cap:2+Math.floor(L/3),talCap:1+Math.floor(L/4),packCap:L>=10?2:1,active:0,tal:0,packs:[]};
+  (ch.companions||[]).forEach(function(c){ if(!compInPlay(c)) return; var t=compTalented(c); if(riddenMount(c)&&!t) return;
+    if(t){ R.tal++; R.active++; return; } if(c.pack){ if(R.packs.indexOf(c.pack)<0) R.packs.push(c.pack); return; } R.active++; });
+  R.active+=R.packs.length; R.over=R.active>R.cap||R.tal>R.talCap||R.packs.length>R.packCap; return R; }
+function compLimitWarn(){ var R=compLimits(); if(!R||!R.over) return ''; return 'Over the companion limits: '+[R.active>R.cap?R.active+' active of '+R.cap:'',R.tal>R.talCap?R.tal+' that gain talents of '+R.talCap:'',R.packs.length>R.packCap?R.packs.length+' packs of '+R.packCap:''].filter(Boolean).join(', ')+'.'; }
 function compCaps(){
   var out=[], und=(ch.companions||[]).filter(function(c){ return c.kind==='undead'; });
   if(und.length){ var P=reanPool(); out.push(['Raised undead (Hit Dice in use, cap = '+[2,4,5][deathTal().greater]+' × Death caster level '+deathCL()+')'+(P.sust>1?': only one sustained undead is allowed':''),P.used,P.pool,P.sust>1]); }
   /* Leadership sphere, Recruit: "their total Hit Dice cannot exceed your ranks in Diplomacy" */
   var coh=(ch.companions||[]).filter(function(c){ return c.kind==='cohort'; }); if(coh.length&&leadOn()){ var LP=leadPool(); out.push(['Recruited cohorts (Hit Dice, cap = Diplomacy ranks'+(LP.lt.greater?' × '+(1+LP.lt.greater)+' with Greater Recruitment':'')+')',LP.used,LP.cap]); }
   var tam=(ch.companions||[]).filter(function(c){ return c.kind==='tamed'; }); if(tam.length) out.push(['Tamed animals (Hit Dice, cap = Handle Animal ranks)',tam.reduce(function(s2,c){ return s2+compStats(c).hd; },0),(D.skills.handle||{}).ranks||0]);
+  var R=compLimits(); if(R){ out.push(['Active companions (2 + 1 per 3 levels; a pack counts as 1'+(ch.mount&&ch.mount.on?'; a ridden mount only if it gains talents':'')+')',R.active,R.cap]);
+    out.push(['Active companions that gain talents (1 + 1 per 4 levels)',R.tal,R.talCap]); if(packIds().length||R.packs.length) out.push(['Packs active (1; 2 from 10th level)',R.packs.length,R.packCap]);
+    packIds().forEach(function(pid){ var pr=packProblems(pid); if(pr.length) out.push([packName(pid)+': '+pr.join('; '),packMembers(pid).length,4,true]); }); }
   return out;
 }
 /* the reanimation strip on an undead card: what it is, the casting check, its time left, and Raise / Collapse */
@@ -3572,10 +3606,30 @@ function compSummary(c,i,full){
 }
 function compPossEd(c,p){ return (tabOn('poss')?'<details data-keep="cmp-poss-'+esc(c.id)+'"><summary style="font-size:13px">Possession'+(c.possFree?' · free':'')+'</summary><div class="fields">'+fT(p+'cr','CR (blank = HD − 2; 1/2 works)',' style="width:7rem"')+selF(p+'bodyType','Body type (which slots, hands)',BODIES.map(function(b){ return [b[0],b[1]]; }),compBody(c))+'</div>'+
       fC(p+'tempHost','Remove it when a possession of it ends')+fC(p+'freshHost','New body each time (its damage resets when you possess it, e.g. Anima elementals)')+fC(p+'possFree','Possessing it costs no spell point (e.g. Greater Path Possession, your Object Ride refuge)')+'</details>':''); }
+/* the companion-limits choices on a card: does it gain talents; which pack it's in (only companions that don't gain talents) */
+function compLimitRow(c,i,p){ var t=compTalented(c), pk=packIds(), cur=c.pack||'';
+  var h='<div class="fields" style="margin:4px 0 2px">'+fS(p+'talents','Gains talents',[['auto','Auto ('+(COMP_TAL[c.kind]?'yes':'no')+' for '+(CKN[c.kind]||'this kind').toLowerCase()+')'],['yes','Yes'],['no','No']]);
+  if(!t) h+='<label class="fld"><span>Pack</span><select data-cpack="'+i+'"><option value="">None</option>'+pk.map(function(pid){ return '<option value="'+esc(pid)+'"'+(cur===pid?' selected':'')+'>'+esc(packName(pid))+' ('+packMembers(pid).length+')</option>'; }).join('')+'<option value="new">New pack</option></select></label>';
+  h+='</div>';
+  if(c.pack&&t) h+='<p class="note warn" style="margin:0 0 4px">'+esc(packName(c.pack))+': a companion that gains talents can’t be in a pack. <button class="link" data-a="cPackOut" data-i="'+i+'">Take it out</button></p>';
+  else if(c.pack){ var pr=packProblems(c.pack); h+='<p class="note'+(pr.length?' warn':'')+'" style="margin:0 0 4px">In '+esc(packName(c.pack))+' with '+(packMembers(c.pack).length-1)+' other'+(packMembers(c.pack).length===2?'':'s')+'. A pack counts as one companion and acts on one turn; members switch Active together.'+(pr.length?' '+esc(pr.join('; '))+'.':'')+'</p>'; }
+  return h; }
+/* a pack on the Sheet: each member's hit points, the shared numbers and attacks once (one attack roll for the pack) */
+function packBlock(pid){ var M=(ch.companions||[]).map(function(c,i){ return {c:c,i:i}; }).filter(function(x){ return x.c.pack===pid&&compInPlay(x.c); }); if(!M.length) return '';
+  var f=M[0], o=compStats(f.c), pr=packProblems(pid), n=M.length, bonus=!!ch.rules.packBonus;
+  var h='<div style="padding:6px 0;border-bottom:1px solid var(--soft)"><b>'+esc(packName(pid))+'</b> <span class="note">'+n+' × '+esc(f.c.name||CKN[f.c.kind]||'creature')+' · one turn, counts as one companion</span>'+(pr.length?'<p class="note warn" style="margin:2px 0">'+esc(pr.join('; '))+'</p>':'');
+  h+='<div class="list" style="margin:4px 0">'+M.map(function(x){ var ox=compStats(x.c), cur=ox.hpMax-n0(x.c.dmg), pct=Math.max(0,Math.min(100,cur/ox.hpMax*100));
+    return '<div class="li" style="padding:3px 0;flex-wrap:wrap;gap:4px 8px"><span style="flex:1 1 120px">'+esc(x.c.name||'Member')+'</span><span><b>'+cur+'</b> / '+ox.hpMax+' hp'+(n0(x.c.temp)?' <span class="tag gold">+'+n0(x.c.temp)+'</span>':'')+'</span><span style="flex:1 1 80px"><span class="bar" style="display:block"><i class="'+(pct<=25?'crit':pct<=50?'low':'')+'" style="width:'+pct+'%"></i></span></span>'+
+      '<input type="number" id="camt-'+esc(x.c.id)+'" min="0" value="5" aria-label="Amount for '+esc(x.c.name||'member')+'" style="width:4rem"><button class="mini" data-a="cHp" data-k="dmg" data-i="'+x.i+'">Damage</button><button class="mini" data-a="cHp" data-k="heal" data-i="'+x.i+'">Heal</button></div>'; }).join('')+'</div>';
+  h+='<div class="tiles" style="grid-template-columns:repeat(auto-fit,minmax(92px,1fr))">'+tile('AC',o.ac,'touch '+o.touch+' · flat-footed '+o.ff)+tile('Fort',sgn(o.fort))+tile('Ref',sgn(o.ref))+tile('Will',sgn(o.will))+tile('Init',sgn(o.init))+tile('CMB / CMD',sgn(o.cmb)+' / '+o.cmd)+'</div>';
+  if(o.attacks.length) h+='<div style="margin-top:6px">'+o.attacks.map(function(a){ return '<div class="atk" style="margin-bottom:4px"><b class="nm">'+esc(a.name||'Attack')+' × '+n+'</b><span class="hit">'+a.its.map(sgn).join('/')+(bonus?' <span class="note">('+a.its.map(function(v){ return sgn(v+2); }).join('/')+' if 2+ attack one target)</span>':'')+'</span><span>'+esc(a.dice||'')+(a.dmg?sgn(a.dmg):'')+(a.extra?' plus '+esc(a.extra):'')+'</span></div>'; }).join('')+'</div>';
+  h+='<p class="note" style="margin:4px 0 0">Members attacking the same target: roll one attack and apply it to each; roll damage once and apply it for each that hits. Members can’t aid or buff each other. Forming or breaking a pack: free out of combat, a standard action in combat.</p></div>';
+  return h; }
 function compCard(c,i){
   var p='companions.'+i+'.', o=compStats(c), conj=c.kind==='conj';
   var h='<section class="card" id="cmp-'+esc(c.id)+'"><div class="cardhead"><span class="row" style="margin:0;flex:1 1 300px"><input type="text" data-f="'+p+'name" value="'+esc(c.name)+'" placeholder="Name" aria-label="Companion name" style="font-family:var(--f-display);font-size:20px;font-weight:700;flex:1 1 180px"><span class="tag">'+esc(CKN[c.kind]||'Creature')+'</span></span>'+
-    '<span class="row" style="margin:0">'+(ch.possess&&ch.possess.host===c.id?'<span class="tag gold">Possessed</span>':tabOn('poss')&&(!ch.possess||ch.possessCollective)?'<button class="mini" data-a="possStart" data-i="'+i+'">Possess</button>':'')+'<button class="mini" data-a="cOn" data-i="'+i+'" aria-pressed="'+(c.on!==false)+'">'+(c.on!==false?'Present':'Not present')+'</button><button class="mini danger" data-a="cDel" data-i="'+i+'">Remove</button></span></div>';
+    '<span class="row" style="margin:0">'+(ch.possess&&ch.possess.host===c.id?'<span class="tag gold">Possessed</span>':tabOn('poss')&&(!ch.possess||ch.possessCollective)?'<button class="mini" data-a="possStart" data-i="'+i+'">Possess</button>':'')+'<button class="mini" data-a="cOn" data-i="'+i+'" aria-pressed="'+(c.on!==false)+'"'+(ch.rules.compLimit?' title="Active: taking part in this encounter (counts toward Companion limits)"':'')+'>'+(c.on!==false?(ch.rules.compLimit?'Active':'Present'):(ch.rules.compLimit?'Not active':'Not present'))+'</button><button class="mini danger" data-a="cDel" data-i="'+i+'">Remove</button></span></div>';
+  if(ch.rules.compLimit&&c.kind!=='host') h+=compLimitRow(c,i,p);
   if(o.form) h+='<div class="li" style="border:1px solid var(--gold);border-radius:var(--r);padding:8px 10px;margin:6px 0;flex-wrap:wrap;gap:6px 10px;display:flex"><span style="flex:1 1 220px"><b>In form: '+esc(o.form.name)+'</b> <span class="tag gold">'+esc(o.form.tf)+'</span><br><span class="note">'+esc(o.form.notes.join(' · '))+'</span></span>'+shapeTimerBtns(c.shape,c.id)+'<button class="mini" data-a="shapeEnd" data-id="'+esc(c.id)+'">Dismiss</button></div>';
   if(o.rean) h+=reanStrip(c,i,o);
   if(c.kind==='cohort') h+=cohortStrip(c,i);
@@ -4517,7 +4571,11 @@ var A={
   reanStart:function(el){ var c=ch.companions[+el.dataset.i]; if(!c||c.kind!=='undead') return 'skip'; if(c.rean){ c.rean.v2=false; reanClean(c); c.rean.tmpl=c.rean.tmpl==='skeleton'?'skeleton':'zombie'; say((c.name||'The undead')+' is worked out from its corpse again.'); return; } c.rean=reanBlank(); c.rean.v2=false; reanClean(c); c.attacks=(c.attacks||[]).filter(function(a){ return !/^(slam|claws?)$/i.test(String(a.name||'').trim()); }); say((c.name||'The undead')+' is now worked out from its corpse.'); },
   cAdd:function(){ var k=($('cmp-kind')||{}).value||'conj', c=blankComp(k); c.name=k==='conj'?'Companion':''; ch.companions=(ch.companions||[]).concat([c]); UI.focusNew='[data-f="companions.'+(ch.companions.length-1)+'.name"]'; log('Added a companion ('+CKN[k]+').'); },
   cDel:function(el){ var i=+el.dataset.i, c=ch.companions[i]; if(!c) return 'skip'; var mine=(ch.gear||[]).filter(function(g){ return (g.where||'')==='c:'+c.id; }).length; return askRemove(c.name?'“'+c.name+'”':'this companion',(mine?'What it carries ('+plural(mine,'item')+') goes back to you. ':'')+(ch.possess&&ch.possess.host===c.id?'Your possession of it ends.':''),function(){ if(ch.possess&&ch.possess.host===c.id) possLeave(false); ch.companions=ch.companions.filter(function(x){ return x!==c; }); (ch.gear||[]).concat(ch.containers||[]).forEach(function(g){ if((g.where||'')==='c:'+c.id) g.where=''; }); }); },
-  cOn:function(el){ var c=ch.companions[+el.dataset.i]; if(c){ c.on=c.on===false; log((c.name||'Companion')+(c.on?' is present.':' is gone.')); } },
+  cOn:function(el){ var c=ch.companions[+el.dataset.i]; if(!c) return 'skip'; var on=c.on===false, rule=!!ch.rules.compLimit;
+    var grp=rule&&c.pack?packMembers(c.pack):[c]; grp.forEach(function(x){ x.on=on; });
+    log((c.pack&&rule?packName(c.pack)+' ('+grp.length+')':(c.name||'Companion'))+(on?(rule?' is active.':' is present.'):(rule?' is no longer active.':' is gone.')));
+    var w=on?compLimitWarn():''; if(w) UI.toast=w; },
+  cPackOut:function(el){ var c=ch.companions[+el.dataset.i]; if(!c) return 'skip'; c.pack=''; },
   cHp:function(el){ var i=+el.dataset.i, c=ch.companions[i]; if(!c) return 'skip'; var inp=$('camt-'+c.id), n=Math.max(0,parseInt(inp&&inp.value,10)||0); if(!n) return 'skip'; var k=el.dataset.k;
     if(k==='dmg'){ var t=Math.min(n0(c.temp),n); c.temp=n0(c.temp)-t; c.dmg=n0(c.dmg)+(n-t); } else if(k==='heal') c.dmg=Math.max(0,n0(c.dmg)-n); else c.temp=Math.max(n0(c.temp),n);
     log((c.name||'Companion')+': '+(k==='dmg'?'took '+n+' damage':k==='heal'?'healed '+n:'temporary hp '+n)+'.'); },
@@ -5229,6 +5287,12 @@ document.addEventListener('change',function(e){
     if(t.checked){ gb.role='sphere'; var gs=String(gb.sphere||'').trim(); if(!gs){ var mm=/^(.+?)(\s+sphere)?$/i.exec(String(gb.name||'').trim()); gs=gb.sphere=mm?mm[1]:''; }
       if(!String(gb.name||'').trim()&&gs) gb.name=gs+' sphere'; if(!abilList(gb).length&&libFor(gs)) gb.abilities=baseAb(gs); log('“'+(gb.name||'Base sphere')+'” is a base sphere from your tradition.'); }
     else gb.role='talent'; }
+  else if(t.dataset.cpack!==undefined){ var cp=ch.companions[+t.dataset.cpack]; if(!cp) return; var pv=t.value;
+    if(pv==='new'){ var used=packIds(), pn=1; while(used.indexOf('p'+pn)>=0) pn++; pv='p'+pn; }
+    if(pv&&!/^p\d{1,3}$/.test(pv)) return; cp.pack=pv;
+    /* joining a pack: take the pack's Active state, since members switch together */
+    var mem=pv?packMembers(pv).filter(function(x){ return x!==cp; }):[]; if(mem.length) cp.on=mem[0].on!==false;
+    log((cp.name||'Companion')+(pv?' is in '+packName(pv)+'.':' left its pack.')); }
   else if(t.dataset.kpreset!==undefined){ if(t.value==='') return; var kp=KPRESETS[+t.value], kid='k'+uidG().slice(1);
     ch.containers=(ch.containers||[]).concat([kp?{id:kid,name:kp[0],wt:kp[1],cap:kp[2],extradim:kp[3],price:kp[4],strBonus:kp[5],where:''}:{id:kid,name:'',wt:0,cap:0,extradim:false,price:0,strBonus:0,where:''}]); UI.openNew='kc-'+kid; if(!kp) UI.focusNew='[data-f="containers.'+(ch.containers.length-1)+'.name"]'; log('Added '+(kp?kp[0]:'a container')+'.'); }
   else if(t.dataset.cform!==undefined){ var cc=ch.companions[+t.dataset.cform]; if(!cc) return; applyForm(cc,t.value); log((cc.name||'Companion')+' is now a '+t.value+' form.'); }

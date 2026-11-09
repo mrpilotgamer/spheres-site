@@ -1174,6 +1174,49 @@ function check(what, got, want) {
     check('a trade tradition that keeps class lists gives no multiclass talents', (await tile('Talents used')).replace(/^\d+ \/ /, ''), '0');
   }
 
+  console.log('House rule: companion limits and packs');
+  {
+    const skel = (id, name, extra) => Object.assign({ id, name, kind: 'undead', on: true, hd: '2', abil: { str: 15, dex: 14, con: 10, int: 10, wis: 10, cha: 10 }, attacks: [{ name: 'Claw', kind: 'primary', ab: 'str', dice: '1d4' }] }, extra || {});
+    /* a new id each time: the open sheet saves its own copy as the page unloads, which would overwrite a test character with the same id */
+    let cid = '', nCid = 0;
+    const mk = (lv, comps, rules) => page.evaluate(([lv, comps, rules, id]) => { localStorage.setItem('spheres-sheet-v1:' + id, JSON.stringify({ app: 'spheres-sheet', v: 1, id, name: 'Leader',
+      classes: { c1: { name: 'Hero', hd: 8, bab: '3/4', good: ['will'], skills: 4, talents: 'none' } }, levels: Array.from({ length: lv }, () => ({ cls: 'c1', hp: 5, picks: [] })), companions: comps, rules: Object.assign({ maxFirst: true, compLimit: true }, rules || {}) }));
+      localStorage.setItem('spheres-sheet-v1:last', JSON.stringify(id)); }, [lv, comps, rules, cid = 'zz-comp' + (++nCid)]);
+    const stored = () => page.evaluate(id => JSON.parse(localStorage.getItem('spheres-sheet-v1:' + id)), cid);
+    const capLine = async label => { const t = await page.locator('#main .li', { hasText: label }).first().innerText().catch(() => ''); const m = /(\d+)\s*\/\s*(\d+)\s*$/.exec(t.replace(/\s+/g, ' ').trim()); return m ? m[1] + '/' + m[2] : 'none'; };
+    const comps = [{ id: 'k1', name: 'Fido', kind: 'conj', on: true }, { id: 'k2', name: 'Rex', kind: 'conj', on: true },
+      skel('s1', 'Bones 1', { pack: 'p1' }), skel('s2', 'Bones 2', { pack: 'p1' }), skel('s3', 'Bones 3', { pack: 'p1' }), { id: 't1', name: 'Wolf', kind: 'tamed', on: true }];
+    /* the document's table: level → active, with talents */
+    for (const [lv, act, tal] of [[1, 2, 1], [3, 3, 1], [4, 3, 2], [9, 5, 3], [12, 6, 4], [16, 7, 5], [20, 8, 6]]) {
+      await mk(lv, [], {}); await page.reload(); await page.waitForTimeout(250); await go('Character', 'Companions');
+      await page.evaluate(() => { const b = document.createElement('button'); b.dataset.a = 'cAdd'; document.getElementById('main').appendChild(b); b.click(); }); await page.waitForTimeout(150);
+      check('limits at level ' + lv + ' (table: ' + act + ' active, ' + tal + ' with talents)', [(await capLine('Active companions (2')).split('/')[1], (await capLine('that gain talents')).split('/')[1]].join(' '), act + ' ' + tal);
+    }
+    await mk(4, comps); await page.reload(); await page.waitForTimeout(300); await go('Character', 'Companions');
+    check('level 4: 2 Conjuration companions (talents) + a pack of 3 skeletons (counts 1) + a wolf = 4 active of 3', [await capLine('Active companions (2'), await capLine('that gain talents'), await capLine('Packs active')].join(' '), '4/3 2/2 1/1');
+    check('…over a limit shows red', await page.locator('#main .li', { hasText: 'Active companions (2' }).first().locator('b.bad').count(), '1');
+    check('the button reads Active / Not active under the rule', (await page.locator('[data-a="cOn"]').first().innerText()).trim(), 'Active');
+    const card = n => page.locator('section.card', { has: page.locator(`input[value="${n}"]`) }).first();
+    await card('Bones 2').locator('[data-a="cOn"]').click(); await page.waitForTimeout(250);
+    check('switching one pack member switches the whole pack', (await stored()).companions.filter(c => c.pack === 'p1').map(c => c.on).join(','), 'false,false,false');
+    await card('Bones 1').locator('[data-a="cOn"]').click(); await page.waitForTimeout(250);
+    check('making the pack active again warns that it’s over the limit (and doesn’t block it)', [/Over the companion limits: 4 active of 3/.test(await page.locator('#toast').innerText().catch(() => '')), (await stored()).companions.filter(c => c.pack === 'p1').every(c => c.on)].join(' '), 'true true');
+    await card('Wolf').locator('select[data-f$=".talents"]').selectOption('yes'); await page.waitForTimeout(250);
+    check('“Gains talents: Yes” on the wolf counts it with talents', await capLine('that gain talents'), '3/2');
+    await mk(4, comps.slice(0, 5).concat([skel('s4', 'Bones 4', { pack: 'p1', hd: '3' }), skel('s5', 'Bones 5', { pack: 'p1' }), { id: 'k3', name: 'Ace', kind: 'cohort', on: true, pack: 'p1' }])); await page.reload(); await page.waitForTimeout(300); await go('Character', 'Companions');
+    const warn = await page.locator('#main .li', { hasText: 'Pack 1:' }).first().innerText().catch(() => '');
+    check('a pack warns: more than 4, a member with talents, members not identical', [/6 members \(at most 4\)/.test(warn), /gains talents can’t be in a pack/.test(warn), /aren’t identical/.test(warn)].join(' '), 'true true true');
+    await mk(10, comps.concat([skel('s6', 'Bones 6', { pack: 'p2' }), skel('s7', 'Bones 7', { pack: 'p3' })])); await page.reload(); await page.waitForTimeout(300); await go('Character', 'Companions');
+    check('10th level: 2 packs allowed (3 here)', await capLine('Packs active'), '3/2');
+    await go('Play', 'Sheet');
+    const pk = (await page.locator('#main section.card', { hasText: 'Pack 1' }).first().innerText().catch(() => '')).replace(/\s+/g, ' ');
+    check('the Sheet shows a pack as one block: each member’s hit points, the attack once', [/3 × Bones 1/.test(pk), (pk.match(/Claw × 3/g) || []).length, /roll one attack/.test(pk), /Bones 3/.test(pk)].join(' '), 'true 1 true true');
+    await mk(10, comps, { packBonus: true }); await page.reload(); await page.waitForTimeout(300); await go('Play', 'Sheet');
+    check('the +2 pack-attack switch shows the bonus on pack attacks', /if 2\+ attack one target/.test(await page.locator('#main').innerText()), true);
+    await mk(4, comps, { compLimit: false }); await page.reload(); await page.waitForTimeout(300); await go('Character', 'Companions');
+    check('with the rule off: Present, no limits', [(await page.locator('[data-a="cOn"]').first().innerText()).trim(), await capLine('Active companions (2')].join(' '), 'Present none');
+  }
+
   check('no page errors', errors.length ? errors.join(' | ') : 'none', 'none');
   await browser.close();
   console.log(`\n${pass} passed, ${fail} failed`);
