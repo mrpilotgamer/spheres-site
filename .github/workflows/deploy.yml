@@ -1,25 +1,68 @@
-# Test and deploy: on every push to main, run the checks; if they all pass, put the site live on Firebase Hosting.
+# Test and deploy.
+# - Every push to main, and every pull request: run all the checks (sheet, talent files, configs, and the database rules,
+#   party and save checks in the Firebase emulators).
+# - Pushes to main only: if every check passed, put the site live on Firebase Hosting.
 # The database rules (firestore.rules) are NOT deployed from here: deploy those by hand (firebase deploy --only firestore).
+# Tool versions are pinned so a new release of a tool can't turn the checks red on its own; raise them on purpose.
 name: Test and deploy
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:   # adds a "Run workflow" button on the Actions tab
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  test-and-deploy:
+  test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
           node-version: 22
-      - name: Check the talent description files
-        run: node tests/talents-check.js
-      - name: Install the test browser
-        run: npm install --no-save playwright && npx playwright install --with-deps chromium
+      - uses: actions/setup-java@v4   # the Firebase emulators need Java
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Check the talent description files and the Firebase configs
+        run: node tests/talents-check.js && node tests/config-check.js
+      - name: Install the test tools
+        run: |
+          npm install --no-save --no-package-lock playwright@1.63.0 firebase-tools@13.35.1 firebase@10.12.2 @firebase/rules-unit-testing@3.0.4
+          npx playwright install --with-deps chromium
       - name: Check the sheet (example characters, wiki text, adding talents...)
         run: node tests/check.js
+      - name: Check the database rules (emulator)
+        run: npx firebase emulators:exec --only firestore --project demo-spheres "node tests/rules-check.js"
+      - name: Check share links and parties (emulator)
+        run: npx firebase emulators:exec --config firebase.emulators.json --only firestore,auth --project demo-spheres "node tests/party-check.js"
+      - name: Check how often the sheet saves (emulator)
+        run: npx firebase emulators:exec --config firebase.emulators.json --only firestore,auth --project demo-spheres "node tests/save-check.js"
+
+  deploy:
+    needs: test
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: deploy-live
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5   # the deploy's own pre-check (firebase.json "predeploy") runs node
+        with:
+          node-version: 22
       - name: Deploy to Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
