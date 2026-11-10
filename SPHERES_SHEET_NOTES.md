@@ -96,7 +96,7 @@ also need the sign-in emulator, `npx firebase emulators:exec --config firebase.e
 `firebase.json` plus the auth and emulator settings; it's only for tests. `tests/config-check.js` (5 checks, no installs)
 fails if the two configs' hosting settings drift apart. `tests/csp-check.js` (6 checks; needs Playwright and the `firebase`
 package) checks the script policy against the page. GitHub runs all seven (since 2026-11-09).
-Last full run: 2026-11-10 (times taken, mass level-up), `check.js` 390, `talents-check.js` 31, `config-check.js` 5, `rules-check.js` 90,
+Last full run: 2026-11-10 (level plan), `check.js` 407, `talents-check.js` 31, `config-check.js` 5, `rules-check.js` 90,
 `party-check.js` 36, `save-check.js` 12: all passed.
 
 **Rollback:** Firebase console → Hosting → release history → roll back. With GitHub: also revert the commit (the
@@ -491,7 +491,21 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
   the table's method (rolled tables: the sheet rolls each level, shown on the review with "Reroll hit points").
   Feats, talents and skill ranks are left to place afterwards: the review and the toast say how many ("To choose
   afterwards"). Each level is its own entry (picks empty); the history gets one "Reached levels X–Y at once" line.
-  Level planning (next) will fill these levels from the plan.
+  Planned levels (below) fill these levels in.
+- **Level plan (2026-11-10).** Advanced → Level plan (`rPlan`, tab `plan`). `ch.plan` = the next levels in order; each entry
+  `{cls, newClass?, fcb, inc, hp (rolled tables only), ranks, feats, talents, features (the dialog's text, to fill it again),
+  picks (the finished picks)}`; a class planned as new gets its id at planning time, so later entries and the real level
+  share it. **Planning** runs `levelUpFlow({plan:true})` on a future copy (`planBase`: the character plus the earlier planned
+  levels); while it's open `ch`/`D` are that copy and `UI.planning` pauses saving, history, cloud sync and drawing (`save`,
+  `histNow`, `cloudSoon`, `cloudPush`, `syncOpen`, `paint`); `planLevelFlow` puts the real character back whatever happens.
+  Its review says "Save to plan". The page lists each planned level with its choices and a preview (HP, BAB, saves, CL,
+  talents; changes in gold), Edit / Remove, "Plan level N", "Clear the plan".
+  **Levelling up** with a plan: the dialog opens with "Your plan for level N" (`step0`): Apply as planned (hit points, then the
+  review with "You're getting"), Step through (the usual steps, filled in), or Ignore the plan (kept for later). Taking a
+  different class than planned asks: keep the plan for later levels, or drop it. A level taken from the plan removes it from
+  the plan. Mass level-up uses the planned levels in order while their class matches ("Using your level plan for …").
+- **Tests:** the talent-description sections of `check.js` serve the wiki files locally (`page.route(SITE…)`), so no check
+  depends on reaching the live site.
 
 - **House rule: Companion limits (2026-11-10, from the owner's "Variant Rule: Companion Limits" document).**
   - **Switches** (House rules → Companions): `rules.compLimit` and `rules.packBonus`; both go out with "Export table rules".

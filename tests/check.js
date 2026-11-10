@@ -1257,6 +1257,11 @@ function check(what, got, want) {
   }
 
   console.log('Times taken on tradition talents; mass level-up');
+  /* wiki text from the local talent files, never the live site (these sections open talent boxes that load it) */
+  const localTalents = route => { const f = decodeURIComponent(route.request().url().slice(SITE.length));
+    if (!/^[a-z0-9-]+\.json$/.test(f) || !fs.existsSync(path.join(TAL, f))) return route.abort();
+    route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: fs.readFileSync(path.join(TAL, f)) }); };
+  await page.route(SITE + '**', localTalents);
   {
     let lid = '', nL = 0;
     const mkL = (lv, extra) => page.evaluate(([lv, extra, id]) => { localStorage.setItem('spheres-sheet-v1:' + id, JSON.stringify(Object.assign({ app: 'spheres-sheet', v: 1, id, name: 'Lv',
@@ -1299,6 +1304,86 @@ function check(what, got, want) {
     check('1 level is still the usual step-by-step', [await page.locator('.dlg-back').last().locator('input[name="cnt"]').inputValue(), await (async () => { await page.locator('.dlg-back').last().locator('button', { hasText: 'Next' }).click(); await page.waitForTimeout(300); return /Hit points rolled/.test(await page.locator('.dlg-back').last().innerText()); })()].join(' '), '1 true');
     await page.locator('.dlg-back').last().locator('button', { hasText: 'Cancel' }).click().catch(async () => { await page.keyboard.press('Escape'); }); await page.waitForTimeout(200);
   }
+
+  console.log('Level plan');
+  {
+    let pid = '', nP = 0;
+    const mkP = extra => page.evaluate(([extra, id]) => { localStorage.setItem('spheres-sheet-v1:' + id, JSON.stringify(Object.assign({ app: 'spheres-sheet', v: 1, id, name: 'Planner',
+      classes: { c1: { name: 'Hero', hd: 10, bab: 'full', good: ['fort'], skills: 4, martial: 'expert', talents: 'auto' }, c2: { name: 'Mage', hd: 6, bab: '1/2', good: ['will'], skills: 2, cast: 'high', talents: 'auto' } },
+      levels: Array.from({ length: 3 }, () => ({ cls: 'c1', hp: 6, picks: [] })), rules: { maxFirst: true, hpMethod: 'avgup' } }, extra || {})));
+      localStorage.setItem('spheres-sheet-v1:last', JSON.stringify(id)); }, [extra || {}, pid = 'zz-plan' + (++nP)]);
+    const stored = () => page.evaluate(id => JSON.parse(localStorage.getItem('spheres-sheet-v1:' + id)), pid);
+    const dlg = () => page.locator('.dlg-back').last();
+    const next = async () => { await dlg().locator('button', { hasText: /^Next$/ }).click(); await page.waitForTimeout(350); };
+    /* plan a level: Hero, one talent typed into the first talent row */
+    const planOne = async (talent, sphere) => {
+      await page.click('[data-a="planLevel"][data-k="-1"]'); await page.waitForTimeout(350);
+      const title = (await dlg().locator('h2').innerText()).trim();
+      await next(); if (await dlg().locator('select[name="inc"]').count()) await dlg().locator('select[name="inc"]').selectOption('str'); await next();
+      const tr = dlg().locator('.talrow').first(); await tr.locator('.tr-nm').fill(talent); await tr.locator('.tr-sph').fill(sphere); await tr.locator('.tr-nm').press('Tab'); await page.waitForTimeout(150);
+      await next(); await next();
+      const review = (await dlg().innerText()).replace(/\s+/g, ' ');
+      await dlg().locator('button', { hasText: 'Save to plan' }).click(); await page.waitForTimeout(400); return [title, review]; };
+    await mkP(); await page.reload(); await page.waitForTimeout(300);
+    await go('Advanced', 'Level plan');
+    check('Advanced → Level plan: empty to start', /Nothing planned yet/.test(await page.locator('#main').innerText()), true);
+    const [t1, rv1] = await planOne('Bash', 'Brute');
+    check('planning level 4 runs the Level up dialog, ending in “Save to plan” with what’s planned', [t1, /Planned:.*Talents.*Bash/.test(rv1), /goes into your level plan/.test(rv1)].join(' | '), 'Plan level 4 | true | true');
+    let c = await stored();
+    check('…nothing changes on the character; the plan has level 4', [c.levels.length, (c.plan || []).length, (c.plan[0].picks || []).some(p => p.name === 'Bash')].join(' '), '3 1 true');
+    check('…the page shows it with a preview', /Level 4 · Hero 4.*Bash.*HP \d+/s.test(await page.locator('#main').innerText()), true);
+    await planOne('Brute Strength', 'Brute');
+    check('planning another adds level 5 (built on top of level 4)', [(await stored()).plan.length, /Level 5 · Hero 5/.test(await page.locator('#main').innerText())].join(' '), '2 true');
+    check('the header still shows the real character (level 3)', /Hero 3/.test(await page.locator('#subline').innerText()), true);
+    /* editing a planned level opens it filled in; while it's open nothing of the future copy is saved, even when the tab is hidden */
+    await page.click('[data-a="planLevel"][data-k="0"]'); await page.waitForTimeout(350);
+    await page.evaluate(() => { Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true }); document.dispatchEvent(new Event('visibilitychange')); });
+    await page.waitForTimeout(300); const during = await stored();
+    await page.evaluate(() => { Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true }); });
+    await next(); await next();
+    const editRow = await dlg().locator('.talrow .tr-nm').first().inputValue().catch(() => '');
+    await dlg().locator('button', { hasText: 'Cancel' }).first().click().catch(async () => { await page.keyboard.press('Escape'); }); await page.waitForTimeout(300);
+    check('editing planned level 4 opens with its talent filled in; nothing is saved meanwhile', [editRow, during.levels.length, during.plan.length].join(' '), 'Bash 3 2');
+    check('…and after closing it, the real character is back', [/Hero 3/.test(await page.locator('#subline').innerText()), (await stored()).levels.length].join(' '), 'true 3');
+
+    /* levelling up uses the plan */
+    await page.click('[data-a="levelUp"]'); await page.waitForTimeout(350);
+    const s0 = (await dlg().innerText()).replace(/\s+/g, ' ');
+    check('Level up opens with the plan for level 4', [/Your plan for level 4: Hero 4/.test(s0), /Bash/.test(s0), await dlg().locator('button', { hasText: 'Apply as planned' }).count()].join(' '), 'true true 1');
+    await dlg().locator('button', { hasText: 'Apply as planned' }).click(); await page.waitForTimeout(350);
+    await next();
+    const rvA = (await dlg().innerText()).replace(/\s+/g, ' ');
+    check('“Apply as planned”: hit points, then the review with what you’re getting', [/What changes/.test(rvA), /You’re getting:.*Bash/.test(rvA)].join(' '), 'true true');
+    await dlg().locator('button', { hasText: /^Level up$/ }).click(); await page.waitForTimeout(500);
+    c = await stored();
+    check('…level 4 is taken with the planned talent; the plan moves on to level 5', [c.levels.length, c.levels[3].picks.some(p => p.name === 'Bash'), c.plan.length, c.plan[0].picks.some(p => p.name === 'Brute Strength')].join(' '), '4 true 1 true');
+
+    /* mass level-up takes planned levels */
+    await page.click('[data-a="levelUp"]'); await page.waitForTimeout(350);
+    await dlg().locator('button', { hasText: 'Ignore the plan' }).click(); await page.waitForTimeout(300);
+    await dlg().locator('input[name="cnt"]').fill('3'); await next();
+    await dlg().locator('select[name="inc7"]').selectOption('str').catch(() => {}); await next();
+    check('mass level-up says it’s using the plan', /Using your level plan for level 5/.test(await dlg().innerText()), true);
+    await dlg().locator('button', { hasText: 'Level up ×3' }).click(); await page.waitForTimeout(500);
+    c = await stored();
+    check('…level 5 has the planned talent, the others are empty, and the plan is used up', [c.levels.length, c.levels[4].picks.some(p => p.name === 'Brute Strength'), c.levels[5].picks.length, 'plan' in c].join(' '), '7 true 0 false');
+
+    /* a different class than planned */
+    await mkP({ plan: [{ cls: 'c1', fcb: 'hp', inc: '', ranks: {}, feats: '', talents: '', features: '', picks: [] }, { cls: 'c1', fcb: 'hp', inc: '', ranks: {}, feats: '', talents: '', features: '', picks: [] }] }); await page.reload(); await page.waitForTimeout(300);
+    await page.click('[data-a="levelUp"]'); await page.waitForTimeout(350);
+    await dlg().locator('button', { hasText: 'Step through' }).click(); await page.waitForTimeout(300);
+    await dlg().locator('select[name="cls"]').selectOption('c2'); await next();
+    const notPlanned = await dlg().innerText();
+    check('choosing a class other than the planned one asks: keep or drop the plan', /Not the planned class/.test(notPlanned), true);
+    await dlg().locator('button', { hasText: 'Drop the plan' }).click(); await page.waitForTimeout(300);
+    await dlg().locator('select[name="inc"]').selectOption('dex'); await next(); await next(); await next();
+    await dlg().locator('button', { hasText: /^Level up$/ }).click(); await page.waitForTimeout(500);
+    c = await stored();
+    check('…“Drop the plan” clears it after the level', [c.levels.length, c.levels[3].cls, 'plan' in c].join(' '), '4 c2 false');
+    await go('Advanced', 'Level plan');
+    check('the page offers to plan level 5 next', (await page.locator('[data-a="planLevel"][data-k="-1"]').innerText()).trim(), 'Plan level 5');
+  }
+  await page.unroute(SITE + '**', localTalents);
 
   check('no page errors', errors.length ? errors.join(' | ') : 'none', 'none');
   await browser.close();
