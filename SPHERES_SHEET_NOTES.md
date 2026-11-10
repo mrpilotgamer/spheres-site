@@ -96,7 +96,7 @@ also need the sign-in emulator, `npx firebase emulators:exec --config firebase.e
 `firebase.json` plus the auth and emulator settings; it's only for tests. `tests/config-check.js` (5 checks, no installs)
 fails if the two configs' hosting settings drift apart. `tests/csp-check.js` (6 checks; needs Playwright and the `firebase`
 package) checks the script policy against the page. GitHub runs all seven (since 2026-11-09).
-Last full run: 2026-11-10 (companion limits, mounts), `check.js` 381, `talents-check.js` 31, `config-check.js` 5, `rules-check.js` 90,
+Last full run: 2026-11-10 (times taken, mass level-up), `check.js` 390, `talents-check.js` 31, `config-check.js` 5, `rules-check.js` 90,
 `party-check.js` 36, `save-check.js` 12: all passed.
 
 **Rollback:** Firebase console → Hosting → release history → roll back. With GitHub: also revert the commit (the
@@ -482,6 +482,16 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
 ---
 
 ## Open items and ideas
+
+- **Any talent can be taken more than once (2026-11-10, owner's call: "just to simplify").** Talents from a tradition
+  (casting, martial, trade) now have "Times taken" too, on the Talents tab and the Traditions tab (its row shows ×N);
+  `sanitizeChar` cleans their `n` like level picks'. The wiki preview no longer suggests a talent can't be repeated.
+- **Mass level-up (2026-11-10).** Level up → "Levels to gain" (1-20, from any level: past 20th is fine). More than 1 opens a
+  quick form (`stepMass`): the favored class bonus for all of them and each 4th-level ability increase; hit points follow
+  the table's method (rolled tables: the sheet rolls each level, shown on the review with "Reroll hit points").
+  Feats, talents and skill ranks are left to place afterwards: the review and the toast say how many ("To choose
+  afterwards"). Each level is its own entry (picks empty); the history gets one "Reached levels X–Y at once" line.
+  Level planning (next) will fill these levels from the plan.
 
 - **House rule: Companion limits (2026-11-10, from the owner's "Variant Rule: Companion Limits" document).**
   - **Switches** (House rules → Companions): `rules.compLimit` and `rules.packBonus`; both go out with "Export table rules".

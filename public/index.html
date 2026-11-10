@@ -1612,6 +1612,7 @@ function sanitizeChar(o){
   b.tempSrc.forEach(function(x){ x.id=str(x.id)||'t'+uidG().slice(1); ['name','slots','excl','notes','act','uses'].forEach(function(k){ x[k]=str(x[k]); }); x.used=Math.max(0,Math.floor(Number(x.used))||0); x.on=x.on!==false; x.rest=x.rest==='off'?'off':'keep'; });
   var tIds={}; b.tempSrc.forEach(function(x){ tIds[x.id]=1; }); var tFix=function(q){ if(q&&q.n!=null){ var qn=Math.floor(Number(q.n)); if(isFinite(qn)&&qn>1) q.n=Math.min(qn,50); else delete q.n; } if(q&&q.temp!=null){ if(typeof q.temp!=='string'||!own(tIds,q.temp)) delete q.temp; } };
   (b.levels||[]).forEach(function(l){ ((l&&l.picks)||[]).forEach(tFix); }); (b.extraPicks||[]).forEach(tFix);
+  ['casting','martial','trade'].forEach(function(k){ var T=b.traditions[k]; (T&&Array.isArray(T.grants)?T.grants:[]).forEach(function(q){ if(q&&typeof q==='object'&&q.n!=null){ var qn=Math.floor(Number(q.n)); if(isFinite(qn)&&qn>1) q.n=Math.min(qn,50); else delete q.n; } }); });
   b.seq={n:Math.max(0,Math.floor(Number(b.seq&&b.seq.n))||0)}; if(!b.loreOpt||typeof b.loreOpt!=='object'||Array.isArray(b.loreOpt)) b.loreOpt={}; ['bonus','chance'].forEach(function(k){ if(b.loreOpt[k]!=null) b.loreOpt[k]=str(b.loreOpt[k]); });
   var P0=b.pers&&typeof b.pers==='object'&&!Array.isArray(b.pers)?b.pers:{}, TK={}; PERSLIB.forEach(function(x){ TK[x.k]=1; });
   b.pers={list:rows(P0.list).map(function(p){ return {id:str(p.id)||'q'+uidG().slice(1),name:str(p.name),look:str(p.look),notes:str(p.notes),tropes:rows(p.tropes).map(function(x){ return {k:own(TK,x.k)?x.k:'',alt:!!x.alt}; }),quirks:rows(p.quirks).map(function(q){ return {k:str(q.k),n:str(q.n)}; }).filter(function(q){ return q.n; })}; }),
@@ -3002,11 +3003,11 @@ function rowBtns(name,path,i){ var n=linkedMods(name); return '<span class="row"
 function grantRows(k){
   var t=ch.traditions[k], p='traditions.'+k+'.grants.';
   var h=(t.grants||[]).map(function(g,i){ var b=p+i+'.', n=linkedMods(g.name);
-    return itemD('gr-'+g.id,'<span class="nm">'+esc(g.name||'(unnamed)')+'</span><span class="tag'+(g.kind==='talent'&&isBase(g)?' gold':'')+'">'+(g.kind==='talent'&&isBase(g)?'Base sphere':esc((GKINDS.filter(function(x){ return x[0]===g.kind; })[0]||['','Other'])[1]))+(g.kind==='talent'&&g.sphere?' · '+esc(g.sphere):'')+'</span>'+(k==='trade'&&g.adroit?'<span class="tag">adroit</span>':'')+(n?'<span class="tag">'+plural(n,'modifier')+'</span>':'')+'<span class="snip">'+esc(snip(g.notes))+'</span>',
+    return itemD('gr-'+g.id,'<span class="nm">'+esc(g.name||'(unnamed)')+(pN(g)>1?' <b>×'+pN(g)+'</b>':'')+'</span><span class="tag'+(g.kind==='talent'&&isBase(g)?' gold':'')+'">'+(g.kind==='talent'&&isBase(g)?'Base sphere':esc((GKINDS.filter(function(x){ return x[0]===g.kind; })[0]||['','Other'])[1]))+(g.kind==='talent'&&g.sphere?' · '+esc(g.sphere):'')+'</span>'+(k==='trade'&&g.adroit?'<span class="tag">adroit</span>':'')+(n?'<span class="tag">'+plural(n,'modifier')+'</span>':'')+'<span class="snip">'+esc(snip(g.notes))+'</span>',
       '<div class="edit"><div class="fields">'+fS(b+'kind','Kind',GKINDS)+fT(b+'name','Name','',' wide')+
       (g.kind==='talent'?'<label class="fld"><span>Sphere</span><input type="text" data-f="'+b+'sphere" value="'+esc(g.sphere||'')+'" list="spheresList" style="width:10rem"></label>'+fS(b+'tkind','Type',TKINDS)+
         '<label class="ck" style="align-self:flex-end"><input type="checkbox" data-grbase="'+b.slice(0,-1)+'"'+(isBase(g)?' checked':'')+'> Base sphere (its base abilities come with it)</label>':'')+
-      (k==='trade'?fC(b+'adroit','Adroit only'):'')+'</div>'+notesBox(b+'notes',g.notes)+'<div class="row" style="margin:0;justify-content:flex-end">'+rowBtns(g.name,'traditions.'+k+'.grants',i)+'</div></div>'); }).join('');
+      (g.kind==='talent'&&isBase(g)?'':fN(b+'n','Times taken',' min="1" max="50" placeholder="1" style="width:5rem"'))+(k==='trade'?fC(b+'adroit','Adroit only'):'')+'</div>'+notesBox(b+'notes',g.notes)+'<div class="row" style="margin:0;justify-content:flex-end">'+rowBtns(g.name,'traditions.'+k+'.grants',i)+'</div></div>'); }).join('');
   return '<h3>What it gives</h3>'+(h||'<p class="empty">Nothing listed yet.</p>')+'<button class="mini" data-a="tradAdd" data-p="traditions.'+k+'.grants">Add a talent, feat or proficiency</button>';
 }
 function castingBody(){
@@ -3792,7 +3793,7 @@ function pickForm(r,talent){
     return '<div class="edit"><div class="row" style="margin:0 0 4px"><span class="tag gold">'+esc(tl)+' · free</span><span class="spacer"></span><button class="link" data-tab="trad">Open Traditions</button></div>'+(talent?wkBox(p,r.where+'.'+r.i,'talent'):'')+'<div class="fields">'+
       '<label class="fld wide"><span>Name</span><input type="text" data-f="'+base+'name" value="'+esc(p.name)+'"></label>'+
       (talent?'<label class="fld"><span>Sphere</span><input type="text" data-f="'+base+'sphere" value="'+esc(p.sphere||'')+'" list="spheresList" style="width:10rem"></label>'+fS(base+'tkind','Type',TKINDS)
-       :fS(base+'kind','Kind',GKINDS))+'</div>'+notesBox(base+'notes',p.notes)+
+       :fS(base+'kind','Kind',GKINDS))+(isBase(p)?'':fN(base+'n','Times taken',' min="1" max="50" placeholder="1" style="width:5rem"'))+'</div>'+notesBox(base+'notes',p.notes)+
       '<div class="row" style="margin-bottom:0"><span class="note">'+(n?plural(n,'modifier')+' named after it':'No modifiers: text only')+'</span><span class="spacer"></span><button class="mini" data-a="pickMod" data-name="'+esc(p.name)+'">+ Modifier</button><button class="mini danger" data-a="delPick" data-w="'+r.where+'" data-i="'+r.i+'" aria-label="Remove '+esc(p.name)+'">Remove</button></div></div>'; }
   return '<div class="edit">'+(talent&&!isBase(p)?wkBox(p,r.where+'.'+r.i,'talent'):'')+'<div class="fields">'+
     '<label class="fld wide"><span>Name</span><input type="text" data-f="'+base+'name" value="'+esc(p.name)+'"></label>'+
@@ -3999,7 +4000,7 @@ function tkPickBox(){ var c=UI.tkPick; if(!c) return ''; var st=wkState(c.s);
   if(st==='err') return ''; if(st!=='ok') return '<div class="wk" data-wkneed="'+esc(c.s)+'"><p class="note">Loading the wiki text…</p></div>';
   var S=WK.f[c.s], e=wkEntry(c.s,c.n); if(!e) return ''; var key='wk-tkprev', more=!!(UI.wkMore||{})[key], long=e[4].length>900, h='<div class="wk">';
   h+='<div class="wkh"><b>'+esc(e[0])+'</b> <span class="note">'+esc(String(e[1]).replace(/\*\*/g,'').slice(e[0].length).trim())+'</span>'+(e[3]?' <span class="tag gold">'+wkKindName(e[3])+'</span>':'')+'<span class="spacer"></span><a class="note" href="'+esc(WK_WIKI+e[5])+'" target="_blank" rel="noopener">Wiki ↗</a></div><div class="note" style="margin:0 0 4px">'+esc(S.n+' sphere · '+e[2])+'</div>';
-  if(wkHave()[c.s+'|'+c.n]) h+='<p class="note warn" style="margin:0 0 6px">You already have this talent. Add it again only if it can be taken more than once.</p>';
+  if(wkHave()[c.s+'|'+c.n]) h+='<p class="note" style="margin:0 0 6px">You already have this talent. Adding it again is fine: or raise its “Times taken” instead.</p>';
   if(e[3]) h+='<p class="note warn" style="margin:0 0 6px">'+wkKindName(e[3])+' talents are an optional rule: only with GM permission.'+(advKind(e[3])&&ch.rules.advLimit?' '+advNote(D.lvl,1):'')+'</p>';
   if(!wkHasSphere(c.s)) h+='<label class="ck" style="margin:0 0 6px;font-size:13.5px"><input type="checkbox" id="tk-base"'+(UI.tkBaseOff?'':' checked')+'> Also add the '+esc(S.n)+' base sphere (you don’t have it yet; the first talent spent on a sphere buys it)</label>';
   return h+'<div class="wkt'+(long&&!more?' clip':'')+'">'+mdLite(e[4])+'</div>'+(long?'<button class="link" data-a="wkMore" data-k="'+key+'">'+(more?'Show less':'Show all')+'</button>':'')+'</div>'; }
@@ -5127,7 +5128,7 @@ function levelUpFlow(){
   function nIn(){ return (D.cc[W.cls]||0)+1; }
   function step1(){
     var opts=Object.keys(ch.classes).map(function(id){ return [id,ch.classes[id].name+(D.cc[id]?' (level '+(D.cc[id]+1)+')':' (new to this class)')]; }).concat([['__lib','From the class list…'],['__new','A new class, described by hand…']]);
-    var k=W.nk, html=stepsBar(0)+'<p>Level '+(L+1)+'. Which class?</p>'+fSel('cls','Class',opts,W.cls)+
+    var k=W.nk, html=stepsBar(0)+'<p>Level '+(L+1)+'. Which class?</p>'+fSel('cls','Class',opts,W.cls)+fNum('cnt','Levels to gain (more than 1: a quick level-up, choices afterwards)',W.cnt||1,1,20)+
       '<div id="nklib"'+(W.cls==='__lib'?'':' hidden')+'>'+libInput('lib',W.fromLib)+'<p class="note">Everything stays editable on the Build tab (archetypes: rename it and change what differs).</p></div>'+
       '<div id="nk"'+(W.cls==='__new'?'':' hidden')+'><p class="note">Describe the class once; the sheet uses it from now on. You can refine it later on the Build tab.</p>'+
       '<label class="opt"><span>Name</span> <input type="text" name="nk-name" value="'+esc(k.name)+'"></label>'+fNum('nk-hd','Hit die (d4–d12)',k.hd,4,12)+
@@ -5139,8 +5140,54 @@ function levelUpFlow(){
     return modal({title:'Level up',html:html,buttons:[{label:'Cancel',value:null},{label:'Next',value:'next',primary:true}],
       check:function(root,v){ return v==='next'&&rd(root).s('cls')==='__lib'&&!libFind(rd(root).s('lib'))?'Pick a class from the list (start typing its name).':''; },
       onOpen:function(root){ var s=root.querySelector('[name=cls]'); libWire(root,'lib'); s.addEventListener('change',function(){ root.querySelector('#nk').hidden=s.value!=='__new'; root.querySelector('#nklib').hidden=s.value!=='__lib'; }); },
-      read:function(root){ var f=rd(root); W.cls=f.s('cls'); W.libE=null; if(W.cls==='__lib'){ W.libE=libFind(f.s('lib')); if(W.libE){ W.nk=libClass(W.libE); } return 1; } if(W.cls==='__new'){ W.nk={name:f.s('nk-name').trim()||'New class',hd:f.n('nk-hd')||8,bab:f.s('nk-bab'),skills:f.n('nk-sk')||0,good:['fort','ref','will'].filter(function(s){return f.c('nk-'+s);}),cast:f.s('nk-cast'),martial:f.s('nk-mart'),skill:f.s('nk-skill'),talents:f.s('nk-tal'),bonusTalents:f.n('nk-bt')||0,talx:own(TALX,f.s('nk-tx'))?f.s('nk-tx'):'',classSkills:[],features:''}; W.nk=Object.assign(blankClass(),W.nk); } return 1; }})
-      .then(function(r){ if(r.value!=='next') return null; W.fromLib=null; if(W.cls==='__lib'){ if(!W.libE) return alertBox('Pick a class from the list (start typing its name).').then(step1); W.fromLib=W.libE; W.cls='__new'; } return step2(); });
+      read:function(root){ var f=rd(root); W.cnt=Math.max(1,Math.min(20,Math.floor(f.n('cnt'))||1)); W.cls=f.s('cls'); W.libE=null; if(W.cls==='__lib'){ W.libE=libFind(f.s('lib')); if(W.libE){ W.nk=libClass(W.libE); } return 1; } if(W.cls==='__new'){ W.nk={name:f.s('nk-name').trim()||'New class',hd:f.n('nk-hd')||8,bab:f.s('nk-bab'),skills:f.n('nk-sk')||0,good:['fort','ref','will'].filter(function(s){return f.c('nk-'+s);}),cast:f.s('nk-cast'),martial:f.s('nk-mart'),skill:f.s('nk-skill'),talents:f.s('nk-tal'),bonusTalents:f.n('nk-bt')||0,talx:own(TALX,f.s('nk-tx'))?f.s('nk-tx'):'',classSkills:[],features:''}; W.nk=Object.assign(blankClass(),W.nk); } return 1; }})
+      .then(function(r){ if(r.value!=='next') return null; W.fromLib=null; if(W.cls==='__lib'){ if(!W.libE) return alertBox('Pick a class from the list (start typing its name).').then(step1); W.fromLib=W.libE; W.cls='__new'; } W.hps=null; return W.cnt>1?stepMass():step2(); });
+  }
+  /* ---------- several levels at once (up to 20, from any level): hit points by the table's method, ability increases and the
+     favored class bonus here; feats, talents and skill ranks are left to place afterwards (the tabs show what's left) ---------- */
+  function massIdx(){ var o=[]; for(var j=0;j<W.cnt;j++) o.push(L+j); return o; }
+  function stepMass(){
+    var k=K(), hd=n0(k.hd,8), meth=ch.rules.hpMethod||'rolled', rolled=meth==='rolled'&&!ch.rules.avgHP, incs=massIdx().filter(function(i){ return (i+1)%4===0; });
+    W.incs=W.incs||{};
+    var html='<p><b>'+esc(k.name)+'</b>: '+W.cnt+' levels, '+(L+1)+' to '+(L+W.cnt)+'. Hit die d'+hd+'.</p>'+
+      '<p class="note">Hit points: '+(rolled?'your table rolls them, so the sheet rolls each level for you (you’ll see the rolls next, and can reroll).':'“'+esc((HPM.filter(function(x){ return x[0]===meth; })[0]||[0,ch.rules.avgHP?'Average':meth])[1])+'”'+(ch.rules.avgHP&&meth==='rolled'?' (house rule: average)':'')+'.')+'</p>'+
+      '<div class="opt"><span>Favored class bonus (every level)</span>'+fRadio('fcb',[['hp','+1 hp',W.fcb==='hp'],['skill','+1 skill rank',W.fcb==='skill'],['other','Something else',W.fcb==='other'],['none','Not favored',W.fcb==='none']])+'</div>'+
+      incs.map(function(i){ return fSel('inc'+i,'Level '+(i+1)+': ability increase (+1)',[['','Choose…']].concat(AB.map(function(a){ return [a,ABN[a]]; })),W.incs[i]||''); }).join('')+
+      '<p class="note">Feats, talents and skill ranks for these levels are left for you to choose afterwards: the Feats, Talents and Skills tabs show how many are left to place.</p>';
+    return modal({title:'Level up: '+W.cnt+' levels',html:html,buttons:[{label:'Back',value:'back'},{label:'Next',value:'next',primary:true}],
+      read:function(root){ var f=rd(root); W.fcb=f.r('fcb')||'none'; incs.forEach(function(i){ W.incs[i]=f.s('inc'+i); }); return 1; }})
+      .then(function(r){ if(r.value==='back'){ if(W.fromLib) W.cls='__lib'; return step1(); } if(r.value!=='next') return null;
+        if(incs.some(function(i){ return !W.incs[i]; })) return alertBox('Choose the ability increase for each 4th level.').then(stepMass); return stepMassReview(); });
+  }
+  function buildMass(){
+    var c2=JSON.parse(JSON.stringify(ch)), id=W.cls;
+    if(id==='__new'){ id='c'+uidG().slice(1); c2.classes[id]=JSON.parse(JSON.stringify(W.nk)); applyLibSideEffects(c2,c2.classes[id]); }
+    var k=c2.classes[id], hd=n0(k.hd,8), meth=ch.rules.hpMethod||'rolled';
+    if(!W.hps) W.hps=massIdx().map(function(i){ if(i===0&&ch.rules.maxFirst!==false) return hd; if(meth!=='rolled'){ var f=levelHP(c2,{cls:id,hp:0},i); if(f!=null) return Math.ceil(f); }
+      if(ch.rules.avgHP) return Math.floor(hd/2)+1; return 1+Math.floor(Math.random()*hd); });
+    massIdx().forEach(function(i,j){ c2.levels.push({cls:id,hp:W.hps[j],fcb:W.fcb,inc:(i+1)%4===0?(W.incs[i]||''):'',ranks:{},picks:[],note:''}); });
+    if(k.cast!=='none'&&!c2.resources.some(function(r){return r.max==='spmax';})) c2.resources.push({id:'r'+uidG().slice(1),name:'Spell points',max:'spmax',cur:0,reset:'long'});
+    if(k.martial!=='none'&&!c2.resources.some(function(r){return /martial focus/i.test(r.name);})) c2.resources.push({id:'r'+uidG().slice(1),name:'Martial focus',max:'1',cur:1,reset:'short'});
+    return {c2:c2,id:id};
+  }
+  function stepMassReview(){
+    var b=buildMass(), A2=derive(b.c2), B=before, meth=ch.rules.hpMethod||'rolled', rolled=meth==='rolled'&&!ch.rules.avgHP;
+    var rows=[['Level',B.lvl,A2.lvl],['Hit points',B.hpMax,A2.hpMax],['Base attack',sgn(B.bab),sgn(A2.bab)],['Fortitude',sgn(B.fort),sgn(A2.fort)],['Reflex',sgn(B.ref),sgn(A2.ref)],['Will',sgn(B.will),sgn(A2.will)],
+      ['Caster level',B.cl,A2.cl],['Magic skill bonus',sgn(B.msb),sgn(A2.msb)],['Spell points',B.spMax,A2.spMax],['Magic DC',B.dc,A2.dc],['Martial DC',B.mdc,A2.mdc]];
+    var get=[['talent',A2.talentsExpected-A2.talentsHave],['feat',A2.featsExpected-A2.featsHave],['skill rank',A2.skBudget-A2.skSpent]].filter(function(x){ return x[1]>0; });
+    var html='<p>'+esc(b.c2.classes[b.id].name)+' '+(A2.cc[b.id]||W.cnt)+' (character level '+A2.lvl+'). What changes:</p><div class="diff">'+rows.filter(function(r){ return String(r[1])!==String(r[2])||r[0]==='Level'; }).map(function(r){ return '<div><span>'+r[0]+'</span><span>'+r[1]+' → <b class="goldtxt">'+r[2]+'</b></span></div>'; }).join('')+'</div>'+
+      (get.length?'<p><b>To choose afterwards:</b> '+get.map(function(x){ return plural(x[1],x[0]); }).join(', ')+' (Talents, Feats and Skills tabs).</p>':'')+
+      (rolled?'<p class="note">Hit points rolled: '+W.hps.map(function(h,j){ return 'level '+(L+j+1)+' <b>'+h+'</b>'; }).join(', ')+'.</p>':'')+
+      '<p class="note">Each level is saved as its own entry (Build tab), so you can fill in its picks or remove it later.</p>';
+    return modal({title:'Level up: '+W.cnt+' levels',html:html,buttons:[{label:'Back',value:'back'}].concat(rolled?[{label:'Reroll hit points',value:'reroll'}]:[]).concat([{label:'Level up ×'+W.cnt,value:'ok',primary:true}])})
+      .then(function(r){ if(r.value==='back') return stepMass(); if(r.value==='reroll'){ W.hps=null; return stepMassReview(); } if(r.value!=='ok') return null;
+        return function(){ var oldRes=D.res, nb=buildMass(); ch=nb.c2; var D2=derive(ch); ch.resources.forEach(function(r0){ var was=oldRes[r0.id]?oldRes[r0.id].max:0, now=D2.res[r0.id]?D2.res[r0.id].max:0; if(now>was&&r0.reset!=='short0'&&r0.reset!=='long0') r0.cur=Math.min(now,n0(r0.cur)+(now-was)); });
+          var nm=ch.classes[nb.id].name, lvTo=ch.levels.length, lvFrom=lvTo-W.cnt+1;
+          log('Level up ×'+W.cnt+': '+nm+' '+classCounts(ch)[nb.id]+' (character level '+lvTo+').'+(get.length?' To choose: '+get.map(function(x){ return plural(x[1],x[0]); }).join(', ')+'.':''));
+          if(histT){ clearTimeout(histT); histT=null; } ensureIds(ch);
+          if(!ch.histSnap) histSync(ch); else { var nowK=histKeys(ch), snap=ch.histSnap; Object.keys(nowK).forEach(function(k2){ if(!snap[k2]&&/^k:|^r:/.test(k2)) snap[k2]=nowK[k2]; }); histSync(ch); }
+          histPush(ch,{t:'level',text:'Reached levels '+lvFrom+'–'+lvTo+' at once: '+nm+' ×'+W.cnt+(rolled?' · '+W.hps.reduce(function(a,h){ return a+h; },0)+' hp rolled':'')+(Object.keys(W.incs||{}).filter(function(i){ return +i>=L&&W.incs[i]; }).length?' · +1 '+Object.keys(W.incs).filter(function(i){ return +i>=L&&W.incs[i]; }).map(function(i){ return ABN[W.incs[i]]||W.incs[i]; }).join(', +1 '):'')});
+          UI.toast='Now level '+lvTo+'.'+(get.length?' To choose: '+get.map(function(x){ return plural(x[1],x[0]); }).join(', ')+'.':''); }; });
   }
   function step2(){
     var k=K(), hd=n0(k.hd,8), first=L===0&&ch.rules.maxFirst!==false, avg=Math.floor(hd/2)+1, meth=ch.rules.hpMethod||'rolled', fixed=meth!=='rolled'?levelHP(ch,{cls:W.cls==='__new'?'__x':W.cls,hp:0},L):null;
