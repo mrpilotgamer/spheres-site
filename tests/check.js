@@ -1256,6 +1256,50 @@ function check(what, got, want) {
     check('removing the mount companion clears it as your mount', await page.evaluate(id => 'mount' in JSON.parse(localStorage.getItem('spheres-sheet-v1:' + id)), mid), false);
   }
 
+  console.log('Times taken on tradition talents; mass level-up');
+  {
+    let lid = '', nL = 0;
+    const mkL = (lv, extra) => page.evaluate(([lv, extra, id]) => { localStorage.setItem('spheres-sheet-v1:' + id, JSON.stringify(Object.assign({ app: 'spheres-sheet', v: 1, id, name: 'Lv',
+      classes: { c1: { name: 'Hero', hd: 10, bab: 'full', good: ['fort'], skills: 4, martial: 'expert', talents: 'auto' } }, levels: Array.from({ length: lv }, () => ({ cls: 'c1', hp: 6, picks: [] })), rules: { maxFirst: true } }, extra)));
+      localStorage.setItem('spheres-sheet-v1:last', JSON.stringify(id)); }, [lv, extra || {}, lid = 'zz-lv' + (++nL)]);
+    const stored = () => page.evaluate(id => JSON.parse(localStorage.getItem('spheres-sheet-v1:' + id)), lid);
+    /* a tradition talent can be marked as taken more than once */
+    await mkL(1, { traditions: { trade: { on: true, rank: 'competent', replace: true, skills: [], grants: [{ id: 'g1', kind: 'talent', name: 'Strongarm', sphere: 'Vocation', tkind: 'skill' }] } } });
+    await page.reload(); await page.waitForTimeout(300); await go('Character', 'Talents');
+    const sg = page.locator('details', { has: page.locator('summary', { hasText: 'Strongarm' }) }).first();
+    if (!(await sg.evaluate(d => d.open))) await sg.locator('summary').first().click(); await page.waitForTimeout(300);
+    await sg.locator('input[data-f$=".n"]').fill('2'); await sg.locator('input[data-f$=".n"]').press('Tab'); await page.waitForTimeout(250);
+    check('a talent from a tradition has “Times taken”, and it’s kept', (await stored()).traditions.trade.grants[0].n, '2');
+    await go('Character', 'Traditions');
+    check('…and shows ×2 on the Traditions tab', /Strongarm\s*×2/.test(await page.locator('#main').innerText()), true);
+
+    /* several levels at once */
+    const lvUp = async (cnt, incs) => { await page.click('[data-a="levelUp"]'); await page.waitForTimeout(300); const d = page.locator('.dlg-back').last();
+      await d.locator('input[name="cnt"]').fill(String(cnt)); await d.locator('button', { hasText: 'Next' }).click(); await page.waitForTimeout(300);
+      for (const [lv, ab] of incs || []) await d.locator(`select[name="inc${lv - 1}"]`).selectOption(ab);
+      const form = (await d.innerText()).replace(/\s+/g, ' '); await d.locator('button', { hasText: 'Next' }).click(); await page.waitForTimeout(400);
+      const review = (await page.locator('.dlg-back').last().innerText()).replace(/\s+/g, ' '); return [form, review]; };
+    await mkL(3, { rules: { maxFirst: true, hpMethod: 'avgup' } }); await page.reload(); await page.waitForTimeout(300);
+    const [form, review] = await lvUp(5, [[4, 'str'], [8, 'con']]);
+    check('5 levels from 3rd: the form asks for the increases at 4th and 8th', [/levels, 4 to 8/.test(form), /Level 4: ability increase/.test(form), /Level 8: ability increase/.test(form)].join(' '), 'true true true');
+    check('…the review shows what you get and what’s left to choose', [/Level 3 → 8/.test(review), /To choose afterwards:.*talent.*feat.*skill rank/.test(review)].join(' '), 'true true');
+    await page.locator('.dlg-back').last().locator('button', { hasText: 'Level up ×5' }).click(); await page.waitForTimeout(500);
+    const c = await stored();
+    check('Level up ×5 adds 5 levels with their increases, picks left empty', [c.levels.length, c.levels[3].inc, c.levels[7].inc, c.levels.slice(3).every(l => l.picks.length === 0)].join(' '), '8 str con true');
+    check('…using the table’s hit points (average rounded up: d10 → 6)', c.levels.slice(3).map(l => l.hp).join(','), '6,6,6,6,6');
+    check('…and says what’s left to choose', /Now level 8\..*To choose:/.test(await page.locator('#toast').innerText().catch(() => '')), true);
+    await mkL(20, { rules: { maxFirst: true, hpMethod: 'max' } }); await page.reload(); await page.waitForTimeout(300);
+    const incs40 = []; for (let lv = 24; lv <= 40; lv += 4) incs40.push([lv, 'dex']);
+    const [, rev40] = await lvUp(20, incs40);
+    check('20 more levels from 20th (past 20 is fine)', /Level 20 → 40/.test(rev40), true);
+    await page.locator('.dlg-back').last().locator('button', { hasText: 'Level up ×20' }).click(); await page.waitForTimeout(600);
+    check('…40 levels, maximum hit points each', [(await stored()).levels.length, (await stored()).levels.slice(20).every(l => l.hp === 10)].join(' '), '40 true');
+    await mkL(2); await page.reload(); await page.waitForTimeout(300);
+    await page.click('[data-a="levelUp"]'); await page.waitForTimeout(300);
+    check('1 level is still the usual step-by-step', [await page.locator('.dlg-back').last().locator('input[name="cnt"]').inputValue(), await (async () => { await page.locator('.dlg-back').last().locator('button', { hasText: 'Next' }).click(); await page.waitForTimeout(300); return /Hit points rolled/.test(await page.locator('.dlg-back').last().innerText()); })()].join(' '), '1 true');
+    await page.locator('.dlg-back').last().locator('button', { hasText: 'Cancel' }).click().catch(async () => { await page.keyboard.press('Escape'); }); await page.waitForTimeout(200);
+  }
+
   check('no page errors', errors.length ? errors.join(' | ') : 'none', 'none');
   await browser.close();
   console.log(`\n${pass} passed, ${fail} failed`);
