@@ -1217,6 +1217,45 @@ function check(what, got, want) {
     check('with the rule off: Present, no limits', [(await page.locator('[data-a="cOn"]').first().innerText()).trim(), await capLine('Active companions (2')].join(' '), 'Present none');
   }
 
+  console.log('Mounts');
+  {
+    let mid = '', nM = 0;
+    const horse = { id: 'h1', name: 'Horse', kind: 'tamed', on: true, hd: '2', size: 'L', speed: '50 ft.', abil: { str: 16, dex: 14, con: 15, int: 2, wis: 12, cha: 6 }, attacks: [{ name: 'Bite', kind: 'primary', ab: 'str', dice: '1d4' }] };
+    const mkM = (extra) => page.evaluate(([extra, id]) => { localStorage.setItem('spheres-sheet-v1:' + id, JSON.stringify(Object.assign({ app: 'spheres-sheet', v: 1, id, name: 'Rider',
+      classes: { c1: { name: 'Hero', hd: 8, bab: 'full', good: ['fort'], skills: 4, talents: 'none' } }, levels: Array.from({ length: 8 }, () => ({ cls: 'c1', hp: 5, picks: [] })), skillRanks: { ride: 8 },
+      extraPicks: [{ kind: 'talent', name: 'Armored Mount', sphere: 'Beastmastery', tkind: 'combat' }, { kind: 'talent', name: 'Frenzy Rider', sphere: 'Beastmastery', tkind: 'combat' }], rules: { maxFirst: true, compLimit: true } }, extra)));
+      localStorage.setItem('spheres-sheet-v1:last', JSON.stringify(id)); }, [extra, mid = 'zz-mount' + (++nM)]);
+    const mcard = () => page.locator('#main section.card', { has: page.locator('h2', { hasText: /^Mount:/ }) }).first();
+    const mtile = async k => (await mcard().locator('.tile', { has: page.locator('.k', { hasText: new RegExp('^' + k + '$') }) }).first().locator('.v').innerText()).trim();
+    const cmbNow = async () => parseInt(((await page.locator('[data-a="why"][data-k="cmb"]').first().innerText()).match(/CMB\s*([+−-]?\d+)/) || [])[1].replace('−', '-'), 10);
+    const bite = async () => (await mcard().locator('.atk', { hasText: 'Bite' }).first().locator('.hit').innerText()).trim();
+    await mkM({ companions: [horse, { id: 'k1', name: 'Fido', kind: 'conj', on: true }] }); await page.reload(); await page.waitForTimeout(300);
+    await go('Character', 'Companions');
+    await page.locator('section.card', { has: page.locator('input[value="Horse"]') }).first().locator('[data-a="cMount"]').click(); await page.waitForTimeout(200);
+    check('“Use as mount” makes it your mount', (await page.locator('section.card', { has: page.locator('input[value="Horse"]') }).first().locator('[data-a="cMount"]').innerText()).trim(), 'Your mount');
+    await go('Play', 'Sheet');
+    const ac0 = +await mtile('AC'), b0 = parseInt(await bite(), 10), cmb0 = await cmbNow();
+    check('the Sheet shows a mount card, not mounted yet', [await mcard().count(), (await mcard().locator('[data-a="mountOn"]').innerText()).trim()].join(' '), '1 Not mounted');
+    await mcard().locator('[data-a="mountOn"]').click(); await page.waitForTimeout(250);
+    const R = +((await mcard().innerText()).match(/Ride ranks (\d+)/) || [])[1];
+    check('mounted: Armored Mount adds ½ your Ride ranks to its AC (competence)', [R > 0, +await mtile('AC') - ac0].join(' '), 'true ' + Math.max(1, Math.floor(R / 2)));
+    check('…and it shows your speed while riding is the mount’s', /you move at its speed \(50 ft\.\)/.test(await mcard().innerText()), true);
+    await mcard().locator('[data-a="mountFrenzy"]').click(); await page.waitForTimeout(250);
+    const n = 1 + Math.floor(R / 4);
+    check('Frenzy Rider: the mount’s natural attack +N, your CMB −N (N = 1 + 1 per 4 Ride ranks)', [parseInt(await bite(), 10) - b0, await cmbNow() - cmb0].join(' '), n + ' ' + (-n));
+    await go('Character', 'Companions');
+    const act = async () => { const t = (await page.locator('#main .li', { hasText: 'Active companions (2' }).first().innerText()).replace(/\s+/g, ' '); return (/(\d+ \/ \d+)\s*$/.exec(t) || [])[1]; };
+    check('companion limits: a ridden mount that doesn’t gain talents doesn’t count', await act(), '1 / 4');
+    await page.locator('section.card', { has: page.locator('input[value="Horse"]') }).first().locator('select[data-f$=".talents"]').selectOption('yes'); await page.waitForTimeout(250);
+    check('…one that gains talents does', await act(), '2 / 4');
+    await go('Play', 'Sheet'); await mcard().locator('[data-a="mountOn"]').click(); await page.waitForTimeout(250);
+    check('dismounting ends Frenzy Rider and the Armored Mount bonus', [+await mtile('AC') - ac0, await cmbNow() - cmb0, await page.evaluate(id => JSON.parse(localStorage.getItem('spheres-sheet-v1:' + id)).mount.frenzy, mid)].join(' '), '0 0 false');
+    await go('Character', 'Companions');
+    await page.locator('section.card', { has: page.locator('input[value="Horse"]') }).first().locator('[data-a="cDel"]').click(); await page.waitForTimeout(200);
+    await page.locator('.dlg button', { hasText: /Remove/ }).last().click().catch(() => {}); await page.waitForTimeout(300);
+    check('removing the mount companion clears it as your mount', await page.evaluate(id => 'mount' in JSON.parse(localStorage.getItem('spheres-sheet-v1:' + id)), mid), false);
+  }
+
   check('no page errors', errors.length ? errors.join(' | ') : 'none', 'none');
   await browser.close();
   console.log(`\n${pass} passed, ${fail} failed`);

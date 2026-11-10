@@ -96,7 +96,7 @@ also need the sign-in emulator, `npx firebase emulators:exec --config firebase.e
 `firebase.json` plus the auth and emulator settings; it's only for tests. `tests/config-check.js` (5 checks, no installs)
 fails if the two configs' hosting settings drift apart. `tests/csp-check.js` (6 checks; needs Playwright and the `firebase`
 package) checks the script policy against the page. GitHub runs all seven (since 2026-11-09).
-Last full run: 2026-11-09 (class talent check), `check.js` 354, `talents-check.js` 31, `config-check.js` 5, `rules-check.js` 90,
+Last full run: 2026-11-10 (companion limits, mounts), `check.js` 381, `talents-check.js` 31, `config-check.js` 5, `rules-check.js` 90,
 `party-check.js` 36, `save-check.js` 12: all passed.
 
 **Rollback:** Firebase console → Hosting → release history → roll back. With GitHub: also revert the commit (the
@@ -482,6 +482,28 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
 ---
 
 ## Open items and ideas
+
+- **House rule: Companion limits (2026-11-10, from the owner's "Variant Rule: Companion Limits" document).**
+  - **Switches** (House rules → Companions): `rules.compLimit` and `rules.packBonus`; both go out with "Export table rules".
+  - **Limits** (`compLimits`): active companions 2 + 1 per 3 character levels; of those, ones that gain talents 1 + 1 per 4;
+    packs 1, 2 from 10th level. Matches the document's table at every listed level. "Active" is the existing Present button
+    (it reads Active / Not active under the rule). Host creatures and a possessed creature don't count. A ridden mount
+    counts only if it gains talents (owner's call). **Warns, never blocks** (owner's call): the counts go red, and making a
+    companion or pack active over a limit says so (`compLimitWarn`).
+  - **Gains talents** (`c.talents`: auto / yes / no; `compTalented`): auto = yes for Conjuration companions and cohorts, no
+    for everything else, including animal companions and familiars (owner's call). Followers: made as "Other" (no
+    talents); the Leadership sphere treats them as 1st-level commoners who don't go into danger.
+  - **Packs** (`c.pack`: 'p1', 'p2'…; only companions that don't gain talents): count as one, switch Active together, and
+    warn if more than 4, a member gains talents, or members aren't identical (`compSig`: everything that makes the numbers,
+    not name, damage, notes). On the Sheet a pack is one block (`packBlock`): each member's hit points and Damage/Heal, the
+    shared defenses, each attack once "× N", the one-roll rule, and with `packBonus` the +2 figures.
+- **Mounts (2026-11-10).** "Use as mount" on a companion card sets `ch.mount = {id, on, frenzy}` (one at a time; removing
+  the companion clears it). The Sheet shows a Mount card (`mountCard`): Mounted / Not mounted (mounting makes it present),
+  its numbers, "you move at its speed", the Ride check DCs and mounted-combat rules, and the Ride talents you have. Ride
+  ranks come from `rideRanksOf` (bought + sphere ranks, as the Skills tab counts them). Talents with numbers:
+  **Armored Mount** (while mounted: +½ Ride ranks, min 1, competence to its AC and CMD; its temporary hp pool as a note) and
+  **Frenzy Rider** (a switch while mounted: you −N on attacks, which carries into CMB; the mount +N on natural attacks;
+  N = 1 + 1 per 4 Ride ranks). Dismounting turns Frenzy Rider off.
 
 - **Class talent check against the wiki (2026-11-09, owner noticed Conscript).** `tools/verify-classes.py <bundle folder>`
   compares every Spheres class in the class list with its wiki table, levels 1-20: talent columns plus the levels whose
