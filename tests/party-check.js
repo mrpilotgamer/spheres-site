@@ -107,6 +107,13 @@ async function until(fn, ms = 15000) { const t = Date.now(); for (;;) { try { co
   await pl.click('[data-a="shareOff"]'); await dlgBtn(pl, 'Stop sharing'); await wait(1200);
   const anon2 = await user('anon2'); await anon2.goto(shareLink);
   check('after Stop sharing, the link says so', !!(await until(() => anon2.locator('.dlg', { hasText: 'doesn’t work anymore' }).count(), 15000)), 'true');
+  /* a crafted record (a few KB of gzip that unpacks to 40 MB, past the 32 MB limit) is refused with a message, not unpacked */
+  const bigZ = require('zlib').gzipSync(Buffer.alloc(40 * 1024 * 1024, 32)).toString('base64');
+  const bigRes = await fetch('http://127.0.0.1:8080/v1/projects/demo-spheres/databases/(default)/documents/shares/crafted_big', { method: 'PATCH', headers: { Authorization: 'Bearer owner', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fields: { z: { bytesValue: bigZ }, enc: { stringValue: 'gzip' }, owner: { stringValue: 'nobody' }, name: { stringValue: 'Big' }, summary: { stringValue: '' }, savedAt: { integerValue: '1' } } }) });
+  check('a crafted oversized record is written to the emulator', bigRes.status, 200);
+  const anon3 = await user('anon3'); await anon3.goto(BASE + '?share=crafted_big&emu');
+  check('opening an oversized shared copy shows an error message (not a hang or a sheet)', !!(await until(() => anon3.locator('.dlg', { hasText: 'sheet/too-big' }).count(), 15000)), 'true');
 
   /* ---------- a second GM ---------- */
   console.log('Second GM');

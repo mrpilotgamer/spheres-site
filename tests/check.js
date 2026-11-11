@@ -464,6 +464,26 @@ function check(what, got, want) {
   check('cohort: saves good Fort/Will, bad Ref', /Fort \+5 Ref \+2 Will \+4/i.test(w), 'true');
   check('cohort: troop 4d10 magical with Batter', [/Troop damage 4d10 \(magical\)/.test(w), /Batter:/.test(w)].join(' '), 'true true');
 
+  /* ---------- Pilot sphere (2026-11-11): free ranks like Athletics (Tova, 12 HD) ----------
+     Packages: Naval = Profession, Stellar = Fly, Terrestrial = Ride. 5 ranks for the base sphere, +5 per further talent, capped at
+     Hit Dice 12 (the class-skill +3 comes with the first rank, so the checks compare totals against the base sphere alone). */
+  await home(); await page.click('[data-a="example"][data-k="striker"]'); await page.waitForTimeout(400);
+  const pil = (n, skills) => `var t=[{id:'pl0',kind:'talent',name:'Pilot',sphere:'Pilot',role:'sphere'}];for(var i=1;i<=${n};i++)t.push({id:'pl'+i,kind:'talent',name:'Cruise Control',sphere:'Pilot'});
+    c.extraPicks=(c.extraPicks||[]).filter(function(p){return !/^pl\\d/.test(p.id);}).concat(t);c.sphSkills=Object.assign(c.sphSkills||{},{Pilot:${JSON.stringify(skills)}});`;
+  const sk2 = async () => [parseInt(await skillTotal('Fly')), parseInt(await skillTotal('Ride'))];
+  await go('Character', 'Skills'); const none0 = await sk2();
+  await patch(pil(0, ['fly'])); await go('Character', 'Skills'); const p1 = await sk2();
+  await patch(pil(1, ['fly'])); await go('Character', 'Skills'); const p2 = await sk2();
+  check('Pilot (Stellar, Fly): the base sphere alone gives 5 ranks (+3 class skill); Ride is untouched', (p1[0] - none0[0]) + ' ' + (p1[1] - none0[1]), '8 0');
+  check('…and each further talent adds 5 more (base + 1 talent = 10 ranks)', p2[0] - p1[0], '5');
+  await patch(pil(5, ['fly'])); await go('Character', 'Skills'); const p6 = await sk2();
+  await patch(pil(2, ['fly'])); await go('Character', 'Skills'); const p3 = await sk2();
+  check('…capped at Hit Dice 12: base + 2 talents (15) gives the same as base + 5 (30), 2 ranks above base + 1', (p3[0] - p2[0]) + ' ' + (p6[0] - p3[0]), '2 0');
+  await patch(pil(1, ['fly', 'ride'])); await go('Character', 'Skills'); const pr = await sk2();
+  check('Pilot with two packages (Stellar + Terrestrial): Ride gets the same ranks as Fly', (pr[0] - p2[0]) + ' ' + (pr[1] - none0[1] - (p2[0] - none0[0])), '0 0');
+  await patch(pil(1, [])); await go('Character', 'Skills');
+  check('Pilot with no package skill chosen (three choices): no free ranks yet', (await sk2()).map((v, i) => v - none0[i]).join(' '), '0 0');
+
   /* ---------- Personas (Tova relabelled a 12th-level Troubadour: ¾ BAB, low caster) ----------
      True self: +3 morale on saves (1 + 1 at 5th + 1 at 9th). Captain Vale (Hero, Resolute +4 Fort as a modifier): BAB 9 → 12,
      Fort −3 (no base bonus) +4 = +1 net. Madame Ink (Mentor): caster level 6 → 12. Quick Change 3/day. */
@@ -516,6 +536,9 @@ function check(what, got, want) {
   await home(); const errN = errors.length; await page.click('[data-a="newChar"]'); await page.waitForTimeout(400);
   await go('Play', 'Sheet'); await page.click('[data-a="rest"][data-k="long"]'); await page.waitForTimeout(300);
   check('new character: a long rest works before any other tab is opened', [errors.length - errN, /Long rest \(8 hours\)/.test(await page.locator('#toast').innerText().catch(() => ''))].join(' '), '0 true');
+  await page.locator('[data-a="levelUp"]').first().click(); await page.waitForTimeout(300);
+  check('level up, first level of a new character: the class list is the default (hand-described still offered)', [await page.locator('.dlg-back').last().locator('select[name="cls"]').inputValue(), await page.locator('.dlg-back').last().locator('select[name="cls"] option[value="__new"]').count()].join(' '), '__lib 1');
+  await page.locator('.dlg-back').last().locator('button', { hasText: 'Cancel' }).click().catch(async () => { await page.keyboard.press('Escape'); }); await page.waitForTimeout(200);
 
   /* ---------- wiki descriptions (talents/*.json, fetched on demand) ----------
      The sheet runs from file:// here, so it asks the website for the files; these routes answer from public/talents
@@ -1301,6 +1324,7 @@ function check(what, got, want) {
     check('…40 levels, maximum hit points each', [(await stored()).levels.length, (await stored()).levels.slice(20).every(l => l.hp === 10)].join(' '), '40 true');
     await mkL(2); await page.reload(); await page.waitForTimeout(300);
     await page.click('[data-a="levelUp"]'); await page.waitForTimeout(300);
+    check('level up, a character that has a class: the default is still that class', await page.locator('.dlg-back').last().locator('select[name="cls"]').evaluate(e => !/^__/.test(e.value)), true);
     check('1 level is still the usual step-by-step', [await page.locator('.dlg-back').last().locator('input[name="cnt"]').inputValue(), await (async () => { await page.locator('.dlg-back').last().locator('button', { hasText: 'Next' }).click(); await page.waitForTimeout(300); return /Hit points rolled/.test(await page.locator('.dlg-back').last().innerText()); })()].join(' '), '1 true');
     await page.locator('.dlg-back').last().locator('button', { hasText: 'Cancel' }).click().catch(async () => { await page.keyboard.press('Escape'); }); await page.waitForTimeout(200);
   }
@@ -1384,6 +1408,40 @@ function check(what, got, want) {
     check('the page offers to plan level 5 next', (await page.locator('[data-a="planLevel"][data-k="-1"]').innerText()).trim(), 'Plan level 5');
   }
   await page.unroute(SITE + '**', localTalents);
+
+  /* ---------- armor check penalty with the encumbrance house rule; an action that throws ---------- */
+  console.log('Armor check penalty and a failing action');
+  {
+    let nA = 0, aid = '';
+    const mkA = extra => page.evaluate(([extra, id]) => { localStorage.setItem('spheres-sheet-v1:' + id, JSON.stringify(Object.assign({ app: 'spheres-sheet', v: 1, id, name: 'Armored',
+      classes: { c1: { name: 'Hero', hd: 10, bab: 'full', good: ['fort'], skills: 4, martial: 'expert', talents: 'auto' } },
+      levels: Array.from({ length: 3 }, () => ({ cls: 'c1', hp: 6, picks: [] })), rules: { maxFirst: true, hpMethod: 'avgup', encumbrance: true } }, extra)));
+      localStorage.setItem('spheres-sheet-v1:last', JSON.stringify(id)); }, [extra, aid = 'zz-arm' + (++nA)]);
+    /* Str 10: light load up to 33 lb, medium up to 66 lb (medium load = -3 check penalty) */
+    const gear = (aAcp, sAcp, wt, rule) => ({ armor: { name: 'Test armor', bonus: 4, enh: 0, maxDex: 99, acp: aAcp, type: 'light', asf: 0, mw: false, wt, mat: '' },
+      shield: { name: 'Test shield', bonus: 2, enh: 0, acp: sAcp, maxDex: 99, mw: false, asf: 0, wt: 0, mat: '', tower: false, },
+      rules: { maxFirst: true, hpMethod: 'avgup', encumbrance: rule } });
+    const climb = async extra => { await mkA(extra); await page.reload(); await page.waitForTimeout(500); await go('Character', 'Skills'); return (await skillTotal('Climb')).replace('−', '-'); };
+    check('check penalty: armor -2 and shield -2 are worse than a medium load (-3): -4, not -5', await climb(gear(2, 2, 40, true)), '-4');
+    check('check penalty: a medium load (-3) is worse than armor -1 and shield -1: -3', await climb(gear(1, 1, 40, true)), '-3');
+    check('check penalty: house rule off, only armor and shield count: -2', await climb(gear(1, 1, 40, false)), '-2');
+    check('check penalty: house rule on but a light load, armor and shield add up: -4', await climb(gear(2, 2, 10, true)), '-4');
+
+    /* an action that throws half-way leaves the character as it was, says so, and the sheet keeps working */
+    await mkA({ hp: { dmg: 5, non: 0, temp: 0 } }); await page.reload(); await page.waitForTimeout(500);
+    const errN2 = errors.length, dmgOf = () => page.evaluate(id => JSON.parse(localStorage.getItem('spheres-sheet-v1:' + id)).hp.dmg, aid);
+    await go('Play', 'Sheet');
+    const dmg0 = await dmgOf();
+    await page.evaluate(() => { const orig = Date.now; Date.now = () => { Date.now = orig; throw new Error('boom'); }; });
+    await page.click('[data-a="rest"][data-k="long"]'); await page.waitForTimeout(300);
+    const msg = (await page.locator('.dlg-back').last().innerText().catch(() => '')).replace(/\s+/g, ' ');
+    check('a failing action: the message says it didn’t work and nothing was saved', /That didn’t work: boom\. Nothing was saved\./.test(msg), 'true');
+    await page.locator('.dlg button:has-text("OK")').last().click().catch(() => {}); await page.waitForTimeout(200);
+    check('…the saved character is unchanged', [dmg0, await dmgOf()].join(' '), '5 5');
+    await page.click('[data-a="rest"][data-k="long"]'); await page.waitForTimeout(300);
+    check('…and the next action works on the unchanged character (5 − 3 healed = 2)', [await dmgOf(), /Long rest \(8 hours\)/.test(await page.locator('#toast').innerText().catch(() => ''))].join(' '), '2 true');
+    errors.length = errN2; /* the failure was logged with console.error on purpose */
+  }
 
   check('no page errors', errors.length ? errors.join(' | ') : 'none', 'none');
   await browser.close();

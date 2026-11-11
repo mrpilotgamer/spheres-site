@@ -41,6 +41,8 @@ jobs:
         run: node tests/check.js
       - name: Check the script policy against the page (tools/csp.js)
         run: node tests/csp-check.js
+      - name: Check that hostile character data can't inject markup or scripts
+        run: node tests/fuzz-check.js
       - name: Check the database rules (emulator)
         run: npx firebase emulators:exec --only firestore --project demo-spheres "node tests/rules-check.js"
       - name: Check share links and parties (emulator)
