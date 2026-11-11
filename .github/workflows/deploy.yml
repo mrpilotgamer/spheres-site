@@ -38,7 +38,7 @@ jobs:
         run: |
           npm install --no-save --no-package-lock playwright@1.63.0 firebase-tools@13.35.1 firebase@10.12.2 @firebase/rules-unit-testing@3.0.4
           npx playwright install --with-deps chromium
-      - name: Check the rules engine directly (fast: no clicking)
+      - name: "Check the rules engine directly (fast, no clicking)"
         run: node tests/engine-check.js
       - name: Check the sheet (example characters, wiki text, adding talents...)
         run: node tests/check.js
