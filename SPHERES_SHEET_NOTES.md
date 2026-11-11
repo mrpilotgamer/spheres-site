@@ -75,7 +75,7 @@ so every `firebase deploy` (Cloud Shell or GitHub) first checks the description 
 Normal sheet updates don't need this step; the `talents/` folder stays as it is.
 
 **Checks before deploying (optional):** `tests/check.js` opens the sheet in a headless browser, loads
-both example characters and runs 276 checks against values worked out by hand (HP, AC, saves,
+both example characters and runs 442 checks against values worked out by hand (HP, AC, saves,
 DCs, spell points, talents, skill ranks, attacks, toggles, the theme, free sphere ranks, blast augments, Roll20 macros,
 raised undead, temporary talents, cohorts, Workshop, wiki descriptions, adding talents from the wiki and more). It sits outside `public/`, so it is never deployed. Run it with:
 ```
@@ -100,8 +100,8 @@ loads both examples with script payloads injected into their data (four ways: fr
 opens every tab, details, "why" dialog and the print view, and fails if any injected markup or script shows up or a page error
 is thrown (2026-11-11; it was run against a deliberately unescaped character name and caught it). GitHub runs all eight
 (the seven since 2026-11-09, `fuzz-check.js` since 2026-11-11).
-Last full run: 2026-11-11 (gunz cap), `check.js` 421, `talents-check.js` 31, `config-check.js` 5, `rules-check.js` 90,
-`party-check.js` 38, `save-check.js` 12, `csp-check.js` 6, `fuzz-check.js` 27: all passed.
+Last full run: 2026-11-11, `check.js` 442, `fuzz-check.js` 27, `talents-check.js` 31, `config-check.js` 5, `csp-check.js` 6,
+`rules-check.js` 90 (not rerun since 2026-11-10; the rules are unchanged), `party-check.js` 38, `save-check.js` 12: all passed.
 
 **Rollback:** Firebase console → Hosting → release history → roll back. With GitHub: also revert the commit (the
 commit's page → "Revert"), or the next push puts the broken version back.
@@ -115,8 +115,31 @@ commit's page → "Revert"), or the next push puts the broken version back.
   (`channelId: live`). The workflow token is read-only except in the deploy job; deploys never overlap.
 - **Secret:** `FIREBASE_SERVICE_ACCOUNT_SPHERES_CHARACTER_SHEET` (repository → Settings → Secrets and variables → Actions),
   made by `firebase init hosting:github`. If that command named it differently, change the name in `deploy.yml` to match.
-- **Not deployed by GitHub:** the database rules. After changing `firestore.rules`, run `firebase deploy --only firestore`
-  from Cloud Shell (or a computer with the Firebase CLI).
+- **Database rules (from 2026-11-12):** on `main`, after every check passed, the `deploy` job also publishes
+  `firestore.rules` (`firebase deploy --only firestore:rules`), *before* the site goes live. It runs every time and changes
+  nothing if the rules are already the same. It needs a one-time permission, see "One-time setup" below. Until that is
+  done, the rules step fails and the site is **not** updated either (the checks stay green, the deploy job goes red).
+  By hand, as before: `firebase deploy --only firestore` from Cloud Shell (or a computer with the Firebase CLI).
+- **One-time setup (the deploy account needs the "Firebase Rules Admin" role):**
+  1. Open console.cloud.google.com and pick the project **spheres-character-sheet** (top bar).
+  2. Menu → **IAM & Admin → IAM**.
+  3. Find the row whose principal looks like `github-action-123456789@spheres-character-sheet.iam.gserviceaccount.com`
+     (the number differs). To be sure it is the right one: it is the `client_email` line inside the JSON stored in the
+     GitHub secret above, and it is also listed in the Firebase console → Project settings → **Service accounts** →
+     "Manage service account permissions". If the list is long, use the filter box and type `github-action`.
+  4. Click the pencil (**Edit principal**) at the end of that row → **Add another role** → type `Firebase Rules Admin`
+     and pick it → **Save**.
+  5. On github.com → Actions, open the latest run of "Test and deploy" and press **Re-run all jobs** (or push any change).
+  - **If it worked:** in the `deploy` job the steps "Publish the database rules" and "Deploy to Firebase Hosting" both
+    have green ticks, and the log of the rules step ends with `released rules firestore.rules to cloud.firestore`.
+  - **If it didn't:** the "Publish the database rules" step is red and the site was not updated. Read its last lines.
+    "Permission denied" / 403 mentioning `firebaserules` means the role is missing or was added to the wrong account
+    (check step 3). If the message names another permission, add the role it names: `serviceusage.services.get` or
+    `serviceusage.services.use` → **Service Usage Consumer**; `datastore.…` → **Cloud Datastore Viewer**.
+    (The deploy account normally already has Service Usage Consumer, from `firebase init hosting:github`.)
+  - **To undo:** IAM → pencil on the same row → the trash icon next to Firebase Rules Admin → Save, and delete the three
+    rules steps (from "Save the deploy key" to "Delete the deploy key file") in `.github/workflows/deploy.yml`; the
+    deploy goes back to site-only and the rules are by hand again.
 - **Working with Claude:** attach the repository to a Claude Code session instead of uploading zips; it can change the
   files and push, and the push deploys.
 
@@ -1341,7 +1364,7 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
     the ones already there as known once (`ch.histDb`), so they aren't listed as new.
   - **Party members (database rule):** a member record can only be created for a character saved in the player's account
     (`exists(users/{uid}/characters/{charId})`), so one invite code can't make endless records. Joining saves the character
-    to the account first. **Deploy the rules by hand** (`firebase deploy --only firestore`): GitHub only deploys the site.
+    to the account first. **The rules are published by the GitHub deploy** (since 2026-11-12, after the one-time setup in "GitHub and automatic deploys"; by hand: `firebase deploy --only firestore`).
     The site change works with the old rules too, so the order doesn't matter.
   - **GitHub workflow:** `actions/checkout@v5`, `actions/setup-node@v5` (the v4 ones ran on Node 20, which GitHub is retiring).
 - **Quick fixes (2026-11-08).**
