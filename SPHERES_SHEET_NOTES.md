@@ -98,9 +98,12 @@ fails if the two configs' hosting settings drift apart. `tests/csp-check.js` (6 
 package) checks the script policy against the page. `tests/fuzz-check.js` (27 checks, about a minute; needs Playwright only)
 loads both examples with script payloads injected into their data (four ways: free text, map keys, every string, every number),
 opens every tab, details, "why" dialog and the print view, and fails if any injected markup or script shows up or a page error
-is thrown (2026-11-11; it was run against a deliberately unescaped character name and caught it). GitHub runs all eight
-(the seven since 2026-11-09, `fuzz-check.js` since 2026-11-11).
-Last full run: 2026-11-11, `check.js` 442, `fuzz-check.js` 27, `talents-check.js` 31, `config-check.js` 5, `csp-check.js` 6,
+is thrown (2026-11-11; it was run against a deliberately unescaped character name and caught it). `tests/engine-check.js`
+(325 checks, about 2 seconds, Playwright only, no clicking and no sleeps) tests the numbers directly through `window.SheetEngine`:
+both examples (the numbers `check.js` reads off the screen), rule tables typed from the wiki and Core Rulebook, old saves,
+and that the handle leaves no trace (2026-11-12). GitHub runs all nine (the seven since 2026-11-09, `fuzz-check.js` since
+2026-11-11, `engine-check.js` since 2026-11-12, in front of `check.js` so the fast one fails first).
+Last full run: 2026-11-12, `engine-check.js` 325, `check.js` 442, `fuzz-check.js` 27, `talents-check.js` 31, `config-check.js` 5, `csp-check.js` 6,
 `rules-check.js` 90 (not rerun since 2026-11-10; the rules are unchanged), `party-check.js` 38, `save-check.js` 12: all passed.
 
 **Rollback:** Firebase console → Hosting → release history → roll back. With GitHub: also revert the commit (the
@@ -155,6 +158,16 @@ fields, layout changes and rules maths don't need this.
 
 **One self-contained HTML file.** It has no build step and no external code, except Google Fonts
 and (on the website only) the Firebase SDK from gstatic.
+
+**A read-only handle for tests (2026-11-12).** The rules engine lives inside the page's private script, so tests used to have to
+click through the page. `window.SheetEngine` (a frozen object just before the BOOT section) offers calculations only:
+`derive(character)` (JSON copy of the full result for ANY character object, working the way the Level plan does: it swaps in the given
+character, derives, and puts the open one back, on a copy and without `save()` or `paint()`), `sphereStats(c, sphere)`,
+`compStats(companion, vars, c)`, `blankComp`, `sanitize`, `examples()`, `blank()`, the pure helpers (`evalF`, `fParse`, `scaleDice`,
+`stackLines`, `drawbackSP`, `tierSplit`, `classTalentSplit`, `babFor`, `clFor`, `heavyLoad`, `loadFor`, `amod`, `advCap`), the help's
+`FEXAMPLES`, and JSON copies of the tables (`SIZES`, `XPT`, `CARRY`, `ARMORS`, `WEAPONS`, `SSK`, `CONDS`). It never exposes the open
+character or the cloud object and cannot write anything, so it isn't hidden behind a flag. `tests/engine-check.js` uses it.
+Stage 2 (trimming the number checks out of `check.js` now that they are covered here) is not done yet; `check.js` is unchanged.
 
 Script blocks inside, in order:
 1. `#savedState`: a JSON slot. **Save file** writes the character in here, so a downloaded file
