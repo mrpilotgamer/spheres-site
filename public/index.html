@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Spheres Character Sheet</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23121118'/%3E%3Ccircle cx='16' cy='16' r='8' fill='none' stroke='%23e0b25a' stroke-width='3'/%3E%3Ccircle cx='16' cy='16' r='2.5' fill='%23e0b25a'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -162,8 +163,10 @@ td{padding:6px 8px;border-bottom:1px solid var(--soft);vertical-align:middle}
 tr.untrained td{color:var(--faint)}
 td input[type=number]{width:4.4rem}
 @media (max-width:560px){
-  table.stick th,table.stick td{padding:5px 4px}
-  table.stick td input[type=number]{width:3.7rem;padding-left:6px;padding-right:2px}
+  table.stick th,table.stick td{padding:5px 2px}
+  table.stick th{letter-spacing:.02em;font-size:10.5px}
+  table.stick td input[type=number]{width:2.9rem;padding-left:4px;padding-right:2px}
+  table.stick td input[type=text]{width:5rem!important}
   table.stick tr>:first-child,table.stick tr>:last-child{position:sticky;background:var(--panel);z-index:1}
   table.stick tr>:first-child{left:0} table.stick tr>:last-child{right:0;box-shadow:-6px 0 6px -4px rgba(0,0,0,.5)}
 }
@@ -178,6 +181,7 @@ details>summary{cursor:pointer;color:var(--gold);margin:6px 0}
 .why .off{color:var(--faint);text-decoration:line-through}
 .why .tot{font-size:18px;font-weight:700;border-bottom:none}
 .empty{color:var(--muted);font-size:14px}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .start{max-width:640px;margin:40px auto;display:flex;flex-direction:column;gap:14px}
 .steps{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px}
 .steps span{padding:4px 10px;border-radius:var(--r);background:var(--raised);font-size:12.5px;color:var(--muted)}
@@ -2403,7 +2407,7 @@ function render(){
   if(UI.party&&!UI.ro){ m.removeAttribute('role'); m.removeAttribute('aria-labelledby'); m.innerHTML=partyHTML(); return; }
   if(!ch||UI.home){ m.removeAttribute('role'); m.removeAttribute('aria-labelledby'); m.innerHTML=homeHTML(); homeFilter(); return; }
   var f={pers:rPers,ws:rWs,hist:rHist,shape:rShape,poss:rPoss,sheet:rSheet,build:rBuild,trad:rTrad,comp:rComp,skills:rSkills,picks:rPicks,talents:rTalents,mods:rMods,acts:rActs,gear:rGear,notes:rNotes,rules:rRules,save:rSave,plan:rPlan}[UI.tab]||rSheet;
-  m.setAttribute('role','tabpanel'); m.setAttribute('aria-labelledby','tab-'+UI.tab);
+  m.setAttribute('aria-labelledby','tab-'+UI.tab);
   m.innerHTML=f(); UI.lastOpen=UI.openNew; UI.openNew=null; roLock(m);
 }
 /* signed in, on this device and in the account, and this device's copy is newer: 'saving' while a save is on its way, else true */
@@ -4161,7 +4165,7 @@ function secOpts(){ return [['always','Always on']].concat(modHeads().map(functi
 function modRows(list,sit){
   if(!list.length) return '<p class="empty" style="margin:6px 0">None yet.</p>';
   var TL={}; targetOpts().forEach(function(o){ TL[o[0]]=o[1]; });
-  return '<div class="table-wrap"><table class="modt"><tr><th></th><th>Source</th><th>Value or formula</th><th>Affects</th><th>Type</th>'+(sit?'<th>Applies when…</th>':'')+'<th>Section</th><th></th></tr>'+list.map(function(x){ var m=x.m, i=x.i, p='mods.'+i+'.';
+  return '<div class="table-wrap"><table class="modt"><tr><th><span class="sr-only">Move</span></th><th>Source</th><th>Value or formula</th><th>Affects</th><th>Type</th>'+(sit?'<th>Applies when…</th>':'')+'<th>Section</th><th><span class="sr-only">Actions</span></th></tr>'+list.map(function(x){ var m=x.m, i=x.i, p='mods.'+i+'.';
     return '<tr data-drop="mod" data-id="'+esc(m.id)+'"><td class="c-mv">'+dragH('mod',m.id)+'<button class="mini mv" data-a="modMv" data-i="'+i+'" data-n="-1" aria-label="Move up">↑</button><button class="mini mv" data-a="modMv" data-i="'+i+'" data-n="1" aria-label="Move down">↓</button></td><td class="c-src" data-l="Source"><input type="text" data-f="'+p+'src" value="'+esc(m.src)+'" aria-label="Source"></td>'+
       '<td class="c-val" data-l="Value"><input type="text" data-f="'+p+'val" value="'+esc(m.val)+'" aria-label="Value"><div class="fres" style="max-width:16rem;white-space:normal">'+fRes(m.val)+'</div></td>'+
       '<td class="c-tgt" data-l="Affects"><input type="text" data-tgt="'+i+'" list="tgtList" value="'+esc(TL[m.target]||m.target)+'" aria-label="Affects (type to search)" title="Type to search, e.g. reflex, climb, fire"></td>'+
@@ -5176,7 +5180,7 @@ function planLevelFlow(k){ var real=ch, realD=D, P=planOf(real), idx=k<0?P.lengt
     function(e){ back(); throw e; }); }
 function levelUpFlow(opts){
   opts=opts||{}; var PM=!!opts.plan;
-  var L=ch.levels.length, W={cls:ch.levels.length?ch.levels[L-1].cls:(Object.keys(ch.classes)[0]||'__new'),nk:blankClass(''),hp:'',fcb:'hp',inc:'',ranks:{},feats:'',talents:'',features:''};
+  var L=ch.levels.length, W={cls:ch.levels.length?ch.levels[L-1].cls:(Object.keys(ch.classes)[0]||'__lib'),nk:blankClass(''),hp:'',fcb:'hp',inc:'',ranks:{},feats:'',talents:'',features:''};
   /* a plan entry fills the dialog: when planning (editing it) or levelling up (the next planned level) */
   function fromPlan(e){ if(!e) return; if(e.newClass&&!ch.classes[e.cls]){ W.cls='__new'; W.nk=JSON.parse(JSON.stringify(e.newClass)); W.newId=e.cls; } else W.cls=e.cls;
     W.fcb=e.fcb||'none'; W.inc=e.inc||''; W.ranks=JSON.parse(JSON.stringify(e.ranks||{})); W.feats=e.feats||''; W.talents=e.talents||''; W.features=e.features||''; if(n0(e.hp)) W.hp=n0(e.hp); }

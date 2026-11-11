@@ -536,6 +536,9 @@ function check(what, got, want) {
   await home(); const errN = errors.length; await page.click('[data-a="newChar"]'); await page.waitForTimeout(400);
   await go('Play', 'Sheet'); await page.click('[data-a="rest"][data-k="long"]'); await page.waitForTimeout(300);
   check('new character: a long rest works before any other tab is opened', [errors.length - errN, /Long rest \(8 hours\)/.test(await page.locator('#toast').innerText().catch(() => ''))].join(' '), '0 true');
+  await page.locator('[data-a="levelUp"]').first().click(); await page.waitForTimeout(300);
+  check('level up, first level of a new character: the class list is the default (hand-described still offered)', [await page.locator('.dlg-back').last().locator('select[name="cls"]').inputValue(), await page.locator('.dlg-back').last().locator('select[name="cls"] option[value="__new"]').count()].join(' '), '__lib 1');
+  await page.locator('.dlg-back').last().locator('button', { hasText: 'Cancel' }).click().catch(async () => { await page.keyboard.press('Escape'); }); await page.waitForTimeout(200);
 
   /* ---------- wiki descriptions (talents/*.json, fetched on demand) ----------
      The sheet runs from file:// here, so it asks the website for the files; these routes answer from public/talents
@@ -1321,6 +1324,7 @@ function check(what, got, want) {
     check('…40 levels, maximum hit points each', [(await stored()).levels.length, (await stored()).levels.slice(20).every(l => l.hp === 10)].join(' '), '40 true');
     await mkL(2); await page.reload(); await page.waitForTimeout(300);
     await page.click('[data-a="levelUp"]'); await page.waitForTimeout(300);
+    check('level up, a character that has a class: the default is still that class', await page.locator('.dlg-back').last().locator('select[name="cls"]').evaluate(e => !/^__/.test(e.value)), true);
     check('1 level is still the usual step-by-step', [await page.locator('.dlg-back').last().locator('input[name="cnt"]').inputValue(), await (async () => { await page.locator('.dlg-back').last().locator('button', { hasText: 'Next' }).click(); await page.waitForTimeout(300); return /Hit points rolled/.test(await page.locator('.dlg-back').last().innerText()); })()].join(' '), '1 true');
     await page.locator('.dlg-back').last().locator('button', { hasText: 'Cancel' }).click().catch(async () => { await page.keyboard.press('Escape'); }); await page.waitForTimeout(200);
   }

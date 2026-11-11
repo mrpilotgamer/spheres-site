@@ -313,6 +313,18 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
   before it (same way Undo restores: share link and parties kept), skips history, repaints and shows the "That didn't work ...
   Nothing was saved" message, like the promise branch. (3) Leather Lamellar is medium armor (Ultimate Combat), moved after
   Armored Coat in `ARMORS`; characters already wearing it keep their saved armor type (no conversion). check.js: 7 checks.
+- **2026-11-11:** phone-layout and accessibility fixes. (1) `paint()`: `<main id="main">` no longer gets `role="tabpanel"` (it
+  removed the page's main landmark); it keeps `aria-labelledby="tab-<tab>"`, and the tabs' `aria-controls="main"` still points at it.
+  (2) `modRows()`: the two empty `<th>` cells now hold `<span class="sr-only">Move</span>` / `Actions` (new `.sr-only` class).
+  (3) A data-URI SVG `<link rel="icon">` in the head (gold ring on the dark ground); `tools/csp.js` already allows `data:` in
+  `img-src`, so it is unchanged. (4) `levelUpFlow`: a character with no classes and no levels opens step 1 on "From the class list…"
+  (`W.cls` defaults to `'__lib'`, not `'__new'`); hand-described is still in the select; characters with a class are unchanged.
+  (5) Phone CSS for `table.stick` (the 560px block): 2px cell padding, smaller header letter-spacing and size, 2.9rem number
+  inputs, 5rem text inputs, so the Ability column on the Skills tab is readable at 360-390px; the pinned first and last columns
+  and the sideways scroll are unchanged (the Mods column still sits under Total until you scroll). Left alone: the ↑ ↓ buttons
+  inside `<summary>` of `itemD()` rows (axe nested-interactive): the summary is the only part of a closed `<details>` that shows,
+  so moving them out would mean a wrapper element around each row plus absolute positioning, which touches repaint (`data-keep`),
+  drag and drop (`data-drop`) and the row CSS.
 - **Data:** `ch.sphSkills = {"<sphere name>": [skill ids]}` (extra Craft/Perform/... entries use their own
   ids). Unset = the default: the single allowed skill, if there is only one. `x` talents are always added.
   Renaming a sphere moves its entry.
