@@ -533,6 +533,10 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
   compares every Spheres class in the class list with its wiki table, levels 1-20: talent columns plus the levels whose
   Special column says "Bonus talent". 125 of 132 match; the 7 others are listed in its `KNOWN` (text-only grants, the
   Warleader track, a variant race) and it exits 1 only for a new, unexplained difference. Run it after a wiki update.
+  - **2026-11-11:** the tool now also checks hit die, BAB, the three saves (every level row of the class table), skill ranks
+    per level and class skills for every Spheres class (expected wiki quirks in `KNOWN2`). It currently reports data errors
+    in the class list that are still to be fixed (e.g. Black Templar saves, Agent / Professional Perform, Advisor class
+    skills, prestige flags, missing skill ranks), so it exits 1 until they are.
   - **Fixed in the class list:** Conscript (+1 at every odd level, like Incanter), Raveler (+1 at every even level),
     Professional (+1 at 1st, 5th, 9th, 13th, 17th), Advisor and Scholar (2 bonus talents at 1st: Leader's Communication
     sphere + (assist) talent, Problem Solver's Alchemy and Scout spheres). Cyborg's note says to add its 3rd-level Tinker talent.
