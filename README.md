@@ -44,7 +44,7 @@ leaves the live site unchanged. Only `public/` is deployed (see `firebase.json`)
 ## Tools
 
 - `tools/build-talents.py <bundle folder>`: rebuilds `public/talents/` from the offline wiki bundle.
-- `tools/verify-classes.py`: compares the class list's talent progressions with the wiki bundle.
+- `tools/verify-classes.py <bundle folder>`: compares the class list (talent progressions, hit die, BAB, saves, skill ranks, class skills) with the wiki bundle.
 - `tools/csp.js`: works out the script policy (Content-Security-Policy) for `public/index.html`; the deploy writes it into `firebase.json`.
 
 ## Working on index.html
