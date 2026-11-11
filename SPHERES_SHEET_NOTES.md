@@ -103,7 +103,7 @@ is thrown (2026-11-11; it was run against a deliberately unescaped character nam
 both examples (the numbers `check.js` reads off the screen), rule tables typed from the wiki and Core Rulebook, old saves,
 and that the handle leaves no trace (2026-11-12). GitHub runs all nine (the seven since 2026-11-09, `fuzz-check.js` since
 2026-11-11, `engine-check.js` since 2026-11-12, in front of `check.js` so the fast one fails first).
-Last full run: 2026-11-12, `engine-check.js` 325, `check.js` 442 (about 95 seconds, 10 of 10 runs passed), `fuzz-check.js` 27, `talents-check.js` 31, `config-check.js` 12, `csp-check.js` 6,
+Last full run: 2026-11-12, `engine-check.js` 325, `check.js` 447 (about 95 seconds, 10 of 10 runs passed), `fuzz-check.js` 27, `talents-check.js` 31, `config-check.js` 12, `csp-check.js` 6,
 `rules-check.js` 90 (not rerun since 2026-11-10; the rules are unchanged), `party-check.js` 38, `save-check.js` 12: all passed.
 
 **Rollback:** Firebase console → Hosting → release history → roll back. With GitHub: also revert the commit (the
@@ -396,6 +396,16 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
   inside `<summary>` of `itemD()` rows (axe nested-interactive): the summary is the only part of a closed `<details>` that shows,
   so moving them out would mean a wrapper element around each row plus absolute positioning, which touches repaint (`data-keep`),
   drag and drop (`data-drop`) and the row CSS.
+- **2026-11-12:** polish. (1) `rTalents`: the per-type tiles (Magic talents, Combat talents…) now carry the note "every pick of this
+  type, free ones too". Talents used counts only picks that cost a talent from the budget (`D.talentsHave`: class, bonus magic and
+  drawback talents; not free base spheres, temporary or bonus-role picks), so for Ilyra Talents used is 21 (17 talents + 2 spheres + 1 tradition
+  sphere + 1 tradition talent, all paid) and Magic talents is 22 (those 21 plus her free base sphere); no number changed. (2) The Build
+  tab's ability table has the extra class `abil` (`table.abil`): in the phone block the pinned Mod column has a left border and padding and
+  its number boxes are narrower, so the Modifiers column no longer touches it; the Skills table (`table.stick` alone) is unchanged, pixel
+  for pixel. (3) Weapon picker: `weaponOpts(sz)` labels show the dice converted by `weaponDice` for the character's size; `rGear` offers
+  "Fill from the list" only on melee/ranged rows (not nat1, nat2, cmb, flurry) and its label says it replaces name, kind, dice, critical,
+  type and range; the fill is one change-handler edit and Undo restores it (checked). `check.js` +5 checks; the Small-character check
+  now picks "Longsword (1d6, …)". (4) `README.md` at the repository root (not in `public/`, so not deployed).
 - **Data:** `ch.sphSkills = {"<sphere name>": [skill ids]}` (extra Craft/Perform/... entries use their own
   ids). Unset = the default: the single allowed skill, if there is only one. `x` talents are always added.
   Renaming a sphere moves its entry.
