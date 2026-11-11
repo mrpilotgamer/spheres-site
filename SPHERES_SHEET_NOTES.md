@@ -299,11 +299,14 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
 - A sphere gives 5 ranks in its associated skill, +5 per further talent in it (so 5 × talents in the
   sphere, base included, tradition grants and bonus talents included), capped at Hit Dice. No skill points.
 - Applies to the 17 skill spheres and the combat spheres Alchemy, Athletics, Beastmastery, Fencing,
-  Gladiator, Leadership, Scoundrel, Scout, Tech, Tinker and Trap. `SSK` (next to `SKILLS`) lists each one's
+  Gladiator, Leadership, Pilot, Scoundrel, Scout, Tech, Tinker and Trap. `SSK` (next to `SKILLS`) lists each one's
   allowed skills (`s`), the wiki wording (`w`), talents that add a fixed extra skill (`x`: Read Foe →
   Sense Motive, Great Senses → Perception, Skilled Sneak → Stealth, Experienced Navigator → Knowledge
   (geography), Innate Spellhacking → Spellcraft, Military Training and Ace Pilot → Profession) and talents
   that add one of your choice (`c`).
+- **2026-11-11:** added Pilot (packages: Naval = Profession (sailor), Stellar = Fly, Terrestrial = Ride; the wiki also
+  allows "Piloting", which the sheet has no skill for). Pilot talents add no fixed or chosen extra skill. Ace Pilot is an
+  Athletics talent (Profession (pilot)), so it stays in Athletics' `x`. check.js: 5 Pilot checks.
 - **Data:** `ch.sphSkills = {"<sphere name>": [skill ids]}` (extra Craft/Perform/... entries use their own
   ids). Unset = the default: the single allowed skill, if there is only one. `x` talents are always added.
   Renaming a sphere moves its entry.

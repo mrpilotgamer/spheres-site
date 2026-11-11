@@ -464,6 +464,26 @@ function check(what, got, want) {
   check('cohort: saves good Fort/Will, bad Ref', /Fort \+5 Ref \+2 Will \+4/i.test(w), 'true');
   check('cohort: troop 4d10 magical with Batter', [/Troop damage 4d10 \(magical\)/.test(w), /Batter:/.test(w)].join(' '), 'true true');
 
+  /* ---------- Pilot sphere (2026-11-11): free ranks like Athletics (Tova, 12 HD) ----------
+     Packages: Naval = Profession, Stellar = Fly, Terrestrial = Ride. 5 ranks for the base sphere, +5 per further talent, capped at
+     Hit Dice 12 (the class-skill +3 comes with the first rank, so the checks compare totals against the base sphere alone). */
+  await home(); await page.click('[data-a="example"][data-k="striker"]'); await page.waitForTimeout(400);
+  const pil = (n, skills) => `var t=[{id:'pl0',kind:'talent',name:'Pilot',sphere:'Pilot',role:'sphere'}];for(var i=1;i<=${n};i++)t.push({id:'pl'+i,kind:'talent',name:'Cruise Control',sphere:'Pilot'});
+    c.extraPicks=(c.extraPicks||[]).filter(function(p){return !/^pl\\d/.test(p.id);}).concat(t);c.sphSkills=Object.assign(c.sphSkills||{},{Pilot:${JSON.stringify(skills)}});`;
+  const sk2 = async () => [parseInt(await skillTotal('Fly')), parseInt(await skillTotal('Ride'))];
+  await go('Character', 'Skills'); const none0 = await sk2();
+  await patch(pil(0, ['fly'])); await go('Character', 'Skills'); const p1 = await sk2();
+  await patch(pil(1, ['fly'])); await go('Character', 'Skills'); const p2 = await sk2();
+  check('Pilot (Stellar, Fly): the base sphere alone gives 5 ranks (+3 class skill); Ride is untouched', (p1[0] - none0[0]) + ' ' + (p1[1] - none0[1]), '8 0');
+  check('…and each further talent adds 5 more (base + 1 talent = 10 ranks)', p2[0] - p1[0], '5');
+  await patch(pil(5, ['fly'])); await go('Character', 'Skills'); const p6 = await sk2();
+  await patch(pil(2, ['fly'])); await go('Character', 'Skills'); const p3 = await sk2();
+  check('…capped at Hit Dice 12: base + 2 talents (15) gives the same as base + 5 (30), 2 ranks above base + 1', (p3[0] - p2[0]) + ' ' + (p6[0] - p3[0]), '2 0');
+  await patch(pil(1, ['fly', 'ride'])); await go('Character', 'Skills'); const pr = await sk2();
+  check('Pilot with two packages (Stellar + Terrestrial): Ride gets the same ranks as Fly', (pr[0] - p2[0]) + ' ' + (pr[1] - none0[1] - (p2[0] - none0[0])), '0 0');
+  await patch(pil(1, [])); await go('Character', 'Skills');
+  check('Pilot with no package skill chosen (three choices): no free ranks yet', (await sk2()).map((v, i) => v - none0[i]).join(' '), '0 0');
+
   /* ---------- Personas (Tova relabelled a 12th-level Troubadour: ¾ BAB, low caster) ----------
      True self: +3 morale on saves (1 + 1 at 5th + 1 at 9th). Captain Vale (Hero, Resolute +4 Fort as a modifier): BAB 9 → 12,
      Fort −3 (no base bonus) +4 = +1 net. Madame Ink (Mentor): caster level 6 → 12. Quick Change 3/day. */

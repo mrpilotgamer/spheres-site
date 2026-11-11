@@ -446,7 +446,7 @@ var SKN={}; SKILLS.forEach(function(s){ SKN[s[0]]=s; });
    talent spent in it (maximum = your Hit Dice). The ranks cost no skill points. Two spheres with the same associated skill
    don't give more than the maximum; you get a competence bonus of half your character level (minimum +1) instead.
    Some Spheres of Might spheres work the same way (Alchemy, Athletics, Beastmastery, Fencing, Gladiator, Leadership,
-   Scoundrel, Scout, Tech, Tinker, Trap).
+   Pilot, Scoundrel, Scout, Tech, Tinker, Trap).
    s = skills the wiki allows (SKILLS ids; craft/prof/perform/art/lore also match their extra entries),
    w = the wiki's wording, x = talents that add a fixed extra associated skill, c = talents that add one of your choice. */
 var KNOW=['karc','kdun','keng','kgeo','khis','kloc','knat','knob','kpla','krel'];
@@ -472,6 +472,7 @@ var SSK={
   fencing:{s:['bluff'],w:'Bluff',x:{'read foe':'sense'}},
   gladiator:{s:['intim'],w:'Intimidate'},
   leadership:{s:['diplo'],w:'Diplomacy',x:{'military training':'prof'}},
+  pilot:{s:['prof','fly','ride'],w:'one per package: Profession (sailor) for Naval, Fly for Stellar, Ride for Terrestrial (or Piloting, which the sheet does not list)'},
   scoundrel:{s:['sleight'],w:'Sleight of Hand'},
   scout:{s:['stealth'],w:'Stealth',x:{'great senses':'perc'}},
   tech:{s:['craft'],w:'Craft (mechanical)'},
