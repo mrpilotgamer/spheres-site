@@ -86,7 +86,7 @@ When you change an example on purpose, update its expected numbers in the script
 `tests/talents-check.js` (31 checks, no browser, a second) checks the description files in `public/talents/`:
 `node tests/talents-check.js`. The wiki-description part of `check.js` reads those files too, so build them first.
 
-The other three tests (`rules-check.js` 90 checks, `party-check.js` 36, `save-check.js` 12) test the database rules and
+The other three tests (`rules-check.js` 90 checks, `party-check.js` 38, `save-check.js` 12) test the database rules and
 cloud saving. They need the Firebase emulator, which needs Java (Claude's cloud sessions have it). Install the tools once
 with `npm i --no-save firebase-tools@13 firebase@10.12.2 @firebase/rules-unit-testing@3` (not Playwright: a second copy
 won't match the installed browser), then:
@@ -100,8 +100,8 @@ loads both examples with script payloads injected into their data (four ways: fr
 opens every tab, details, "why" dialog and the print view, and fails if any injected markup or script shows up or a page error
 is thrown (2026-11-11; it was run against a deliberately unescaped character name and caught it). GitHub runs all eight
 (the seven since 2026-11-09, `fuzz-check.js` since 2026-11-11).
-Last full run: 2026-11-10 (level plan), `check.js` 407, `talents-check.js` 31, `config-check.js` 5, `rules-check.js` 90,
-`party-check.js` 36, `save-check.js` 12: all passed.
+Last full run: 2026-11-11 (gunz cap), `check.js` 421, `talents-check.js` 31, `config-check.js` 5, `rules-check.js` 90,
+`party-check.js` 38, `save-check.js` 12, `csp-check.js` 6, `fuzz-check.js` 27: all passed.
 
 **Rollback:** Firebase console → Hosting → release history → roll back. With GitHub: also revert the commit (the
 commit's page → "Revert"), or the next push puts the broken version back.
@@ -317,6 +317,11 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
   before it (same way Undo restores: share link and parties kept), skips history, repaints and shows the "That didn't work ...
   Nothing was saved" message, like the promise branch. (3) Leather Lamellar is medium armor (Ultimate Combat), moved after
   Armored Coat in `ARMORS`; characters already wearing it keep their saved armor type (no conversion). check.js: 7 checks.
+- **2026-11-11:** `gunz` (Firebase module: unpacks a stored character for `get` and `readCopy`, so also share links and party
+  sheets, which anyone can open) now reads the stream in chunks and stops with `code: "sheet/too-big"` once it has produced more than
+  32 MB (`GUNZ_MAX`, same as `IMPORT_MAX`), cancelling the stream; before, a crafted 1 MB record could unpack to gigabytes and freeze
+  the tab. `syncOpen`'s error line says "too big to open here" for that code instead of "couldn't reach your account"; the other
+  callers already show the error code. party-check.js: 2 new checks (a crafted 40 MB-of-spaces record in `shares/` shows the error dialog).
 - **2026-11-11:** phone-layout and accessibility fixes. (1) `paint()`: `<main id="main">` no longer gets `role="tabpanel"` (it
   removed the page's main landmark); it keeps `aria-labelledby="tab-<tab>"`, and the tabs' `aria-controls="main"` still points at it.
   (2) `modRows()`: the two empty `<th>` cells now hold `<span class="sr-only">Move</span>` / `Actions` (new `.sr-only` class).

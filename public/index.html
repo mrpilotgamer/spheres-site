@@ -354,7 +354,19 @@ if (/^https?:$/.test(location.protocol) && !window.SheetCloud) {
     /* the database holds about 1 MB per character; the rules allow 900,000 characters of plain text or 1,000,000 bytes compressed */
     const LIMIT_JSON = 900000, LIMIT_Z = 990000;
     const gz = async s => new Uint8Array(await new Response(new Blob([s]).stream().pipeThrough(new CompressionStream("gzip"))).arrayBuffer());
-    const gunz = async u8 => new Response(new Blob([u8]).stream().pipeThrough(new DecompressionStream("gzip"))).text();
+    /* unpack a stored character; refuses to unpack more than the sheet's own import limit (32 MB), so a crafted record
+       (share links and party sheets are opened by anyone) can't unpack to gigabytes and freeze the tab */
+    const GUNZ_MAX = 33554432;
+    const gunz = async u8 => {
+      const rd = new Blob([u8]).stream().pipeThrough(new DecompressionStream("gzip")).getReader(), dec = new TextDecoder("utf-8"); let n = 0, out = "";
+      for (;;) {
+        const { done, value } = await rd.read(); if (done) break;
+        n += value.length;
+        if (n > GUNZ_MAX) { rd.cancel().catch(() => {}); throw Object.assign(new Error("too big"), { code: "sheet/too-big", size: n, limit: GUNZ_MAX, raw: n }); }
+        out += dec.decode(value, { stream: true });
+      }
+      return out + dec.decode();
+    };
     const ref = id => F.doc(db, "users", auth.currentUser.uid, "characters", id);
     window.SheetCloud = {
       signIn: () => U.signInWithPopup(auth, prov).catch(e => {
@@ -2095,7 +2107,7 @@ function syncOpen(){
         else { ch.savedAt=Date.now(); save(); cloudPush(); setStat('Saving this device’s copy…'); } }); }
     else if(!r||(r.savedAt||0)<(ch.savedAt||0)) cloudPush();
     else { if(r) setSynced(id,r.savedAt); setStat('Saved to your account'); }
-  }).catch(function(e){ setStat('Couldn’t reach your account ('+(e&&e.code||'offline')+'). Saving on this device.',true); });
+  }).catch(function(e){ setStat(e&&e.code==='sheet/too-big'?'Your account’s copy is too big to open here. Saving on this device.':'Couldn’t reach your account ('+(e&&e.code||'offline')+'). Saving on this device.',true); });
 }
 function localChars(){ var out=[]; try{ for(var i=0;i<localStorage.length;i++){ var k=localStorage.key(i); if(k.indexOf(KEY+':')!==0||/:(last|tab)$/.test(k)) continue; var o=lsGet(k); if(o&&o.app==='spheres-sheet'&&o.id) out.push({id:o.id,name:o.name||'',summary:[classLineOf(sanitizeChar(o)),o.race].filter(Boolean).join(' · '),savedAt:o.savedAt||0,meta:metaOf(o),level:(o.levels||[]).length,parties:partyNames(o)}); } }catch(e){} return out; }
 /* ---------- organizing characters: campaign, status, pin (stored on the character as ch.meta and beside it in the account) ---------- */
