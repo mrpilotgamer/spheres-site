@@ -1502,9 +1502,9 @@ function check(what, got, want) {
 
   /* ---------- weapon presets (2026-11-11): WEAPONS list on the Gear tab, like the armor list ---------- */
   console.log('Weapon presets');
-  const wpChar = async (id, size) => { await page.evaluate(([id, size]) => { localStorage.setItem('spheres-sheet-v1:' + id, JSON.stringify({ app: 'spheres-sheet', v: 1, id, name: 'Weaponer', size, levels: [], classes: {},
-      abil: { str: 16, dex: 14, con: 10, int: 10, wis: 10, cha: 10 }, weapons: [{ id: 'w1', name: 'Old', kind: 'melee', dice: '1d4', enh: 1, notes: 'my notes' }] }));
-    localStorage.setItem('spheres-sheet-v1:last', JSON.stringify(id)); }, [id, size]); await page.reload(); await settle(); await go('Character', 'Gear'); };
+  const wpChar = async (id, size, extra = []) => { await page.evaluate(([id, size, extra]) => { localStorage.setItem('spheres-sheet-v1:' + id, JSON.stringify({ app: 'spheres-sheet', v: 1, id, name: 'Weaponer', size, levels: [], classes: {},
+      abil: { str: 16, dex: 14, con: 10, int: 10, wis: 10, cha: 10 }, weapons: [{ id: 'w1', name: 'Old', kind: 'melee', dice: '1d4', enh: 1, notes: 'my notes' }].concat(extra) }));
+    localStorage.setItem('spheres-sheet-v1:last', JSON.stringify(id)); }, [id, size, extra]); await page.reload(); await settle(); await go('Character', 'Gear'); };
   const wpSaved = id => page.evaluate(id => JSON.parse(localStorage.getItem('spheres-sheet-v1:' + id)).weapons, id);
   const addPick = async label => { await page.selectOption('select[data-wpreset="new"]', { label }); await settle(); };
   const atkLine = async name => (await page.locator('.atk', { has: page.locator('.nm', { hasText: new RegExp('^' + name + '$') }) }).first().innerText()).replace(/\s+/g, ' ');
@@ -1529,8 +1529,20 @@ function check(what, got, want) {
   await go('Play', 'Sheet');
   check('…and the Sheet shows +4 to hit (Str +3, +1) and 1d8+4', (await atkLine('Longsword')).replace(/ slashing.*$/, ''), 'Longsword +4 1d8+4');
   /* a Small character: the preset converts the table's Medium dice to the character's own size (the sheet only scales for changes from it), so a longsword is 1d6; +1 size to hit */
-  await wpChar('zz-wp2', 'S'); await addPick('Longsword (1d8, 19–20/×2)'); await go('Play', 'Sheet');
+  await wpChar('zz-wp2', 'S'); await addPick('Longsword (1d6, 19–20/×2)'); /* the label shows the dice a Small character gets */ await go('Play', 'Sheet');
   check('a Small character gets a longsword as 1d6 (not 1d8), also stored as 1d6', (await atkLine('Longsword')).replace(/ slashing.*$/, '') + ' ' + (await wpSaved('zz-wp2')).filter(w => w.name === 'Longsword')[0].dice, 'Longsword +4 1d6+3 1d6');
+
+  /* the picker's labels show the dice the character will get (Small: 1d6), and the fill picker is only on manufactured weapons */
+  await go('Character', 'Gear');
+  check('a Small character’s picker label for Longsword shows 1d6 (what the row will get)', await page.locator('select[data-wpreset="new"] option', { hasText: /^Longsword / }).first().textContent(), 'Longsword (1d6, 19–20/×2)');
+  await wpChar('zz-wp3', 'S', [{ id: 'w2', name: 'Bite', kind: 'nat1', dice: '1d6', count: 1 }, { id: 'w3', name: 'Trip', kind: 'cmb' }]); /* w1 (melee) keeps its picker; Bite (natural) and Trip (maneuver) get none */
+  await page.locator('details.item[data-keep="wp-w1"] > summary').click(); await page.locator('details.item[data-keep="wp-w2"] > summary').click(); await page.locator('details.item[data-keep="wp-w3"] > summary').click();
+  check('a melee row has the fill picker, a natural attack and a combat maneuver do not', [await page.locator('details.item[data-keep="wp-w1"] select[data-wpreset]').count(), await page.locator('details.item[data-keep="wp-w2"] select[data-wpreset]').count(), await page.locator('details.item[data-keep="wp-w3"] select[data-wpreset]').count()].join(' '), '1 0 0');
+  check('the fill picker says what it replaces', (await page.locator('details.item[data-keep="wp-w1"] label:has(select[data-wpreset])').innerText()).includes('replaces the name, kind, dice, critical, type and range'), 'true');
+  await page.locator('details.item[data-keep="wp-w1"] select[data-wpreset]').selectOption({ label: 'Longsword (1d6, 19–20/×2)' }); await settle();
+  check('filled: name and dice replaced', f((await wpSaved('zz-wp3'))[0], 'name', 'dice'), 'Longsword 1d6');
+  await page.click('[data-a="undo"]'); await settle();
+  check('Undo restores the old name and dice', f((await wpSaved('zz-wp3'))[0], 'name', 'dice'), 'Old 1d4');
 
   check('no page errors', errors.length ? errors.join(' | ') : 'none', 'none');
   await browser.close();
