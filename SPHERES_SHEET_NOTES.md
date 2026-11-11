@@ -465,7 +465,7 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
 - **Size:** Fine to Colossal, affecting AC, attack, CMB/CMD, Stealth and Fly. Tiny or smaller
   use Dex for CMB.
 - **CMB** picks up attack-roll bonuses and penalties (Power Attack, Heroism, shaken…).
-- **CMD** = 10 + BAB + Str + Dex + size + the AC bonuses of the types that apply (circumstance, deflection, dodge, insight, luck, morale, profane, sacred; untyped, armor, shield, natural and the like don't) + AC penalties of any type (2026-11-11); flat-footed loses Dex
+- **CMD** = 10 + BAB + Str + Dex + size + the AC bonuses of the types that apply (circumstance, deflection, dodge, insight, luck, morale, profane, sacred; untyped, armor, shield, natural and the like don't) + AC penalties of any type (2026-11-11); flat-footed loses Dex. Features that say "AC and CMD" (Striker and monk AC bonus) need their own CMD modifier; the Tova example has one (2026-11-11)
   and dodge.
 - **Conditions** apply their penalties (shaken also hits initiative; blinded −4 on Str/Dex
   skills; and so on). Negative levels apply once per total.
@@ -1207,7 +1207,7 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
     Training from her martial tradition (Ironhand Pit), Athletics (Run package). Extra Skill Talent ×2 → Bluster
     (Intimidate) + Frightening Threat. Free ranks: 10 Acrobatics, 10 Intimidate. 12 unarmed-sphere talents → 2d6
     unarmed strike, amulet of mighty fists +1 flaming. AC bonus = min(Con, level) as an untyped AC modifier
-    (untyped AC reaches CMD by itself; don't add a CMD modifier too). Tension resource (max Con + level/3 + 2 for
+    (a separate CMD modifier of the same size, since the class feature adds to AC and CMD; untyped AC no longer reaches CMD by itself, 2026-11-11). Tension resource (max Con + level/3 + 2 for
     High Tension ×2), tension actions that turn on toggles, Power Attack, Tight Guard, Haste.
   - **Rules note:** the sheet counts magic item Int (a headband) toward skill ranks per level, so Ilyra's budget
     shows 156; strict Pathfinder gives 132 (a headband grants ranks only in specific skills). She spends 128.

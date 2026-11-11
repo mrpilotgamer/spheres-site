@@ -112,7 +112,12 @@ function check(what, got, want) {
   check('hit points', (await page.locator('.card .big').first().innerText()), '188');
   check('AC', await tile('AC'), '28');
   check('touch / flat-footed', await tileNote('AC'), 'touch 21 · flat-footed 25');
-  check('CMD', await tile('CMD'), '31');
+  check('CMD', await tile('CMD'), '37');
+  { await page.locator('.tile', { has: page.locator('.k', { hasText: /^CMD$/ }) }).first().click(); await page.waitForTimeout(200);
+    const cw = await page.evaluate(() => (document.querySelector('.why') || {}).innerText || '');
+    check('Striker CMD breakdown: the AC bonus (striker) CMD modifier counts, not listed as left out', /AC bonus \(striker\)/.test(cw) && !/Not counted:[^|\n]*AC bonus \(striker\)/.test(cw), 'true');
+    check('Striker CMD breakdown: Unarmored Training (armor) is still left out', /Not counted: Unarmored Training/.test(cw), 'true');
+    await page.keyboard.press('Escape'); await page.waitForTimeout(100); }
   check('Fortitude', await tile('Fortitude'), '+17');
   check('Reflex', await tile('Reflex'), '+13');
   check('Will', await tile('Will'), '+8');

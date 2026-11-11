@@ -1459,9 +1459,10 @@ function deriveCore(ch,H){
   var sizeCM=SZ[2], cmbAb=SZ[2]<=-2?'dex':'str';
   D.cmb=tot('cmb','CMB',[{src:'BAB',v:bab,type:'base'},{src:ABS[cmbAb]+(cmbAb==='dex'?' (Tiny or smaller)':''),v:D.mod[cmbAb],type:'base'}].concat(sizeCM?[{src:'Size',v:sizeCM,type:'base'}]:[]),['cmb'].concat(chain('atk.melee')));
   var cmdAC=acMods.filter(function(l){return l.counts&&(l.v<0||CMD_TYPES[l.type]&&!(loseDex&&l.type==='dodge'));}).reduce(function(s,l){return s+l.v;},0);
-  var cmdOut=acMods.filter(function(l){return l.counts&&l.v>0&&!CMD_TYPES[l.type];}).map(function(l){return l.src;}).filter(function(x,i,a){return a.indexOf(x)===i;});
+  var cmdOwn=(ch.mods||[]).filter(function(m){return m.target==='cmd'&&activeMod(ch,m);}).map(function(m){return String(m.src||'').trim().toLowerCase();});
+  var cmdOut=acMods.filter(function(l){return l.counts&&l.v>0&&!CMD_TYPES[l.type]&&cmdOwn.indexOf(String(l.src||'').trim().toLowerCase())<0;}).map(function(l){return l.src;}).filter(function(x,i,a){return a.indexOf(x)===i;});
   D.cmd=tot('cmd','CMD',[{src:'10 + BAB',v:10+bab,type:'base'},{src:'Str',v:D.mod.str,type:'base'},{src:'Dex',v:loseDex?Math.min(0,D.mod.dex):D.mod.dex,type:'base'}].concat(sizeCM?[{src:'Size',v:sizeCM,type:'base'}]:[]).concat(cmdAC?[{src:'AC bonuses and penalties that apply to CMD',v:cmdAC,type:'base'}]:[]),['cmd']);
-  if(cmdOut.length) D.bd.cmd.lines.push({src:'Not counted: '+cmdOut.join(', '),v:0,type:'base',counts:false,why:'AC bonuses other than circumstance, deflection, dodge, insight, luck, morale, profane and sacred don’t add to CMD'});
+  if(cmdOut.length) D.bd.cmd.lines.push({src:'Not counted: '+cmdOut.join(', '),v:0,type:'base',counts:false,why:'AC bonuses other than circumstance, deflection, dodge, insight, luck, morale, profane and sacred don’t add to CMD. If a feature says it adds to AC and CMD (a Striker’s or monk’s AC bonus), add a CMD modifier for it.'});
   /* speed */
   var bs=n0(ch.baseSpeed,30), ign=ch.armorSpeed||'none';
   var slow=(armCat==='medium'&&ign==='none')||(armCat==='heavy'&&ign!=='all'&&ign!=='allload')||ld==='medium'||ld==='heavy';
@@ -1857,7 +1858,8 @@ function exampleStriker(){
     {id:'m5',src:'Eyes of the eagle',target:'skill.perc',val:'5',type:'competence',when:'always'},
     {id:'m6',src:'Boots of striding and springing',target:'speed',val:'10',type:'enhancement',when:'always'},
     {id:'m7',src:'Boots of striding and springing',target:'skill.acro',val:'5',type:'competence',when:'sit',note:'jumping'},
-    {id:'m8',src:'AC bonus (striker)',target:'ac',val:'min(con, lvl)',type:'untyped',when:'always',note:''}, /* untyped AC bonuses reach CMD on their own */
+    {id:'m8',src:'AC bonus (striker)',target:'ac',val:'min(con, lvl)',type:'untyped',when:'always',note:''}, /* the class feature adds to AC and CMD: a CMD row of its own */
+    {id:'m28',src:'AC bonus (striker)',target:'cmd',val:'min(con, lvl)',type:'untyped',when:'always',note:'The class feature adds to CMD as well as AC.'},
     {id:'m10',src:'Counter Punch',target:'dmg.melee',val:'2+2*floor(bab/4)',type:'competence',when:'sit',note:'on a counter punch'},
     {id:'m11',src:'Unarmored Training',target:'ac',val:'3+floor(bab/3)',type:'armor',when:'always'},
     {id:'m12',src:'Power Attack',target:'atk.melee',val:'-(1+floor(bab/4))',type:'untyped',when:'toggle',group:'g-pa'},{id:'m13',src:'Power Attack',target:'dmg.melee',val:'2*(1+floor(bab/4))',type:'untyped',when:'toggle',group:'g-pa'},
