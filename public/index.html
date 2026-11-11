@@ -5574,6 +5574,26 @@ document.addEventListener('keydown',function(e){
   e.preventDefault(); if(isUndo) undo(); else redo();
 });
 
+/* ===================== TEST HANDLE ===================== */
+/* For the automated checks (tests/engine-check.js): read-only calculations, no clicking needed. It never exposes the open character, the cloud
+   object or anything that saves. derive() works the way the Level plan does (swap the open character and its result for the given one, derive, put everything back),
+   on a copy, and without save() or paint(). The result is JSON data (D keeps no functions; NaN and Infinity would become null). */
+function engineAs(c,fn){ var x=JSON.parse(JSON.stringify(c)), sc=ch, sD=D, sT=TOFF, sN=TON, sP=PERSX;
+  try{ ch=x; D=derive(x); return fn(D); } finally{ ch=sc; D=sD; TOFF=sT; TON=sN; PERSX=sP; } }
+window.SheetEngine=Object.freeze({
+  derive:function(c){ return engineAs(c,function(d){ return JSON.parse(JSON.stringify(d)); }); },
+  sphereStats:function(c,name){ return engineAs(c,function(){ return JSON.parse(JSON.stringify(sphereStats(name))); }); },
+  blankComp:function(kind){ return blankComp(kind); },
+  compStats:function(comp,vars,c){ return engineAs(c||blankChar(),function(d){ return JSON.parse(JSON.stringify(compStats(JSON.parse(JSON.stringify(comp)),Object.assign({},d.V,vars||{})))); }); },
+  sanitize:function(o){ return sanitizeChar(JSON.parse(JSON.stringify(o))); },
+  examples:function(){ return {incanter:sanitizeChar(exampleIncanter()),striker:sanitizeChar(exampleStriker())}; },
+  blank:function(){ return blankChar(); },
+  evalF:evalF, fParse:fParse, scaleDice:scaleDice, stackLines:stackLines, drawbackSP:drawbackSP, tierSplit:tierSplit, classTalentSplit:classTalentSplit,
+  babFor:babFor, clFor:clFor, heavyLoad:heavyLoad, loadFor:loadFor, amod:amod, advCap:advCap,
+  FEXAMPLES:JSON.parse(JSON.stringify(FEXAMPLES)),
+  tables:JSON.parse(JSON.stringify({SIZES:SIZES,XPT:XPT,CARRY:CARRY,ARMORS:ARMORS,WEAPONS:WEAPONS,SSK:SSK,CONDS:CONDS}))
+});
+
 /* ===================== BOOT ===================== */
 (function boot(){
   try{ var tb=sessionStorage.getItem(KEY+':tab'); if(tb&&TABN[tb]) goTab(tb); }catch(e){}
