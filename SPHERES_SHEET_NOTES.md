@@ -537,6 +537,11 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
     per level and class skills for every Spheres class (expected wiki quirks in `KNOWN2`). It currently reports data errors
     in the class list that are still to be fixed (e.g. Black Templar saves, Agent / Professional Perform, Advisor class
     skills, prestige flags, missing skill ranks), so it exits 1 until they are.
+  - **Class list fixed from the verifier (2026-11-11):** Black Templar, Realmwalker, Speaker Of The Word, Trueshaper (prestige saves, good Fort and Will),
+    Polycosmic Theurge (prestige, good Will), Waking Sleeper (prestige, good Ref and Will), Fluid Soul (normal saves, 4 ranks). Skill ranks filled in for
+    the eight classes that had none (Agent Of Accrual, Chosen Of The Bloody Crown, Fleshwarper, Master Of Vagueries, Sanguine Sorcerer, Trinity Angel,
+    Trinity Knight, Truenamer). Savant gets the Knowledge skills (all except arcana). Characters made from the old entries keep their old class settings
+    (edit the class on the Build tab). The verifier now reports 0 unexplained.
   - **Fixed in the class list:** Conscript (+1 at every odd level, like Incanter), Raveler (+1 at every even level),
     Professional (+1 at 1st, 5th, 9th, 13th, 17th), Advisor and Scholar (2 bonus talents at 1st: Leader's Communication
     sphere + (assist) talent, Problem Solver's Alchemy and Scout spheres). Cyborg's note says to add its 3rd-level Tinker talent.

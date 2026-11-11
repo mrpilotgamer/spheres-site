@@ -50,6 +50,13 @@ KNOWN2 = {
     ('Shenxue','Fort'): 'the wiki saves are floor(level/2) for all three (+0 at 1st, +3 at 6th): neither good nor poor, prestige or not',
     ('Shenxue','Ref'): 'same as Fort: the wiki Reflex save is floor(level/2), not a standard progression',
     ('Shenxue','Will'): 'same as Fort: the wiki Will save is floor(level/2), not a standard progression',
+    ('Hive','Fort'): 'the wiki table uses the older prestige poor save, floor(level/3) (+0 at 2nd), beside prestige good saves; the sheet\'s prestige poor save is floor((level+1)/3)',
+    ('Mascareri','Fort'): 'the wiki table uses the older prestige poor save, floor(level/3) (+0 at 2nd), beside prestige good saves; the sheet\'s prestige poor save is floor((level+1)/3)',
+    ('Mascareri','Ref'): 'the wiki table uses the older prestige poor save, floor(level/3) (+0 at 2nd), beside prestige good saves; the sheet\'s prestige poor save is floor((level+1)/3)',
+    ('Sacred Debtor','Fort'): 'the wiki table uses the older prestige poor save, floor(level/3) (+0 at 2nd), beside prestige good saves; the sheet\'s prestige poor save is floor((level+1)/3)',
+    ('Sacred Debtor','Ref'): 'the wiki table uses the older prestige poor save, floor(level/3) (+0 at 2nd), beside prestige good saves; the sheet\'s prestige poor save is floor((level+1)/3)',
+    ('Divine Exorcist','Ref'): 'the wiki table uses the older prestige poor save, floor(level/3) (+0 at 2nd), beside prestige good saves; the sheet\'s prestige poor save is floor((level+1)/3)',
+    ('Mandragoran','Ref'): 'the wiki Reflex column follows the prestige poor save (+1 at 2nd) while Fort and Will follow normal saves; the sheet has one setting per class',
     ('Cyborg','NOTABLE'): 'the wiki table has "Good Saves" / "Poor Saves" columns, not Fort/Ref/Will, so it is not read here',
     ('Qahngol (Variant Half-Orc)','NOPAGE'): 'a variant race, no class page',
 }
