@@ -112,7 +112,7 @@ function check(what, got, want) {
   check('hit points', (await page.locator('.card .big').first().innerText()), '188');
   check('AC', await tile('AC'), '28');
   check('touch / flat-footed', await tileNote('AC'), 'touch 21 · flat-footed 25');
-  check('CMD', await tile('CMD'), '37');
+  check('CMD', await tile('CMD'), '31');
   check('Fortitude', await tile('Fortitude'), '+17');
   check('Reflex', await tile('Reflex'), '+13');
   check('Will', await tile('Will'), '+8');
@@ -1040,6 +1040,33 @@ function check(what, got, want) {
     check('formulas: “.5*4” and “half of close” (25 ft at CL 0)', await tile('Will'), '+14');
     await mk([], { conds: { Sickened: true, Nauseated: true } }); await show();
     check('Nauseated doesn’t hide Sickened’s −2', await tile('Will'), '−2');
+  }
+
+  console.log('CMD and AC modifiers');
+  {
+    const mk = (mods, extra) => page.evaluate(([mods, extra]) => { const id = 'zz-cmd'; localStorage.setItem('spheres-sheet-v1:' + id, JSON.stringify(Object.assign({ app: 'spheres-sheet', v: 1, id, name: 'Cmd', classes: {}, levels: [],
+      mods: mods.map((m, i) => Object.assign({ id: 'm' + i, type: 'untyped', when: 'always', group: '' }, m)) }, extra || {}))); localStorage.setItem('spheres-sheet-v1:last', JSON.stringify(id)); }, [mods, extra]);
+    const show = async () => { await page.reload(); await page.waitForTimeout(300); await go('Play', 'Sheet'); };
+    await mk([]); await show();
+    check('CMD baseline: AC 10, CMD 10', [await tile('AC'), await tile('CMD')].join(' '), '10 10');
+    await mk([{ src: 'Lucky charm', target: 'ac', val: '2' }]); await show();
+    check('an untyped +2 AC bonus raises AC but not CMD', [await tile('AC'), await tile('CMD')].join(' '), '12 10');
+    await page.locator('.tile', { has: page.locator('.k', { hasText: /^CMD$/ }) }).first().click(); await page.waitForTimeout(200);
+    const wtxt = await page.evaluate(() => (document.querySelector('.why') || {}).innerText || '');
+    check('the CMD breakdown names the untyped AC bonus left out', /Not counted: Lucky charm/.test(wtxt), 'true');
+    await page.keyboard.press('Escape'); await page.waitForTimeout(100);
+    await mk([{ src: 'Ward', target: 'ac', val: '2', type: 'deflection' }]); await show();
+    check('a deflection +2 AC bonus raises both AC and CMD', [await tile('AC'), await tile('CMD')].join(' '), '12 12');
+    await mk([{ src: 'Aura', target: 'ac', val: '2', type: 'sacred' }]); await show();
+    check('a sacred +2 AC bonus raises both AC and CMD', [await tile('AC'), await tile('CMD')].join(' '), '12 12');
+    await mk([{ src: 'Hex', target: 'ac', val: '-2' }]); await show();
+    check('an untyped −2 AC penalty lowers both AC and CMD', [await tile('AC'), await tile('CMD')].join(' '), '8 8');
+    await mk([{ src: 'Jinx', target: 'ac', val: '-2', type: 'luck' }, { src: 'Crush', target: 'ac', val: '-1', type: 'armor' }]); await show();
+    check('AC penalties of any type lower CMD', [await tile('AC'), await tile('CMD')].join(' '), '7 7');
+    await mk([{ src: 'Agile', target: 'dex', val: '4' }], { conds: { Stunned: true } }); await show();
+    check('Stunned (−2 AC, loses Dex): CMD 10 + 0 (Dex bonus lost) − 2', await tile('CMD'), '8');
+    await mk([{ src: 'Agile', target: 'dex', val: '4' }]); await show();
+    check('same character not stunned: CMD 10 + 2 Dex', await tile('CMD'), '12');
   }
 
   console.log('Undo, redo and importing');

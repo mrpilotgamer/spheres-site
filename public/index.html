@@ -525,7 +525,7 @@ function sphRankTalents(c,n,total){ return Math.max(1,total-sphDbTalents(c,n)); 
 var TYPES=['untyped','alchemical','armor','circumstance','competence','deflection','dodge','enhancement','inherent','insight','luck','morale','natural armor','profane','racial','resistance','sacred','shield','size','trait'];
 var ALWAYS_STACK={untyped:1,dodge:1,circumstance:1};
 var NO_TOUCH={armor:1,shield:1,'natural armor':1};
-var CMD_TYPES={deflection:1,dodge:1,insight:1,luck:1,morale:1,profane:1,sacred:1,circumstance:1,untyped:1};
+var CMD_TYPES={deflection:1,dodge:1,insight:1,luck:1,morale:1,profane:1,sacred:1,circumstance:1}; /* AC bonuses of these types add to CMD; AC penalties of any type do */
 var BABP={full:[1,'Full (+1 per level)'],'3/4':[0.75,'Three-quarters'],'1/2':[0.5,'Half']};
 var CASTP={none:'Not a casting class',high:'High-caster',mid:'Mid-caster',low:'Low-caster',adv:'Advances an existing casting class (+1 level of it)',advcl:'Adds its levels to caster level only'};
 var MARTP={none:'No martial progression',expert:'Expert practitioner',adept:'Adept practitioner',proficient:'Proficient practitioner'};
@@ -1458,8 +1458,10 @@ function deriveCore(ch,H){
   D.init=tot('init','Initiative',[{src:'Dex',v:D.mod.dex,type:'base'}],['init']);
   var sizeCM=SZ[2], cmbAb=SZ[2]<=-2?'dex':'str';
   D.cmb=tot('cmb','CMB',[{src:'BAB',v:bab,type:'base'},{src:ABS[cmbAb]+(cmbAb==='dex'?' (Tiny or smaller)':''),v:D.mod[cmbAb],type:'base'}].concat(sizeCM?[{src:'Size',v:sizeCM,type:'base'}]:[]),['cmb'].concat(chain('atk.melee')));
-  var cmdAC=acMods.filter(function(l){return l.counts&&CMD_TYPES[l.type]&&!(loseDex&&l.type==='dodge');}).reduce(function(s,l){return s+l.v;},0);
-  D.cmd=tot('cmd','CMD',[{src:'10 + BAB',v:10+bab,type:'base'},{src:'Str',v:D.mod.str,type:'base'},{src:'Dex',v:loseDex?Math.min(0,D.mod.dex):D.mod.dex,type:'base'}].concat(sizeCM?[{src:'Size',v:sizeCM,type:'base'}]:[]).concat(cmdAC?[{src:'AC bonuses that apply to CMD',v:cmdAC,type:'base'}]:[]),['cmd']);
+  var cmdAC=acMods.filter(function(l){return l.counts&&(l.v<0||CMD_TYPES[l.type]&&!(loseDex&&l.type==='dodge'));}).reduce(function(s,l){return s+l.v;},0);
+  var cmdOut=acMods.filter(function(l){return l.counts&&l.v>0&&!CMD_TYPES[l.type];}).map(function(l){return l.src;}).filter(function(x,i,a){return a.indexOf(x)===i;});
+  D.cmd=tot('cmd','CMD',[{src:'10 + BAB',v:10+bab,type:'base'},{src:'Str',v:D.mod.str,type:'base'},{src:'Dex',v:loseDex?Math.min(0,D.mod.dex):D.mod.dex,type:'base'}].concat(sizeCM?[{src:'Size',v:sizeCM,type:'base'}]:[]).concat(cmdAC?[{src:'AC bonuses and penalties that apply to CMD',v:cmdAC,type:'base'}]:[]),['cmd']);
+  if(cmdOut.length) D.bd.cmd.lines.push({src:'Not counted: '+cmdOut.join(', '),v:0,type:'base',counts:false,why:'AC bonuses other than circumstance, deflection, dodge, insight, luck, morale, profane and sacred don’t add to CMD'});
   /* speed */
   var bs=n0(ch.baseSpeed,30), ign=ch.armorSpeed||'none';
   var slow=(armCat==='medium'&&ign==='none')||(armCat==='heavy'&&ign!=='all'&&ign!=='allload')||ld==='medium'||ld==='heavy';

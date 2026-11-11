@@ -465,7 +465,7 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
 - **Size:** Fine to Colossal, affecting AC, attack, CMB/CMD, Stealth and Fly. Tiny or smaller
   use Dex for CMB.
 - **CMB** picks up attack-roll bonuses and penalties (Power Attack, Heroism, shaken…).
-- **CMD** = 10 + BAB + Str + Dex + size + the AC bonus types that apply; flat-footed loses Dex
+- **CMD** = 10 + BAB + Str + Dex + size + the AC bonuses of the types that apply (circumstance, deflection, dodge, insight, luck, morale, profane, sacred; untyped, armor, shield, natural and the like don't) + AC penalties of any type (2026-11-11); flat-footed loses Dex
   and dodge.
 - **Conditions** apply their penalties (shaken also hits initiative; blinded −4 on Str/Dex
   skills; and so on). Negative levels apply once per total.
