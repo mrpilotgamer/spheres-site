@@ -307,6 +307,12 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
 - **2026-11-11:** added Pilot (packages: Naval = Profession (sailor), Stellar = Fly, Terrestrial = Ride; the wiki also
   allows "Piloting", which the sheet has no skill for). Pilot talents add no fixed or chosen extra skill. Ace Pilot is an
   Athletics talent (Profession (pilot)), so it stays in Athletics' `x`. check.js: 5 Pilot checks.
+- **2026-11-11:** three small fixes. (1) `deriveCore`: with "Track encumbrance" a load's check penalty is now compared with
+  armor + shield together (`Math.min(acpOf(ar,MA)+acpOf(sh,MS),loadAcp)`), the worse one counts, not the worse of armor or
+  load plus the shield; off, nothing changes. (2) `runAction`: if an action throws, `actionFailed()` puts back the snapshot taken
+  before it (same way Undo restores: share link and parties kept), skips history, repaints and shows the "That didn't work ...
+  Nothing was saved" message, like the promise branch. (3) Leather Lamellar is medium armor (Ultimate Combat), moved after
+  Armored Coat in `ARMORS`; characters already wearing it keep their saved armor type (no conversion). check.js: 7 checks.
 - **Data:** `ch.sphSkills = {"<sphere name>": [skill ids]}` (extra Craft/Perform/... entries use their own
   ids). Unset = the default: the single allowed skill, if there is only one. `x` talents are always added.
   Renaming a sphere moves its entry.

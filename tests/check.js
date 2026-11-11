@@ -1405,6 +1405,40 @@ function check(what, got, want) {
   }
   await page.unroute(SITE + '**', localTalents);
 
+  /* ---------- armor check penalty with the encumbrance house rule; an action that throws ---------- */
+  console.log('Armor check penalty and a failing action');
+  {
+    let nA = 0, aid = '';
+    const mkA = extra => page.evaluate(([extra, id]) => { localStorage.setItem('spheres-sheet-v1:' + id, JSON.stringify(Object.assign({ app: 'spheres-sheet', v: 1, id, name: 'Armored',
+      classes: { c1: { name: 'Hero', hd: 10, bab: 'full', good: ['fort'], skills: 4, martial: 'expert', talents: 'auto' } },
+      levels: Array.from({ length: 3 }, () => ({ cls: 'c1', hp: 6, picks: [] })), rules: { maxFirst: true, hpMethod: 'avgup', encumbrance: true } }, extra)));
+      localStorage.setItem('spheres-sheet-v1:last', JSON.stringify(id)); }, [extra, aid = 'zz-arm' + (++nA)]);
+    /* Str 10: light load up to 33 lb, medium up to 66 lb (medium load = -3 check penalty) */
+    const gear = (aAcp, sAcp, wt, rule) => ({ armor: { name: 'Test armor', bonus: 4, enh: 0, maxDex: 99, acp: aAcp, type: 'light', asf: 0, mw: false, wt, mat: '' },
+      shield: { name: 'Test shield', bonus: 2, enh: 0, acp: sAcp, maxDex: 99, mw: false, asf: 0, wt: 0, mat: '', tower: false, },
+      rules: { maxFirst: true, hpMethod: 'avgup', encumbrance: rule } });
+    const climb = async extra => { await mkA(extra); await page.reload(); await page.waitForTimeout(500); await go('Character', 'Skills'); return (await skillTotal('Climb')).replace('−', '-'); };
+    check('check penalty: armor -2 and shield -2 are worse than a medium load (-3): -4, not -5', await climb(gear(2, 2, 40, true)), '-4');
+    check('check penalty: a medium load (-3) is worse than armor -1 and shield -1: -3', await climb(gear(1, 1, 40, true)), '-3');
+    check('check penalty: house rule off, only armor and shield count: -2', await climb(gear(1, 1, 40, false)), '-2');
+    check('check penalty: house rule on but a light load, armor and shield add up: -4', await climb(gear(2, 2, 10, true)), '-4');
+
+    /* an action that throws half-way leaves the character as it was, says so, and the sheet keeps working */
+    await mkA({ hp: { dmg: 5, non: 0, temp: 0 } }); await page.reload(); await page.waitForTimeout(500);
+    const errN2 = errors.length, dmgOf = () => page.evaluate(id => JSON.parse(localStorage.getItem('spheres-sheet-v1:' + id)).hp.dmg, aid);
+    await go('Play', 'Sheet');
+    const dmg0 = await dmgOf();
+    await page.evaluate(() => { const orig = Date.now; Date.now = () => { Date.now = orig; throw new Error('boom'); }; });
+    await page.click('[data-a="rest"][data-k="long"]'); await page.waitForTimeout(300);
+    const msg = (await page.locator('.dlg-back').last().innerText().catch(() => '')).replace(/\s+/g, ' ');
+    check('a failing action: the message says it didn’t work and nothing was saved', /That didn’t work: boom\. Nothing was saved\./.test(msg), 'true');
+    await page.locator('.dlg button:has-text("OK")').last().click().catch(() => {}); await page.waitForTimeout(200);
+    check('…the saved character is unchanged', [dmg0, await dmgOf()].join(' '), '5 5');
+    await page.click('[data-a="rest"][data-k="long"]'); await page.waitForTimeout(300);
+    check('…and the next action works on the unchanged character (5 − 3 healed = 2)', [await dmgOf(), /Long rest \(8 hours\)/.test(await page.locator('#toast').innerText().catch(() => ''))].join(' '), '2 true');
+    errors.length = errN2; /* the failure was logged with console.error on purpose */
+  }
+
   check('no page errors', errors.length ? errors.join(' | ') : 'none', 'none');
   await browser.close();
   console.log(`\n${pass} passed, ${fail} failed`);
