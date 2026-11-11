@@ -15,7 +15,8 @@ class list changes. (2026-11-09: found Conscript, Raveler and Professional missi
 Second part (every class with category "Spheres"): compares the rest of the class data with the first tab of its wiki page:
   HD       "Hit Die: d6"                      against hd
   ranks    "Skill Ranks Per Level: 4 + Int"   against sk
-  skills   "Class Skills: ..." (first sentences only), mapped to the sheet's ids, against cs. art (Artistry) and lore (Lore)
+  skills   "Class Skills: ..." (first sentences only; for Guile classes the "Without a Trade Tradition" list, which is what
+           the sheet stores), mapped to the sheet's ids, against cs. art (Artistry) and lore (Lore)
            are background skills: compared only if the wiki line mentions them
   BAB, Fort, Ref, Will   every level row of the class table (found by header names) against the sheet's formulas:
            BAB full n, 3/4 floor(3n/4), 1/2 floor(n/2); saves good 2+floor(n/2) / poor floor(n/3), prestige (pre) good
@@ -236,12 +237,11 @@ for e in L:
     cs=field(t,'Class Skills')
     if cs is None: res.append((n,'skills','no class skills found on the wiki page'))
     else:
-        w=parse_skills(cs); sh=set(e['cs'])
+        wo=field(t,r'Without[^*:.]*')   # Guile classes: the sheet stores the "Without a Trade Tradition" list
+        w=parse_skills(wo if wo else cs); sh=set(e['cs'])
         for b in ('art','lore'):
             if b not in w: sh.discard(b)
-        wo=field(t,r'Without[^*:.]*')   # Guile classes: a second list for characters with no trade tradition
-        note=' (all sheet-only ones are on the wiki\'s "Without ..." list)' if wo and sh-w and sh-w<=parse_skills(wo) else ''
-        if w!=sh: res.append((n,'skills','wiki-only %s; sheet-only %s%s'%(sorted(w-sh),sorted(sh-w),note)))
+        if w!=sh: res.append((n,'skills','wiki-only %s; sheet-only %s'%(sorted(w-sh),sorted(sh-w))))
     rows=stat_table(t)
     if rows is None: res.append((n,'NOTABLE','no class table with BAB and saves in the first tab')); continue
     d=cmp_col(rows,'bab',BAB[e['bab']],bab_hint)
