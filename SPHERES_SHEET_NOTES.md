@@ -95,7 +95,11 @@ also need the sign-in emulator, `npx firebase emulators:exec --config firebase.e
 --project demo-spheres "node tests/party-check.js"` (same for `save-check.js`). `firebase.emulators.json` is
 `firebase.json` plus the auth and emulator settings; it's only for tests. `tests/config-check.js` (5 checks, no installs)
 fails if the two configs' hosting settings drift apart. `tests/csp-check.js` (6 checks; needs Playwright and the `firebase`
-package) checks the script policy against the page. GitHub runs all seven (since 2026-11-09).
+package) checks the script policy against the page. `tests/fuzz-check.js` (27 checks, about a minute; needs Playwright only)
+loads both examples with script payloads injected into their data (four ways: free text, map keys, every string, every number),
+opens every tab, details, "why" dialog and the print view, and fails if any injected markup or script shows up or a page error
+is thrown (2026-11-11; it was run against a deliberately unescaped character name and caught it). GitHub runs all eight
+(the seven since 2026-11-09, `fuzz-check.js` since 2026-11-11).
 Last full run: 2026-11-10 (level plan), `check.js` 407, `talents-check.js` 31, `config-check.js` 5, `rules-check.js` 90,
 `party-check.js` 36, `save-check.js` 12: all passed.
 
