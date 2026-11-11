@@ -75,7 +75,7 @@ so every `firebase deploy` (Cloud Shell or GitHub) first checks the description 
 Normal sheet updates don't need this step; the `talents/` folder stays as it is.
 
 **Checks before deploying (optional):** `tests/check.js` opens the sheet in a headless browser, loads
-both example characters and runs 442 checks against values worked out by hand (HP, AC, saves,
+both example characters and runs 442 checks (about 95 seconds) against values worked out by hand (HP, AC, saves,
 DCs, spell points, talents, skill ranks, attacks, toggles, the theme, free sphere ranks, blast augments, Roll20 macros,
 raised undead, temporary talents, cohorts, Workshop, wiki descriptions, adding talents from the wiki and more). It sits outside `public/`, so it is never deployed. Run it with:
 ```
@@ -93,8 +93,8 @@ won't match the installed browser), then:
 `npx firebase emulators:exec --only firestore --project demo-spheres "node tests/rules-check.js"` and, for the two that
 also need the sign-in emulator, `npx firebase emulators:exec --config firebase.emulators.json --only firestore,auth
 --project demo-spheres "node tests/party-check.js"` (same for `save-check.js`). `firebase.emulators.json` is
-`firebase.json` plus the auth and emulator settings; it's only for tests. `tests/config-check.js` (5 checks, no installs)
-fails if the two configs' hosting settings drift apart. `tests/csp-check.js` (6 checks; needs Playwright and the `firebase`
+`firebase.json` plus the auth and emulator settings; it's only for tests. `tests/config-check.js` (12 checks, no installs)
+fails if the two configs' hosting settings drift apart, or if `.github/workflows/deploy.yml` has a tab, an unquoted `name:`/`run:` value with `: ` in it (the mistake that GitHub rejected on 2026-11-11), or lost the `test` and `deploy` jobs or the deploy condition. `tests/csp-check.js` (6 checks; needs Playwright and the `firebase`
 package) checks the script policy against the page. `tests/fuzz-check.js` (27 checks, about a minute; needs Playwright only)
 loads both examples with script payloads injected into their data (four ways: free text, map keys, every string, every number),
 opens every tab, details, "why" dialog and the print view, and fails if any injected markup or script shows up or a page error
@@ -103,7 +103,7 @@ is thrown (2026-11-11; it was run against a deliberately unescaped character nam
 both examples (the numbers `check.js` reads off the screen), rule tables typed from the wiki and Core Rulebook, old saves,
 and that the handle leaves no trace (2026-11-12). GitHub runs all nine (the seven since 2026-11-09, `fuzz-check.js` since
 2026-11-11, `engine-check.js` since 2026-11-12, in front of `check.js` so the fast one fails first).
-Last full run: 2026-11-12, `engine-check.js` 325, `check.js` 442, `fuzz-check.js` 27, `talents-check.js` 31, `config-check.js` 5, `csp-check.js` 6,
+Last full run: 2026-11-12, `engine-check.js` 325, `check.js` 442 (about 95 seconds, 10 of 10 runs passed), `fuzz-check.js` 27, `talents-check.js` 31, `config-check.js` 12, `csp-check.js` 6,
 `rules-check.js` 90 (not rerun since 2026-11-10; the rules are unchanged), `party-check.js` 38, `save-check.js` 12: all passed.
 
 **Rollback:** Firebase console → Hosting → release history → roll back. With GitHub: also revert the commit (the
@@ -167,7 +167,18 @@ character, derives, and puts the open one back, on a copy and without `save()` o
 `stackLines`, `drawbackSP`, `tierSplit`, `classTalentSplit`, `babFor`, `clFor`, `heavyLoad`, `loadFor`, `amod`, `advCap`), the help's
 `FEXAMPLES`, and JSON copies of the tables (`SIZES`, `XPT`, `CARRY`, `ARMORS`, `WEAPONS`, `SSK`, `CONDS`). It never exposes the open
 character or the cloud object and cannot write anything, so it isn't hidden behind a flag. `tests/engine-check.js` uses it.
-Stage 2 (trimming the number checks out of `check.js` now that they are covered here) is not done yet; `check.js` is unchanged.
+Stage 2 (2026-11-12) is done, and it did not trim any checks: `check.js` still has all 442, including the number checks that
+`engine-check.js` now repeats, because those also prove the numbers are drawn correctly on screen. What changed is how `check.js`
+waits: it no longer sleeps for fixed times (284 `waitForTimeout` lines, about 190 s of sleeping, plus five 30 s Playwright timeouts
+on buttons and boxes that were absent on purpose). Helpers at the top of the file: `settle()` (two animation frames and a timer tick:
+the sheet has repainted), `idle()` (settled and no wiki "Loading…" note), `until(what, fn, arg, page, ms)` / `untilText` / `untilDialog` /
+`untilResponse` (wait for a thing; a timeout prints a FAIL line instead of hanging), `cancelOrEsc()` (no waiting for a Cancel button that
+isn't there); every automatic wait times out after 15 s (`TIMEOUT`). Three fixed waits are kept, each where the check is that something does
+NOT happen: 300 ms after opening Talents ("nothing is fetched until a row opens"), 4.8 s for the share-link edit ("isn't saved into your
+characters": the page's own 1.2 s cloud and 4 s history timers must have run), and 300 ms for "a saved file that matches this browser's copy
+opens without asking". `SHEET_FILE=/path/to/page.html node tests/check.js` runs the checks against another copy of the page (a copy with
+`amod` off by one made 93 checks fail; put a `talents` link beside the copy). Run time went from about 7 minutes (15 on a slow day) to about
+95 seconds; 6 runs in a row, 2 pairs at the same time and 3 copies squeezed onto one CPU core all passed.
 
 Script blocks inside, in order:
 1. `#savedState`: a JSON slot. **Save file** writes the character in here, so a downloaded file
