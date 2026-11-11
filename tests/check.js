@@ -1475,6 +1475,38 @@ function check(what, got, want) {
     errors.length = errN2; /* the failure was logged with console.error on purpose */
   }
 
+  /* ---------- weapon presets (2026-11-11): WEAPONS list on the Gear tab, like the armor list ---------- */
+  console.log('Weapon presets');
+  const wpChar = async (id, size) => { await page.evaluate(([id, size]) => { localStorage.setItem('spheres-sheet-v1:' + id, JSON.stringify({ app: 'spheres-sheet', v: 1, id, name: 'Weaponer', size, levels: [], classes: {},
+      abil: { str: 16, dex: 14, con: 10, int: 10, wis: 10, cha: 10 }, weapons: [{ id: 'w1', name: 'Old', kind: 'melee', dice: '1d4', enh: 1, notes: 'my notes' }] }));
+    localStorage.setItem('spheres-sheet-v1:last', JSON.stringify(id)); }, [id, size]); await page.reload(); await page.waitForTimeout(500); await go('Character', 'Gear'); };
+  const wpSaved = id => page.evaluate(id => JSON.parse(localStorage.getItem('spheres-sheet-v1:' + id)).weapons, id);
+  const addPick = async label => { await page.selectOption('select[data-wpreset="new"]', { label }); await page.waitForTimeout(400); };
+  const atkLine = async name => (await page.locator('.atk', { has: page.locator('.nm', { hasText: new RegExp('^' + name + '$') }) }).first().innerText()).replace(/\s+/g, ' ');
+  await wpChar('zz-wp', 'M');
+  check('the weapon picker lists every weapon (77 + the prompt) in 13 groups', await page.locator('select[data-wpreset="new"] option').count() + ' ' + await page.locator('select[data-wpreset="new"] optgroup').count(), '78 13');
+  await addPick('Longsword (1d8, 19–20/×2)'); await addPick('Longbow (1d8, ×3)'); await addPick('Dagger (1d4, 19–20/×2)'); await addPick('Greatsword (2d6, 19–20/×2)'); await addPick('Quarterstaff (1d6/1d6, ×2)');
+  const ws = await wpSaved('zz-wp'), pick = n => ws.filter(w => w.name === n)[0];
+  const f = (w, ...k) => k.map(x => w[x]).join(' ');
+  check('Longsword: 1d8, 19–20/×2, slashing, melee', f(pick('Longsword'), 'dice', 'crit', 'dtype', 'kind'), '1d8 19–20/×2 slashing melee');
+  check('Longbow: ranged, range 100 ft., Dex to hit, no Strength to damage', f(pick('Longbow'), 'kind', 'range', 'abil', 'dmgAbil', 'crit'), 'ranged 100 ft. dex none ×3');
+  check('Dagger: light, range 10 ft., piercing or slashing', f(pick('Dagger'), 'light', 'range', 'dtype'), 'true 10 ft. piercing or slashing');
+  check('Greatsword: 2d6 with Strength ×1½', f(pick('Greatsword'), 'dice', 'mult', 'light', 'notes'), '2d6 1.5 false Weight 8 lb.');
+  check('a double weapon fills the first head and says what the other deals', f(pick('Quarterstaff'), 'dice', 'mult') + ' | ' + /other head deals 1d6/.test(pick('Quarterstaff').notes), '1d6 1 | true');
+  await go('Play', 'Sheet');
+  /* Str 16 = +3. Greatsword: +3 to hit (BAB 0), damage ⌊3 × 1.5⌋ = +4. Longsword: ×1, +3. Longbow: Dex 14 = +2 to hit, no damage bonus. */
+  check('Sheet attack lines: Greatsword +3, 2d6+4; Longsword +3, 1d8+3; Longbow +2, 1d8', [await atkLine('Greatsword'), await atkLine('Longsword'), await atkLine('Longbow')].map(s => s.replace(/ (slashing|piercing).*$/, '')).join(' | '), 'Greatsword +3 2d6+4 | Longsword +3 1d8+3 | Longbow +2 1d8');
+  /* picking on an existing row: enhancement and the player's notes stay */
+  await go('Character', 'Gear'); await page.locator('details.item[data-keep="wp-w1"] > summary').click();
+  await page.locator('details.item[data-keep="wp-w1"] select[data-wpreset]').selectOption({ label: 'Longsword (1d8, 19–20/×2)' }); await page.waitForTimeout(400);
+  const w1 = (await wpSaved('zz-wp'))[0];
+  check('picking on a row with a +1 enhancement keeps the +1 and the player’s notes', f(w1, 'name', 'dice', 'enh', 'notes'), 'Longsword 1d8 1 my notes');
+  await go('Play', 'Sheet');
+  check('…and the Sheet shows +4 to hit (Str +3, +1) and 1d8+4', (await atkLine('Longsword')).replace(/ slashing.*$/, ''), 'Longsword +4 1d8+4');
+  /* a Small character: the preset converts the table's Medium dice to the character's own size (the sheet only scales for changes from it), so a longsword is 1d6; +1 size to hit */
+  await wpChar('zz-wp2', 'S'); await addPick('Longsword (1d8, 19–20/×2)'); await go('Play', 'Sheet');
+  check('a Small character gets a longsword as 1d6 (not 1d8), also stored as 1d6', (await atkLine('Longsword')).replace(/ slashing.*$/, '') + ' ' + (await wpSaved('zz-wp2')).filter(w => w.name === 'Longsword')[0].dice, 'Longsword +4 1d6+3 1d6');
+
   check('no page errors', errors.length ? errors.join(' | ') : 'none', 'none');
   await browser.close();
   console.log(`\n${pass} passed, ${fail} failed`);
