@@ -1,8 +1,9 @@
 # Test and deploy.
 # - Every push to main, and every pull request: run all the checks (sheet, talent files, configs, and the database rules,
 #   party and save checks in the Firebase emulators).
-# - Pushes to main only: if every check passed, put the site live on Firebase Hosting.
-# The database rules (firestore.rules) are NOT deployed from here: deploy those by hand (firebase deploy --only firestore).
+# - Pushes to main only: if every check passed, publish the database rules (firestore.rules), then put the site live on
+#   Firebase Hosting. The rules go first, so a page that relies on newer rules never goes live ahead of them.
+#   The rules step needs a one-time permission for the deploy account (see SPHERES_SHEET_NOTES.md, "GitHub and automatic deploys").
 # Tool versions are pinned so a new release of a tool can't turn the checks red on its own; raise them on purpose.
 name: Test and deploy
 on:
@@ -67,6 +68,24 @@ jobs:
       - uses: actions/setup-node@v5   # the deploy's own pre-check (firebase.json "predeploy") runs node
         with:
           node-version: 22
+      # Publishes firestore.rules on every deploy (it changes nothing if the rules are already the same).
+      # Needs the deploy account to have the "Firebase Rules Admin" role. If this step fails with a permission error,
+      # the role is missing: see the notes. The site is not updated either, because the hosting step below doesn't run.
+      # It only touches the rules: "--only firestore:rules" doesn't run the hosting pre-check, and it doesn't read the
+      # hosting settings that the next step rewrites. The key file is deleted right after.
+      - name: Save the deploy key for the rules step
+        env:
+          SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_SPHERES_CHARACTER_SHEET }}
+        run: |
+          umask 077
+          printf '%s' "$SA" > "$RUNNER_TEMP/firebase-rules-key.json"
+      - name: Publish the database rules (firestore.rules)
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-rules-key.json
+        run: npx --yes firebase-tools@13.35.1 deploy --only firestore:rules --project spheres-character-sheet --non-interactive
+      - name: Delete the deploy key file
+        if: always()
+        run: rm -f "$RUNNER_TEMP/firebase-rules-key.json"
       - name: Add the script policy for this page (report-only; its hashes change with every edit)
         run: node tools/csp.js --write firebase.json
       - name: Deploy to Firebase Hosting
