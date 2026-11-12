@@ -278,6 +278,9 @@ const T0 = Date.now();
     check('class wiki link: kept when valid, cleared when not', await page.evaluate(() => { const E = window.SheetEngine, c = E.sanitize({ app: 'spheres-sheet', v: 1, id: 'w1', name: 'W',
       classes: { a: { name: 'A', wiki: 'striker' }, b: { name: 'B', wiki: '-' }, c: { name: 'C', wiki: '../x' }, d: { name: 'D', wiki: 5 }, e: { name: 'E' } } }).classes;
       return ['a', 'b', 'c', 'd', 'e'].map(k => JSON.stringify(c[k].wiki)).join(' '); }), '"striker" "-" "" "" ""');
+    check('class archetypes: a list of names, anything else dropped', await page.evaluate(() => { const E = window.SheetEngine, c = E.sanitize({ app: 'spheres-sheet', v: 1, id: 'w2', name: 'W',
+      classes: { a: { name: 'A', arch: ['Black Powder Brawler', 5, '', null, 'Voidrusher'] }, b: { name: 'B', arch: 'x' }, c: { name: 'C' } } }).classes;
+      return ['a', 'b', 'c'].map(k => JSON.stringify(c[k].arch)).join(' '); }), '["Black Powder Brawler","Voidrusher"] [] []');
   }
 
   /* ---------- D. the handle leaves no trace ---------- */

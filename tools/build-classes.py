@@ -25,7 +25,17 @@ How a class page is read:
 File layout (short keys keep the files small):
   {"v":1, "n": class name, "p": wiki page slug,
    "f": [[feature name, text, [[choice name, text, group], ...]], ...],
-   "lv": {"1": [[table entry, index into f or -1, (index of the choice it names)], ...], ...}}
+   "lv": {"1": [[table entry, index into f or -1, (index of the choice it names)], ...], ...},
+   "a": [[archetype, page, [[feature, text, level, [[base feature index, level or 0 = all, "r" replaced / "m" modified], ...],
+          "This replaces ..." text], ...]], ...],
+   "pz": 1 on a file for a class that isn't a Spheres class (only its "Sphere X" conversion archetypes, no features)}
+
+Archetypes (2026-11-12): the 06- bundle files. Kept: archetypes of a Spheres class that has a file (the class named in the
+title "(X Archetype)", or, untitled, the class whose features its "This replaces ..." lines name), and the sphere conversions
+("Sphere Wizard", "Spheres Oathbound (Paladin and Antipaladin Archetype)") of any class in the class list. A feature is a
+heading (or, on pages without headings, a bold-lead paragraph "**Name (Ex):**"); its level is the first "at Nth level" in
+its text (1 if none); "This ability replaces X, Y and Z." names the base features it removes (matched by name; the full
+sentence is kept for the player either way).
 """
 import gzip, json, os, re, sys, unicodedata
 
@@ -55,7 +65,11 @@ def load_pages(bundle):
         parts = re.split(r'<!-- page: (\S+) -->', t)
         for i in range(1, len(parts), 2):
             pages.setdefault(parts[i], parts[i + 1])
+            WHERE.setdefault(parts[i], f)
     return pages
+
+
+WHERE = {}   # page slug -> bundle file (archetypes are the 06- files)
 
 
 def page_finder(pages):
@@ -191,6 +205,138 @@ def match(key, fnorm):
     return best if bl >= 5 else -1
 
 
+REP = re.compile(r'\b(?:This|These|which|it)\s+(?:\w+\s+){0,3}?(replaces?|modif(?:y|ies)|alters?|changes?)\s+([^.]{2,200})\.', re.I)
+LVL = re.compile(r'\b(?:At|Starting at|Beginning at|Upon reaching|at)\s+(\d+)(?:st|nd|rd|th)\s+level', re.I)
+
+
+def rep_parts(obj):
+    """'drill knuckle, uncanny dodge, and the bonus feat gained at 8th level' -> [(norm name, level or 0), ...]"""
+    obj = obj.split('\n')[0]
+    out = []
+    for p in re.split(r',\s*(?:and\s+|or\s+)?|\s+and\s+|\s+or\s+', obj):
+        m = re.search(r'(?:gained |granted )?at (\d+)\w* level', p, re.I) or re.match(r'\s*(?:the\s+)?(\d+)(?:st|nd|rd|th)[- ]level\s+', p, re.I)
+        lv = int(m.group(1)) if m else 0
+        p = re.sub(r'^\s*(?:the\s+)?\d+(?:st|nd|rd|th)[- ]level\s+', '', p, flags=re.I)
+        p = re.sub(r'\s+(?:gained |granted )?at \d+\w* level.*', '', p.strip(), flags=re.I)
+        p = re.sub(r"^(?:the\s+)?(?:standard\s+|casting\s+|martial\s+)?(?:[\w-]+(?:'s|’s)\s+)?", '', p, flags=re.I)
+        k = re.sub(r'(classfeatures?|abilit(?:y|ies)|features?|improvements?)$', '', norm(p))
+        if len(k) >= 3:
+            out.append((k, lv))
+    return out
+
+
+def feat_index(k, fnorm):
+    for i, f in enumerate(fnorm):
+        if k == f or k.rstrip('s') == f.rstrip('s'):
+            return i
+    best, bl = -1, 0
+    for i, f in enumerate(fnorm):
+        if len(f) >= 5 and (k.startswith(f) or f.startswith(k)) and len(f) > bl:
+            best, bl = i, len(f)
+    return best
+
+
+def arch_features(body):
+    """[[name, text, level, replaces text], ...]: the page's headings, or (pages without any) its bold-lead paragraphs."""
+    heads = [(len(m.group(1)), m.group(2).strip(), m.start(), m.end()) for m in HEAD.finditer(body) if len(m.group(1)) >= 2]
+    out = []
+    if heads:
+        top = min(h[0] for h in heads)
+        hs = [h for h in heads if h[0] == top]
+        for i, (lv, name, s, e) in enumerate(hs):
+            end = hs[i + 1][2] if i + 1 < len(hs) else len(body)
+            out.append([name, body[e:end]])
+    else:
+        bl = list(re.finditer(r'^\*\*([^*\n]{2,80}?)(?::\*\*|\*\*\s*:)', body, re.M))
+        for i, m in enumerate(bl):
+            end = bl[i + 1].start() if i + 1 < len(bl) else len(body)
+            out.append([m.group(1).strip().rstrip(':'), body[m.end():end]])
+    res = []
+    for name, txt in out:
+        txt = re.split(r'\n#\s', txt)[0]
+        lv = LVL.search(txt)
+        rtext = ' '.join(m.group(0).strip() for m in REP.finditer(txt))
+        res.append([cname(name), clean_md(txt), int(lv.group(1)) if lv else 1, rtext])
+    return [r for r in res if r[1] or r[3]]
+
+
+def cname(s):
+    return re.sub(r'\s*\[[^\]]*\]', '', s).strip()
+
+
+def archetypes(pages, L, files, report):
+    """Archetypes for the Spheres classes with a file, plus the "Sphere X" conversions of other classes (a file of their own,
+    with no base features: pz). Each: [name, page, [[feature, text, level, [[replaced feature index, level or 0]...], replaces text]...]]."""
+    byname = {norm(e['n']): e for e in L}
+    fnorms = {sl: [norm(f[0]) for f in d['f']] for sl, d in files.items()}
+    sph = {norm(d['n'].replace(' (Spheres)', '')): sl for sl, d in files.items()}
+    seen = set()
+    for ps, t in pages.items():
+        if not WHERE.get(ps, '').startswith('06-'):
+            continue
+        tm = re.match(r'\s*# (.+)', t)
+        title = cname(tm.group(1)) if tm else ps
+        body = first_tab(t[tm.end():] if tm else t)
+        bases = []
+        m = re.search(r'\(([^()]+?)\s+Archetype\)\s*$', title, re.I)
+        cm = re.match(r'Spheres? (.+?)(?:\s*\(.*)?$', title)
+        if m:
+            bases = [b.strip() for b in re.split(r'/|\band\b', m.group(1).replace('U. ', '').replace('Unchained ', ''))]
+            title = title[:m.start()].strip()
+        if cm and not m:
+            bases = [cm.group(1).strip()]
+        if cm:
+            # a sphere conversion of a Paizo (or other) class: kept for any class in the class list
+            for b in bases:
+                e = byname.get(norm(b)) or byname.get(norm(b + ' (Unchained)'))
+                if not e:
+                    continue
+                sl = slug(e['n'])
+                if sl not in files:
+                    files[sl] = {'v': V, 'n': re.sub(r'\s*\(Unchained\)', '', e['n']), 'p': '', 'f': [], 'lv': {}, 'a': [], 'pz': 1}
+                fs = arch_features(body)
+                if fs and (sl, title) not in seen:
+                    seen.add((sl, title))
+                    files[sl]['a'].append([title, ps, [[f[0], f[1], f[2], [], f[3]] for f in fs]])
+            continue
+        fs = arch_features(body)
+        if not fs:
+            continue
+        cands = [sph[norm(b)] for b in bases if norm(b) in sph]
+        if not bases:
+            # no class in the title: the Spheres class whose features it replaces (at least two names, or one and the class named)
+            votes = {}
+            for f in fs:
+                for r in REP.finditer(f[3] or ''):
+                    for k, lv in rep_parts(r.group(2)):
+                        for sl, fn in fnorms.items():
+                            if feat_index(k, fn) >= 0 and k in fn:
+                                votes[sl] = votes.get(sl, 0) + 1
+            if votes:
+                best = max(votes, key=votes.get)
+                if votes[best] >= 2 or re.search(r'\b' + re.escape(files[best]['n'].lower()), body.lower()):
+                    cands = [best]
+        for sl in cands:
+            if (sl, title) in seen:
+                continue
+            seen.add((sl, title))
+            fn, out, miss = fnorms[sl], [], []
+            for f in fs:
+                reps = []
+                for r in REP.finditer(f[3] or ''):
+                    how = 'r' if r.group(1).lower().startswith('replac') else 'm'
+                    for k, lv in rep_parts(r.group(2)):
+                        i = feat_index(k, fn)
+                        if i >= 0 and not any(x[0] == i and x[1] == lv for x in reps):
+                            reps.append([i, lv, how])
+                        elif i < 0:
+                            miss.append(k)
+                out.append([f[0], f[1], f[2], reps, f[3]])
+            files[sl]['a'].append([title, ps, out])
+    for sl, d in files.items():
+        d['a'].sort(key=lambda a: a[0].lower())
+
+
 def build(bundle, outdir):
     html = open(os.path.join(HERE, '..', 'public', 'index.html'), encoding='utf8').read()
     L = json.loads(re.search(r'id="classLib">(.*?)</script>', html).group(1))
@@ -211,6 +357,7 @@ def build(bundle, outdir):
             os.remove(os.path.join(outdir, f))
 
     index = {'v': V, 'classes': {}}
+    files = {}
     report, total, gz = [], 0, 0
     for e in L:
         if e.get('c') != 'Spheres':
@@ -264,19 +411,24 @@ def build(bundle, outdir):
                     lv[str(n)] = got
         if miss:
             report.append('unmatched table entries, %s: %s' % (e['n'], ', '.join(sorted(set(miss)))))
-        sl = slug(e['n'])
-        data = {'v': V, 'n': e['n'], 'p': ps, 'f': F, 'lv': lv}
+        files[slug(e['n'])] = {'v': V, 'n': e['n'], 'p': ps, 'f': F, 'lv': lv, 'a': []}
+
+    archetypes(pages, L, files, report)
+    for sl, data in files.items():
         raw = json.dumps(data, ensure_ascii=False, separators=(',', ':')).encode('utf8')
         with open(os.path.join(outdir, sl + '.json'), 'wb') as fh:
             fh.write(raw)
         total += len(raw)
         gz += len(gzip.compress(raw, 9))
-        index['classes'][sl] = {'n': e['n'], 'p': ps, 'c': len(F), 'o': sum(len(f[2]) for f in F)}
+        index['classes'][sl] = {'n': data['n'], 'p': data['p'], 'c': len(data['f']), 'o': sum(len(f[2]) for f in data['f']), 'a': len(data['a'])}
+        if data.get('pz'):
+            index['classes'][sl]['pz'] = 1
     raw = json.dumps(index, ensure_ascii=False, separators=(',', ':')).encode('utf8')
     with open(os.path.join(outdir, 'index.json'), 'wb') as fh:
         fh.write(raw)
     print('classes: %d   features: %d   choices: %d' % (len(index['classes']), sum(c['c'] for c in index['classes'].values()),
                                                        sum(c['o'] for c in index['classes'].values())))
+    print('archetypes: %d (%d Paizo classes with sphere conversions)' % (sum(c['a'] for c in index['classes'].values()), sum(1 for c in index['classes'].values() if c.get('pz'))))
     print('files: %d KB (%d KB gzipped)' % (total // 1024, gz // 1024))
     for r in report:
         print('check: ' + r)

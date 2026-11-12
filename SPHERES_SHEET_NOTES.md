@@ -107,8 +107,8 @@ Last full run: 2026-11-12, `engine-check.js` 325, `check.js` 447 (about 95 secon
 `rules-check.js` 90 (not rerun since 2026-11-10; the rules are unchanged), `party-check.js` 38, `save-check.js` 12: all passed.
 After the level-up feat and feature rows (2026-11-12, later): `engine-check.js` 329, `check.js` 459, `fuzz-check.js` 27, `talents-check.js` 31,
 `config-check.js` 12 passed; `csp-check.js` and the emulator checks were not run in that session (the database code is unchanged).
-After class features from the wiki (2026-11-12, latest): `engine-check.js` 330, `check.js` 475 (with the Feats tab text), `fuzz-check.js` 27, `talents-check.js` 41
-(with the class files), `config-check.js` 12 passed; `csp-check.js` and the emulator checks were not run in that session.
+After class features from the wiki (2026-11-12, latest): `engine-check.js` 331, `check.js` 482 (with the Feats tab text and archetypes), `fuzz-check.js` 27, `talents-check.js` 47
+(with the class files and archetypes), `config-check.js` 12 passed; `csp-check.js` and the emulator checks were not run in that session.
 
 **Rollback:** Firebase console → Hosting → release history → roll back. With GitHub: also revert the commit (the
 commit's page → "Revert"), or the next push puts the broken version back.
@@ -635,9 +635,24 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
     all). The file is the class of the level it was taken at (`cwClassesFor`), else every class you have; it loads when the
     row opens (`data-cwneed`, picked up by `wkScan`). A choice under a feature shows its wiki text when it has no notes of
     yours ("· wiki text" in its summary), and folded under your notes when it has. Homebrew names: no box.
-  - **Not yet:** mass level-up doesn't fill features in;
-    archetypes (owner, 2026-11-12: Spheres-class archetypes, plus the basic Paizo sphere conversions like Sphere Wizard and
-    Sphere Sorcerer).
+  - **Archetypes (2026-11-12, owner: Spheres-class archetypes, plus the basic Paizo sphere conversions).** `build-classes.py`
+    also reads the 06- bundle files: 165 archetypes, about 130 for Spheres classes and 33 "Sphere X" conversions of 29 other
+    classes (those get a file of their own with no base features, `"pz":1`; the sheet's `CW_PZ` list names them and
+    `talents-check.js` keeps it in step). An archetype's class: the "(X Archetype)" in its title, the class after "Sphere(s)",
+    or (untitled pages) the Spheres class whose features its "This replaces …" lines name (two names, or one and the class
+    named in the text). Its features: the page's headings, or its "**Name (Ex):**" paragraphs on pages without headings; level =
+    the first "at Nth level" in the text (else 1). "This ability replaces X, Y and the Z gained at 5th level" → `[[feature,
+    level or 0, "r"]]`; "modifies/alters/changes" → `"m"` (the base feature stays). 80% of the features that say they replace
+    something are matched to a base feature; the full sentence is kept for the rest.
+    - **Choosing:** `k.arch` (names, up to 6) via a folded "Archetypes" list under each class on the Build tab: each with a wiki
+      link and "Replaces …; changes …", and a warning when two ticked archetypes replace the same feature.
+    - **Level up** (`cwPrefill`): a base feature an archetype replaces at that level is left out ("replaced by X: its
+      feature"); a changed one stays with "changed by …"; the archetypes' own features at that class level become rows with
+      their wiki text. A Paizo class with no conversion ticked gets a note saying which conversions the wiki has.
+    - **Feats & features tab** (`cwBox`): archetype features show their text ("<Archetype> (<Class> archetype)"), and a base
+      feature your archetype replaces or changes says so.
+  - **Not yet:** mass level-up doesn't fill features in; archetypes of Paizo classes other than the sphere conversions
+    (owner's call: not wanted for now).
 
 - **Any talent can be taken more than once (2026-11-10, owner's call: "just to simplify").** Talents from a tradition
   (casting, martial, trade) now have "Times taken" too, on the Talents tab and the Traditions tab (its row shows ×N);
