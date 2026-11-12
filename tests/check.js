@@ -1568,7 +1568,7 @@ function check(what, got, want) {
     check('…and shows it', /From the wiki \(Striker\):.*spend an additional point of tension/.test((await sub.innerText()).replace(/\s+/g, ' ')), true);
     /* archetypes (2026-11-12): ticked on the Build tab, they change what level up fills in and what the tab says */
     await mkS({}, [{ cls: 'c1', hp: 10, picks: [{ kind: 'feature', name: 'Bare Knuckles (Ex)' }] }]); await page.reload(); await idle();
-    await go('Character', 'Build'); await until('the Striker archetypes', () => [...document.querySelectorAll('#main summary')].some(e => /^Archetypes \(7 on the wiki\)/.test(e.textContent.trim())));
+    await go('Character', 'Build'); await until('the Striker archetypes', () => [...document.querySelectorAll('#main summary')].some(e => /^Archetypes \(9 on the wiki\)/.test(e.textContent.trim())));
     const arD = page.locator('details', { has: page.locator('summary', { hasText: /^Archetypes/ }) }).first();
     await arD.locator('summary').click();
     check('the Build tab lists the class’s archetypes with what they replace and change', /Black Powder Brawler Wiki ↗ Replaces Bare Knuckles, Tension Boost at 2, .*; changes Combat Training, Tension, Striker Art at 2/.test((await arD.innerText()).replace(/\s+/g, ' ')), true);
