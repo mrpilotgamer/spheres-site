@@ -1705,6 +1705,8 @@ function sanitizeChar(o){
     return {cls:e.cls,newClass:e.newClass&&typeof e.newClass==='object'?Object.assign(blankClass(),e.newClass):undefined,fcb:['hp','skill','other','none'].indexOf(e.fcb)>=0?e.fcb:'none',inc:own(ABN,e.inc)?e.inc:'',hp:n0(e.hp)||0,
       ranks:(function(r){ var o2={}; if(r&&typeof r==='object') Object.keys(r).forEach(function(k){ if(SKN[k]||/^x/.test(k)) o2[k]=Math.max(0,Math.floor(n0(r[k]))); }); return o2; })(e.ranks),
       feats:str(e.feats),talents:str(e.talents),features:str(e.features),picks:rows(e.picks)}; });
+  /* the feat and feature rows (2026-11-12); older entries have only the text above */
+  (Array.isArray(o.plan)?o.plan:[]).filter(function(e){ return e&&typeof e==='object'&&typeof e.cls==='string'&&(own(b.classes,e.cls)||e.newClass&&typeof e.newClass==='object'); }).slice(0,60).forEach(function(e,i){ var t=b.plan[i]; if(!t) return; if(Array.isArray(e.fr)) t.fr=luRowsClean(e.fr,false); if(Array.isArray(e.xr)) t.xr=luRowsClean(e.xr,true); });
   b.plan.forEach(function(e){ if(!e.newClass) delete e.newClass; }); if(!b.plan.length) delete b.plan;
   var mt=o.mount; if(mt&&typeof mt==='object'&&typeof mt.id==='string'&&b.companions.some(function(c){ return c.id===mt.id&&c.kind!=='host'; })) b.mount={id:mt.id,on:!!mt.on,frenzy:!!mt.on&&!!mt.frenzy}; else delete b.mount;
   var ps=b.possess; b.possess=ps&&typeof ps==='object'&&b.companions.some(function(c){ return c.id===ps.host; })?Object.assign({mode:'active',willing:false,lengthen:false,held:{}},ps):null;
@@ -5187,9 +5189,27 @@ function planApply(c,e){ if(e.newClass&&!c.classes[e.cls]) c.classes[e.cls]=JSON
 /* the character as it would be with the first n planned levels taken */
 function planBase(c,n){ var x=JSON.parse(JSON.stringify(c)); delete x.plan; planOf(c).slice(0,n).forEach(function(e){ planApply(x,e); }); return x; }
 function planClassName(c,e){ return ((c.classes[e.cls]||e.newClass||{}).name)||'a class'; }
+/* level-up feat and class feature rows (2026-11-12): feats {name, kind 'feat'|'bonus', notes, mods}, features {name, under, notes, mods};
+   under = the feature this is a choice under ('' = a new feature); mods = [{target, val, type}], added as Always-on modifiers named after the row */
+function luFx(a){ return (Array.isArray(a)?a:[]).filter(function(m){ return m&&typeof m==='object'&&typeof m.target==='string'&&m.target; }).slice(0,20)
+  .map(function(m){ return {target:m.target.slice(0,80),val:String(m.val==null?'':m.val).trim().slice(0,200),type:TYPES.indexOf(m.type)>=0?m.type:'untyped'}; }).filter(function(m){ return m.val!==''&&m.val!=='0'; }); }
+function luRowsClean(a,feature){ return (Array.isArray(a)?a:[]).filter(function(r){ return r&&typeof r==='object'; }).slice(0,40).map(function(r){
+  var o={name:String(r.name||'').trim().slice(0,200),notes:String(r.notes||'').trim().slice(0,2000),mods:luFx(r.mods)}; if(feature) o.under=String(r.under||'').trim().slice(0,200); else o.kind=r.kind==='bonus'?'bonus':'feat'; return o; }).filter(function(r){ return r.name; }); }
+/* rows of a plan entry or the dialog; entries from before the rows have the old one-per-line text ("Feature: Choice" = a choice) */
+function luRowsOf(e){ var L=function(t){ return String(t||'').split('\n').map(function(x){ return x.trim(); }).filter(Boolean); };
+  return {fr:Array.isArray(e.fr)?luRowsClean(e.fr,false):L(e.feats).map(function(x){ return {name:x,kind:'feat',notes:'',mods:[]}; }),
+    xr:(Array.isArray(e.xr)?luRowsClean(e.xr,true):L(e.features).map(function(x){ return {name:x,under:'',notes:'',mods:[]}; })).map(luUnder)}; }
+/* typing "Feature: Choice" in a new feature's name still files it as a choice */
+function luUnder(r){ if(r.under) return r; var m=/^([^:]+):\s*(.+)$/.exec(r.name); return m?Object.assign({},r,{under:m[1].trim(),name:m[2].trim()}):r; }
+function luModsOf(R){ var out=[]; R.fr.concat(R.xr).forEach(function(r){ (r.mods||[]).forEach(function(m){ out.push({src:r.name,target:m.target,val:m.val,type:m.type}); }); }); return out; }
+function luAddMods(c2,R){ c2.mods=c2.mods||[]; return luModsOf(R).map(function(m){ var id=uidG(); c2.mods.push({id:id,src:m.src,target:m.target,val:m.val,type:m.type,when:'always',group:''}); return id; }); }
+function luFxText(m){ var t=(targetOpts().filter(function(o){ return o[0]===m.target; })[0]||[0,m.target])[1].replace(/^[^:]+: /,''); return t+' '+(/^[-+]/.test(m.val)?'':'+')+m.val+(m.type&&m.type!=='untyped'?' '+m.type:''); }
 function planBits(e){ var b=[], L=function(t){ return String(t||'').split('\n').map(function(x){ return x.trim(); }).filter(Boolean); };
-  var tl=L(e.talents), fl=L(e.feats), xl=L(e.features), rk=Object.keys(e.ranks||{}).filter(function(k){ return n0(e.ranks[k]); });
-  if(tl.length) b.push(['Talents',tl.join(', ')]); if(fl.length) b.push(['Feats',fl.join(', ')]); if(xl.length) b.push(['Class features',xl.join(', ')]);
+  var R=luRowsOf(e), tl=L(e.talents), rk=Object.keys(e.ranks||{}).filter(function(k){ return n0(e.ranks[k]); }), fx=luModsOf(R);
+  if(tl.length) b.push(['Talents',tl.join(', ')]);
+  if(R.fr.length) b.push(['Feats',R.fr.map(function(r){ return r.name+(r.kind==='bonus'?' (bonus)':''); }).join(', ')]);
+  if(R.xr.length) b.push(['Class features',R.xr.map(function(r){ return r.under?r.under+': '+r.name:r.name; }).join(', ')]);
+  if(fx.length) b.push(['Effects',fx.map(function(m){ return m.src+': '+luFxText(m); }).join(', ')]);
   if(rk.length) b.push(['Skill ranks',rk.map(function(k){ return ((SKN[k]||[])[1]||k)+' '+e.ranks[k]; }).join(', ')]);
   if(e.inc) b.push(['Ability increase','+1 '+(ABN[e.inc]||e.inc)]); if(e.fcb&&e.fcb!=='none') b.push(['Favored class bonus',{hp:'+1 hp',skill:'+1 skill rank',other:'something else'}[e.fcb]||e.fcb]);
   return b; }
@@ -5216,10 +5236,10 @@ function planLevelFlow(k){ var real=ch, realD=D, P=planOf(real), idx=k<0?P.lengt
     function(e){ back(); throw e; }); }
 function levelUpFlow(opts){
   opts=opts||{}; var PM=!!opts.plan;
-  var L=ch.levels.length, W={cls:ch.levels.length?ch.levels[L-1].cls:(Object.keys(ch.classes)[0]||'__lib'),nk:blankClass(''),hp:'',fcb:'hp',inc:'',ranks:{},feats:'',talents:'',features:''};
+  var L=ch.levels.length, W={cls:ch.levels.length?ch.levels[L-1].cls:(Object.keys(ch.classes)[0]||'__lib'),nk:blankClass(''),hp:'',fcb:'hp',inc:'',ranks:{},feats:'',talents:'',features:'',fr:[],xr:[]};
   /* a plan entry fills the dialog: when planning (editing it) or levelling up (the next planned level) */
   function fromPlan(e){ if(!e) return; if(e.newClass&&!ch.classes[e.cls]){ W.cls='__new'; W.nk=JSON.parse(JSON.stringify(e.newClass)); W.newId=e.cls; } else W.cls=e.cls;
-    W.fcb=e.fcb||'none'; W.inc=e.inc||''; W.ranks=JSON.parse(JSON.stringify(e.ranks||{})); W.feats=e.feats||''; W.talents=e.talents||''; W.features=e.features||''; if(n0(e.hp)) W.hp=n0(e.hp); }
+    W.fcb=e.fcb||'none'; W.inc=e.inc||''; W.ranks=JSON.parse(JSON.stringify(e.ranks||{})); W.feats=e.feats||''; W.talents=e.talents||''; W.features=e.features||''; var R0=luRowsOf(e); W.fr=R0.fr; W.xr=R0.xr; if(n0(e.hp)) W.hp=n0(e.hp); }
   var NEXT=PM?null:planOf(ch)[0]||null; if(PM) fromPlan(opts.preset);
   var before=D;
   function stepsBar(n){ return '<div class="steps">'+['Class','Hit points','Feats & talents','Skills','Review'].map(function(s,i){ return '<span class="'+(i===n?'cur':'')+'">'+(i+1)+' · '+s+'</span>'; }).join('')+'</div>'; }
@@ -5269,13 +5289,14 @@ function levelUpFlow(opts){
     var k=c2.classes[id], hd=n0(k.hd,8), meth=ch.rules.hpMethod||'rolled';
     if(!W.hps) W.hps=massIdx().map(function(i){ if(i===0&&ch.rules.maxFirst!==false) return hd; if(meth!=='rolled'){ var f=levelHP(c2,{cls:id,hp:0},i); if(f!=null) return Math.ceil(f); }
       if(ch.rules.avgHP) return Math.floor(hd/2)+1; return 1+Math.floor(Math.random()*hd); });
-    var PU=massPlan();
+    var PU=massPlan(), mIds=[];
     massIdx().forEach(function(i,j){ var e=PU[j]; c2.levels.push({cls:id,hp:W.hps[j],fcb:e?e.fcb||W.fcb:W.fcb,inc:(i+1)%4===0?(W.incs[i]||''):'',ranks:e?JSON.parse(JSON.stringify(e.ranks||{})):{},picks:e?JSON.parse(JSON.stringify(e.picks||[])).map(function(p){ p.id=newId(); return p; }):[],note:''});
-      if(e) Object.keys(e.ranks||{}).forEach(function(sk){ c2.skillRanks[sk]=n0(c2.skillRanks[sk])+n0(e.ranks[sk]); }); });
+      if(e) Object.keys(e.ranks||{}).forEach(function(sk){ c2.skillRanks[sk]=n0(c2.skillRanks[sk])+n0(e.ranks[sk]); });
+      if(e) mIds=mIds.concat(luAddMods(c2,luRowsOf(e))); });
     if(PU.length){ c2.plan=planOf(c2).slice(PU.length); if(!c2.plan.length) delete c2.plan; }
     if(k.cast!=='none'&&!c2.resources.some(function(r){return r.max==='spmax';})) c2.resources.push({id:'r'+uidG().slice(1),name:'Spell points',max:'spmax',cur:0,reset:'long'});
     if(k.martial!=='none'&&!c2.resources.some(function(r){return /martial focus/i.test(r.name);})) c2.resources.push({id:'r'+uidG().slice(1),name:'Martial focus',max:'1',cur:1,reset:'short'});
-    return {c2:c2,id:id};
+    return {c2:c2,id:id,modIds:mIds};
   }
   function stepMassReview(){
     var b=buildMass(), A2=derive(b.c2), B=before, meth=ch.rules.hpMethod||'rolled', rolled=meth==='rolled'&&!ch.rules.avgHP;
@@ -5293,7 +5314,7 @@ function levelUpFlow(opts){
           var nm=ch.classes[nb.id].name, lvTo=ch.levels.length, lvFrom=lvTo-W.cnt+1;
           log('Level up ×'+W.cnt+': '+nm+' '+classCounts(ch)[nb.id]+' (character level '+lvTo+').'+(get.length?' To choose: '+get.map(function(x){ return plural(x[1],x[0]); }).join(', ')+'.':''));
           if(histT){ clearTimeout(histT); histT=null; } ensureIds(ch);
-          if(!ch.histSnap) histSync(ch); else { var nowK=histKeys(ch), snap=ch.histSnap; Object.keys(nowK).forEach(function(k2){ if(!snap[k2]&&/^k:|^r:/.test(k2)) snap[k2]=nowK[k2]; }); histSync(ch); }
+          if(!ch.histSnap) histSync(ch); else { var nowK=histKeys(ch), snap=ch.histSnap; Object.keys(nowK).forEach(function(k2){ if(!snap[k2]&&(/^k:|^r:/.test(k2)||nb.modIds.some(function(m0){ return 'm:'+m0===k2; }))) snap[k2]=nowK[k2]; }); histSync(ch); }
           histPush(ch,{t:'level',text:'Reached levels '+lvFrom+'–'+lvTo+' at once: '+nm+' ×'+W.cnt+(rolled?' · '+W.hps.reduce(function(a,h){ return a+h; },0)+' hp rolled':'')+(Object.keys(W.incs||{}).filter(function(i){ return +i>=L&&W.incs[i]; }).length?' · +1 '+Object.keys(W.incs).filter(function(i){ return +i>=L&&W.incs[i]; }).map(function(i){ return ABN[W.incs[i]]||W.incs[i]; }).join(', +1 '):'')});
           UI.toast='Now level '+lvTo+'.'+(get.length?' To choose: '+get.map(function(x){ return plural(x[1],x[0]); }).join(', ')+'.':''); }; });
   }
@@ -5329,26 +5350,75 @@ function levelUpFlow(opts){
   }
   function step4(){
     var k=K(), n=nIn(), feat=(L+1)%2===1, tsN=classTalentSplit(k,n), tsP=classTalentSplit(k,n-1), utl=tsN.util-tsP.util, tal=tsN.any-tsP.any+(k.cast!=='none'&&!D.castLv&&!D.trad.bonus2&&ch.traditions.mode!=='unified'?2:0);
+    var TOPT=targetOpts(), HAVE=haveFeatures(), kn=String(k.features||'').trim();
     var html=stepsBar(2)+'<p>'+(feat?'<b>A feat</b> this level (odd character level). ':'No feat this level. ')+(tal||utl?'<b>'+[tal?plural(tal,'talent'):'',utl?plural(utl,'[utility] talent'):''].filter(Boolean).join(' and ')+'</b> from '+esc(k.name)+' (as the sheet reads its progression; follow your class table if it differs).':'No talents from the class progression this level (check your class table).')+'</p>'+
-      '<label class="opt" style="display:block"><span>Feats, one per line</span><textarea name="feats" rows="2">'+esc(W.feats)+'</textarea></label>'+
       '<div class="opt" style="display:block"><span>Talents</span><div id="talRows"></div><button type="button" class="mini" id="talMore">Add another talent</button></div>'+
       '<datalist id="luSph">'+luSpheres().map(function(n){ return '<option value="'+esc(n)+'">'; }).join('')+'</datalist>'+
-      '<label class="opt" style="display:block"><span>Class features gained, one per line (“Arsenal Tricks: Weapon Summon” files a choice under that feature)</span><textarea name="features" rows="2">'+esc(W.features)+'</textarea></label>'+
-      '<p class="note">If any of these change a number, add a modifier for it afterwards (Feats & talents tab, “+ Modifier”).</p>';
+      '<div class="opt" style="display:block"><span>Feats</span><p class="note" id="ftleft" style="margin:2px 0"></p><div id="ftRows"></div><button type="button" class="mini" id="ftMore">Add a feat</button></div>'+
+      '<div class="opt" style="display:block"><span>Class features</span><p class="note" style="margin:2px 0">A new feature, or a choice under one you have (an arsenal trick, a knack, a bonus feat pick…).</p>'+
+        (kn?'<details class="lu-kn"><summary class="note">Your notes on '+esc(k.name)+' (Build tab)</summary><p class="note" style="white-space:pre-wrap;margin:4px 0">'+esc(kn)+'</p></details>':'')+
+        '<div id="xrRows"></div><button type="button" class="mini" id="xrMore">Add a class feature</button></div>'+
+      '<p class="note">“+ Effect” adds an always-on modifier named after the feat or feature (Modifiers tab), and the review shows what it changes. Situational or toggled bonuses: add them on the Modifiers tab afterwards.</p>';
+    function fxHtml(m){ m=m||{target:'atk',val:'',type:'untyped'};
+      return '<div class="fxrow row" style="margin:2px 0 2px 1rem;gap:4px"><span class="note">Effect</span><select class="fx-t" aria-label="Effect: what it changes" style="max-width:15rem">'+TOPT.map(function(o){ return '<option value="'+esc(o[0])+'"'+(o[0]===m.target?' selected':'')+'>'+esc(o[1])+'</option>'; }).join('')+'</select>'+
+        '<input type="text" class="fx-v" aria-label="Effect: by how much (a number or a formula)" placeholder="+1" style="width:5rem" value="'+esc(m.val)+'"><select class="fx-ty" aria-label="Bonus type">'+TYPES.map(function(t){ return '<option value="'+t+'"'+(t===m.type?' selected':'')+'>'+t+'</option>'; }).join('')+'</select>'+
+        '<button type="button" class="mini fx-del" aria-label="Remove this effect">×</button></div>'; }
+    function itemTail(r,what){ return '<button type="button" class="mini lu-fx">+ Effect</button><button type="button" class="mini danger lu-del" aria-label="Remove this '+what+'">×</button></div>'+
+      '<input type="text" class="lu-notes" aria-label="'+what+' notes" placeholder="Notes (optional): what it does, prerequisites…" style="width:100%" value="'+esc(r.notes||'')+'"><div class="fxs">'+(r.mods||[]).map(fxHtml).join('')+'</div></div>'; }
+    function ftHtml(r){ r=r||{name:'',kind:'feat'}; return '<div class="lu-item ft-item" style="border-top:1px solid var(--soft);padding:4px 0"><div class="row" style="margin:4px 0;gap:4px">'+
+      '<input type="text" class="lu-nm" aria-label="Feat" placeholder="Feat name" autocomplete="off" style="flex:1 1 11rem" value="'+esc(r.name||'')+'">'+
+      '<select class="ft-kind" aria-label="Feat or bonus feat"><option value="feat">Feat</option><option value="bonus"'+(r.kind==='bonus'?' selected':'')+'>Bonus feat (no feat slot)</option></select>'+itemTail(r,'feat'); }
+    function xrHtml(r){ r=r||{name:'',under:''}; return '<div class="lu-item xr-item" style="border-top:1px solid var(--soft);padding:4px 0"><div class="row" style="margin:4px 0;gap:4px">'+
+      '<select class="xr-under" aria-label="A new feature, or a choice under one" data-v="'+esc(r.under||'')+'" style="max-width:14rem"></select>'+
+      '<input type="text" class="lu-nm" aria-label="Class feature" autocomplete="off" style="flex:1 1 11rem" value="'+esc(r.name||'')+'">'+itemTail(r,'class feature'); }
+    function readFx(it){ return luFx([].slice.call(it.querySelectorAll('.fxrow')).map(function(x){ return {target:x.querySelector('.fx-t').value,val:x.querySelector('.fx-v').value,type:x.querySelector('.fx-ty').value}; })); }
     return modal({title:PM?'Plan level '+(L+1):'Level up',html:html,buttons:[{label:'Back',value:'back'},{label:'Next',value:'next',primary:true}],
-      onOpen:function(root){ var box=root.querySelector('#talRows');
+      onOpen:function(root){ var box=root.querySelector('#talRows'), fb=root.querySelector('#ftRows'), xb=root.querySelector('#xrRows'), lc=function(t){ return String(t||'').trim().toLowerCase(); };
         function row(sp,nm,isBase,meta){ box.insertAdjacentHTML('beforeend','<div class="talrow"'+(meta?' data-wkn="'+esc(wkNorm(nm))+'" data-tk="'+esc(meta.tk||'')+'" data-role="'+esc(meta.role||'')+'"':'')+'><div class="row" style="margin:4px 0"><input type="text" class="tr-sph" list="luSph" placeholder="Sphere" aria-label="Sphere" style="width:9rem" value="'+esc(sp||'')+'"><input type="text" class="tr-nm" data-wkpick="lu" autocomplete="off" placeholder="Talent: type to search the wiki (blank for the base sphere)" aria-label="Talent" style="flex:1 1 11rem" value="'+esc(nm||'')+'"><label class="ck" style="font-size:13px"><input type="checkbox" class="tr-base"'+(isBase?' checked':'')+'> base sphere</label></div><div class="wkres"></div><div class="lu-note"></div></div>'); }
         box.addEventListener('wkaddbase',function(ev){ row(ev.detail,'',true); });
         var ls=lines(W.talents); ls.forEach(function(x){ var m=/^([^:]+):\s*(.+)$/.exec(x), bs=/^(.+?)\s+sphere$/i.exec(x); if(m) row(m[1].trim(),m[2].trim(),false,(W.talMeta||{})[x]); else if(bs) row(bs[1].trim(),'',true); else row('',x,false); });
         for(var q=ls.length;q<Math.max(1,tal);q++) row('','',false);
-        root.querySelector('#talMore').addEventListener('click',function(){ row('','',false); var ins=box.querySelectorAll('.tr-sph'); ins[ins.length-1].focus(); }); },
-      check:function(root,v){ if(v!=='next') return ''; var bad=[].slice.call(root.querySelectorAll('.talrow')).filter(function(r){ return r.querySelector('.tr-base').checked&&!r.querySelector('.tr-sph').value.trim(); }); return bad.length?'A base sphere needs its sphere name.':''; },
-      read:function(root){ var f=rd(root); W.feats=f.s('feats'); W.features=f.s('features');
+        root.querySelector('#talMore').addEventListener('click',function(){ row('','',false); var ins=box.querySelectorAll('.tr-sph'); ins[ins.length-1].focus(); });
+        /* feats: the slot this level, and how many are filled */
+        function ftCount(){ var nf=0, nb=0; fb.querySelectorAll('.ft-item').forEach(function(it){ if(!it.querySelector('.lu-nm').value.trim()) return; if(it.querySelector('.ft-kind').value==='bonus') nb++; else nf++; });
+          root.querySelector('#ftleft').textContent=(feat?'1 feat slot this level: '+(nf?nf+' chosen'+(nf>1?' (more than this level gives: fine if they come from somewhere else; a class bonus feat can be marked “Bonus feat”)':''):'not chosen yet'):'No feat slot this level'+(nf?' ('+plural(nf,'feat')+' chosen anyway)':''))+(nb?' · '+plural(nb,'bonus feat'):'')+'.'; }
+        /* features: "choice under" lists the features you have plus the new ones typed above */
+        function unders(){ xb.querySelectorAll('.xr-item').forEach(function(it){ var sel=it.querySelector('.xr-under'), cur='v' in sel.dataset?sel.dataset.v:sel.value, names=HAVE.slice();
+          delete sel.dataset.v;
+          xb.querySelectorAll('.xr-item').forEach(function(o){ if(o===it) return; var u=o.querySelector('.xr-under'); if(('v' in u.dataset?u.dataset.v:u.value)) return; var nm=o.querySelector('.lu-nm').value.trim(); if(nm&&!/:/.test(nm)&&names.map(lc).indexOf(lc(nm))<0) names.push(nm); });
+          if(cur&&names.map(lc).indexOf(lc(cur))<0) names.push(cur);
+          sel.innerHTML='<option value="">New feature</option>'+names.map(function(nm){ return '<option value="'+esc(nm)+'"'+(lc(nm)===lc(cur)?' selected':'')+'>Choice under '+esc(nm)+'</option>'; }).join('');
+          it.querySelector('.lu-nm').placeholder=sel.value?'Choice (e.g. Weapon Summon)':'Feature name'; }); }
+        (W.fr||[]).forEach(function(r){ fb.insertAdjacentHTML('beforeend',ftHtml(r)); }); if(!(W.fr||[]).length&&feat) fb.insertAdjacentHTML('beforeend',ftHtml());
+        (W.xr||[]).forEach(function(r){ xb.insertAdjacentHTML('beforeend',xrHtml(r)); }); if(!(W.xr||[]).length) xb.insertAdjacentHTML('beforeend',xrHtml());
+        ftCount(); unders();
+        root.querySelector('#ftMore').addEventListener('click',function(){ fb.insertAdjacentHTML('beforeend',ftHtml()); var a=fb.querySelectorAll('.lu-nm'); a[a.length-1].focus(); ftCount(); });
+        root.querySelector('#xrMore').addEventListener('click',function(){ xb.insertAdjacentHTML('beforeend',xrHtml()); unders(); var a=xb.querySelectorAll('.lu-nm'); a[a.length-1].focus(); });
+        [fb,xb].forEach(function(bx){
+          bx.addEventListener('click',function(ev){ var b=ev.target.closest('button'); if(!b) return; var it=b.closest('.lu-item');
+            if(b.classList.contains('lu-fx')){ it.querySelector('.fxs').insertAdjacentHTML('beforeend',fxHtml()); it.querySelector('.fxs .fxrow:last-child .fx-t').focus(); }
+            else if(b.classList.contains('fx-del')){ var fr0=b.closest('.fxrow'), nx=fr0.nextElementSibling||fr0.previousElementSibling; fr0.remove(); (nx?nx.querySelector('.fx-t'):it.querySelector('.lu-fx')).focus(); }
+            else if(b.classList.contains('lu-del')){ var nx2=it.nextElementSibling||it.previousElementSibling; it.remove(); (nx2?nx2.querySelector('.lu-nm'):(bx===fb?root.querySelector('#ftMore'):root.querySelector('#xrMore'))).focus(); }
+            ftCount(); unders(); });
+          bx.addEventListener('input',function(ev){ if(bx===fb) ftCount(); else if(ev.target.classList.contains('lu-nm')) unders(); });
+          bx.addEventListener('change',function(){ if(bx===fb) ftCount(); else unders(); }); }); },
+      check:function(root,v){ if(v!=='next') return ''; var bad=[].slice.call(root.querySelectorAll('.talrow')).filter(function(r){ return r.querySelector('.tr-base').checked&&!r.querySelector('.tr-sph').value.trim(); }); if(bad.length) return 'A base sphere needs its sphere name.';
+        var it=[].slice.call(root.querySelectorAll('.lu-item'));
+        if(it.some(function(x){ return !x.querySelector('.lu-nm').value.trim()&&(readFx(x).length||x.querySelector('.lu-notes').value.trim()); })) return 'A feat or class feature with notes or an effect needs its name.';
+        var ch0=it.filter(function(x){ return x.classList.contains('xr-item')&&x.querySelector('.xr-under').value&&!x.querySelector('.lu-nm').value.trim(); })[0];
+        return ch0?'Name the choice under '+ch0.querySelector('.xr-under').value+' (or remove that row).':''; },
+      read:function(root){
+        W.fr=luRowsClean([].slice.call(root.querySelectorAll('.ft-item')).map(function(it){ return {name:it.querySelector('.lu-nm').value,kind:it.querySelector('.ft-kind').value,notes:it.querySelector('.lu-notes').value,mods:readFx(it)}; }),false);
+        W.xr=luRowsClean([].slice.call(root.querySelectorAll('.xr-item')).map(function(it){ return {name:it.querySelector('.lu-nm').value,under:it.querySelector('.xr-under').value,notes:it.querySelector('.lu-notes').value,mods:readFx(it)}; }),true).map(luUnder);
+        W.feats=W.fr.map(function(r){ return r.name; }).join('\n'); W.features=W.xr.map(function(r){ return r.under?r.under+': '+r.name:r.name; }).join('\n');
         W.talMeta={};
         W.talents=[].slice.call(root.querySelectorAll('.talrow')).map(function(r){ var sp=r.querySelector('.tr-sph').value.trim(), nm=r.querySelector('.tr-nm').value.trim(), line=r.querySelector('.tr-base').checked&&sp?sp+' sphere':sp&&nm?sp+': '+nm:nm||(sp?sp+' sphere':'');
           if(line&&r.dataset.wkn&&r.dataset.wkn===wkNorm(nm)&&!r.querySelector('.tr-base').checked) W.talMeta[line]={tk:r.dataset.tk||'',role:r.dataset.role||''}; return line; }).filter(Boolean).join('\n'); return 1; }})
       .then(function(r){ if(r.value==='back') return step2(); if(r.value!=='next') return null; return step3(); });
   }
+  /* the class features the character has (and, when planning, the earlier planned levels): choices can go under them */
+  function haveFeatures(){ var o=[], seen={}; (ch.levels||[]).forEach(function(l){ (l.picks||[]).forEach(function(q){ add(q); }); }); (ch.extraPicks||[]).forEach(add);
+    function add(q){ var nm=String(q&&q.kind==='feature'&&q.name||'').trim(); if(nm&&!seen[nm.toLowerCase()]){ seen[nm.toLowerCase()]=1; o.push(nm); } } return o; }
   /* a talent picked from the wiki list keeps the wiki's type and [utility] role */
   function luMeta(x,o){ var mm=(W.talMeta||{})[x]; if(mm&&o.role!=='sphere'){ if(mm.tk) o.tkind=mm.tk; if(mm.role&&mm.role!=='talent') o.role=mm.role; } return o; }
   function luSpheres(){ var m={}; sphereNames().forEach(function(n){ m[n]=1; }); Object.keys(BASELIB).forEach(function(k){ m[BASELIB[k].n]=1; }); return Object.keys(m).sort(); }
@@ -5356,32 +5426,35 @@ function levelUpFlow(opts){
   function build(){
     var c2=JSON.parse(JSON.stringify(ch)), id=W.cls;
     if(id==='__new'){ id=W.newId||'c'+uidG().slice(1); W.newId=id; c2.classes[id]=JSON.parse(JSON.stringify(W.nk)); applyLibSideEffects(c2,c2.classes[id]); }
-    var picks=lines(W.feats).map(function(x){return {kind:'feat',name:x};}).concat(lines(W.talents).map(function(x){ return luMeta(x,(function(){ var m=/^([^:]+):\s*(.+)$/.exec(x), K0=W.cls==='__new'?W.nk:ch.classes[W.cls], tk=K0&&K0.martial!=='none'&&K0.cast==='none'?'combat':K0&&K0.cast!=='none'&&K0.martial==='none'?'magic':''; var bs=/^(.+?)\s+sphere$/i.exec(m?m[2]:x); if(bs&&!m) return {kind:'talent',name:x,sphere:bs[1].trim(),role:'sphere',abilities:[],tkind:tk}; return m?{kind:'talent',name:m[2],sphere:m[1].trim(),tkind:tk}:{kind:'talent',name:x,tkind:tk}; })()); }));
+    var R=luRowsOf(W), withN=function(o,t){ if(t) o.notes=t; return o; };
+    var picks=R.fr.map(function(r){ return withN({kind:r.kind==='bonus'?'bonus':'feat',name:r.name},r.notes); }).concat(lines(W.talents).map(function(x){ return luMeta(x,(function(){ var m=/^([^:]+):\s*(.+)$/.exec(x), K0=W.cls==='__new'?W.nk:ch.classes[W.cls], tk=K0&&K0.martial!=='none'&&K0.cast==='none'?'combat':K0&&K0.cast!=='none'&&K0.martial==='none'?'magic':''; var bs=/^(.+?)\s+sphere$/i.exec(m?m[2]:x); if(bs&&!m) return {kind:'talent',name:x,sphere:bs[1].trim(),role:'sphere',abilities:[],tkind:tk}; return m?{kind:'talent',name:m[2],sphere:m[1].trim(),tkind:tk}:{kind:'talent',name:x,tkind:tk}; })()); }));
     var newFeat=[];
-    lines(W.features).forEach(function(x){ var m=/^([^:]+):\s*(.+)$/.exec(x); if(!m){ newFeat.push({kind:'feature',name:x}); return; }
-      var nm=m[1].trim().toLowerCase(), all=[]; (c2.levels||[]).forEach(function(l){ (l.picks||[]).forEach(function(q){ all.push(q); }); }); (c2.extraPicks||[]).forEach(function(q){ all.push(q); }); newFeat.forEach(function(q){ all.push(q); });
+    R.xr.forEach(function(x){ if(!x.under){ newFeat.push(withN({kind:'feature',name:x.name},x.notes)); return; }
+      var nm=x.under.toLowerCase(), all=[]; (c2.levels||[]).forEach(function(l){ (l.picks||[]).forEach(function(q){ all.push(q); }); }); (c2.extraPicks||[]).forEach(function(q){ all.push(q); }); newFeat.forEach(function(q){ all.push(q); });
       var f=all.filter(function(q){ return q.kind==='feature'&&String(q.name||'').trim().toLowerCase()===nm; })[0];
-      if(!f){ f={kind:'feature',name:m[1].trim(),subs:[]}; newFeat.push(f); }
-      f.subs=(f.subs||[]).concat([{name:m[2].trim(),lvl:L+1,notes:''}]); });
+      if(!f){ f={kind:'feature',name:x.under,subs:[]}; newFeat.push(f); }
+      f.subs=(f.subs||[]).concat([{name:x.name,lvl:L+1,notes:x.notes||''}]); });
     picks=picks.concat(newFeat);
     c2.levels.push({cls:id,hp:n0(W.hp),fcb:W.fcb,inc:W.inc||'',ranks:JSON.parse(JSON.stringify(W.ranks)),picks:picks,note:''});
     Object.keys(W.ranks).forEach(function(s){ c2.skillRanks[s]=n0(c2.skillRanks[s])+W.ranks[s]; });
+    /* effects typed on the feat and feature rows: always-on modifiers named after them */
+    var modIds=luAddMods(c2,R);
     var k=c2.classes[id];
     if(k.cast!=='none'&&!c2.resources.some(function(r){return r.max==='spmax';})) c2.resources.push({id:'r'+uidG().slice(1),name:'Spell points',max:'spmax',cur:0,reset:'long'});
     if(k.martial!=='none'&&!c2.resources.some(function(r){return /martial focus/i.test(r.name);})) c2.resources.push({id:'r'+uidG().slice(1),name:'Martial focus',max:'1',cur:1,reset:'short'});
-    return {c2:c2,id:id};
+    return {c2:c2,id:id,modIds:modIds};
   }
   function step5(){
     var b=build(), A2=derive(b.c2), B=before;
     var rows=[['Level',B.lvl,A2.lvl],['Hit points',B.hpMax,A2.hpMax],['Base attack',sgn(B.bab),sgn(A2.bab)],['Fortitude',sgn(B.fort),sgn(A2.fort)],['Reflex',sgn(B.ref),sgn(A2.ref)],['Will',sgn(B.will),sgn(A2.will)],
       ['Caster level',B.cl,A2.cl],['Magic skill bonus',sgn(B.msb),sgn(A2.msb)],['Spell points',B.spMax,A2.spMax],['Magic DC',B.dc,A2.dc],].concat(Object.keys(b.c2.classes).some(function(id){return A2.cc[id]&&b.c2.classes[id].martial!=='none';})?[['Martial DC',B.mdc,A2.mdc]]:[]).concat([['Skill ranks (budget)',B.skBudget,A2.skBudget],['Feats (expected)',B.featsExpected,A2.featsExpected],['Talents (guide)',B.talentsExpected,A2.talentsExpected],['Utility talents (guide)',B.utilExpected,A2.utilExpected]]);
     var html=stepsBar(4)+'<p>'+esc(b.c2.classes[b.id].name)+' '+((A2.cc[b.id])||1)+'. What changes:</p><div class="diff">'+rows.filter(function(r){return String(r[1])!==String(r[2])||r[0]==='Level';}).map(function(r){ return '<div><span>'+r[0]+'</span><span>'+r[1]+' → <b class="goldtxt">'+r[2]+'</b></span></div>'; }).join('')+'</div>'+
-      (function(){ var bits=planBits({talents:W.talents,feats:W.feats,features:W.features,ranks:W.ranks,inc:W.inc,fcb:W.fcb}); return bits.length?'<p style="margin:8px 0 2px"><b>'+(PM?'Planned':'You’re getting')+':</b></p><div class="diff">'+bits.map(function(x){ return '<div><span>'+esc(x[0])+'</span><span>'+esc(x[1])+'</span></div>'; }).join('')+'</div>':''; })()+
+      (function(){ var bits=planBits({talents:W.talents,feats:W.feats,features:W.features,fr:W.fr,xr:W.xr,ranks:W.ranks,inc:W.inc,fcb:W.fcb}); return bits.length?'<p style="margin:8px 0 2px"><b>'+(PM?'Planned':'You’re getting')+':</b></p><div class="diff">'+bits.map(function(x){ return '<div><span>'+esc(x[0])+'</span><span>'+esc(x[1])+'</span></div>'; }).join('')+'</div>':''; })()+
       (PM?'<p class="note">Nothing changes now: this goes into your level plan, and fills in the Level up dialog when you reach level '+(L+1)+'.</p>':'<p class="note">Saved as its own level entry, so you can see what you took at each level or remove the level later (Build tab).</p>');
     return modal({title:PM?'Plan level '+(L+1):'Level up',html:html,buttons:[{label:'Back',value:'back'},{label:PM?'Save to plan':'Level up',value:'ok',primary:true}]})
       .then(function(r){ if(r.value==='back') return W.quick?step2():step3(); if(r.value!=='ok') return null;
         if(PM){ var nbp=build(), lvp=nbp.c2.levels[nbp.c2.levels.length-1], meth0=ch.rules.hpMethod||'rolled';
-          return {entry:{cls:nbp.id,newClass:W.cls==='__new'?JSON.parse(JSON.stringify(W.nk)):undefined,fcb:W.fcb,inc:W.inc||'',hp:meth0==='rolled'&&!ch.rules.avgHP?n0(W.hp):0,ranks:JSON.parse(JSON.stringify(W.ranks)),feats:W.feats,talents:W.talents,features:W.features,picks:lvp.picks}}; }
+          return {entry:{cls:nbp.id,newClass:W.cls==='__new'?JSON.parse(JSON.stringify(W.nk)):undefined,fcb:W.fcb,inc:W.inc||'',hp:meth0==='rolled'&&!ch.rules.avgHP?n0(W.hp):0,ranks:JSON.parse(JSON.stringify(W.ranks)),feats:W.feats,talents:W.talents,features:W.features,fr:JSON.parse(JSON.stringify(W.fr||[])),xr:JSON.parse(JSON.stringify(W.xr||[])),picks:lvp.picks}}; }
         return function(){ var oldRes=D.res, nb=build(); ch=nb.c2;
           /* the plan: this level used it (shift), or you kept it for later, or dropped it */
           if(planOf(ch).length){ if(W.planAsk==='drop') ch.plan=[]; else if(W.planAsk!=='keep') ch.plan=planOf(ch).slice(1); if(!planOf(ch).length) delete ch.plan; } var D2=derive(ch); ch.resources.forEach(function(r0){ var was=oldRes[r0.id]?oldRes[r0.id].max:0, now=D2.res[r0.id]?D2.res[r0.id].max:0; if(now>was&&r0.reset!=='short0'&&r0.reset!=='long0') r0.cur=Math.min(now,n0(r0.cur)+(now-was)); }); log('Level up: '+ch.classes[nb.id].name+' '+classCounts(ch)[nb.id]+' (character level '+ch.levels.length+').');
@@ -5392,7 +5465,7 @@ function levelUpFlow(opts){
         /* the level's own picks, class and new resources go in the level entry, not as separate "added" lines */
         if(histT){ clearTimeout(histT); histT=null; } ensureIds(ch);
         if(!ch.histSnap) histSync(ch); else { var nowK=histKeys(ch), snap=ch.histSnap;
-          Object.keys(nowK).forEach(function(k2){ if(!snap[k2]&&(/^k:|^r:/.test(k2)||(lv.picks||[]).some(function(p0){ return 'p:'+p0.id===k2; }))) snap[k2]=nowK[k2]; }); histSync(ch); } histPush(ch,{t:'level',text:'Reached level '+ch.levels.length+': '+det.join(' · ')}); })(); }; });
+          Object.keys(nowK).forEach(function(k2){ if(!snap[k2]&&(/^k:|^r:/.test(k2)||(lv.picks||[]).some(function(p0){ return 'p:'+p0.id===k2; })||(nb.modIds||[]).some(function(m0){ return 'm:'+m0===k2; }))) snap[k2]=nowK[k2]; }); histSync(ch); } histPush(ch,{t:'level',text:'Reached level '+ch.levels.length+': '+det.join(' · ')}); })(); }; });
   }
   /* the next level is planned: show it, then apply it (confirm hit points, see the review), step through it, or ignore it */
   function step0(){ var e=NEXT, bits=planBits(e);
