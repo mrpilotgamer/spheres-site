@@ -5183,6 +5183,7 @@ function planApply(c,e){ if(e.newClass&&!c.classes[e.cls]) c.classes[e.cls]=JSON
   var hd=n0(k.hd,8), i=c.levels.length, hp=n0(e.hp)||(i===0&&c.rules.maxFirst!==false?hd:Math.floor(hd/2)+1);
   c.levels.push({cls:e.cls,hp:hp,fcb:e.fcb||'none',inc:(i+1)%4===0?(e.inc||''):'',ranks:JSON.parse(JSON.stringify(e.ranks||{})),picks:JSON.parse(JSON.stringify(e.picks||[])).map(function(p){ p.id=newId(); return p; }),note:''});
   Object.keys(e.ranks||{}).forEach(function(sk){ c.skillRanks[sk]=n0(c.skillRanks[sk])+n0(e.ranks[sk]); });
+  luAddMods(c,luRowsOf(e)); /* planned effects (+3 hp from Toughness…) show in the plan's preview and in later planned levels */
   if(k.cast!=='none'&&!c.resources.some(function(r){return r.max==='spmax';})) c.resources.push({id:'r'+uidG().slice(1),name:'Spell points',max:'spmax',cur:0,reset:'long'});
   if(k.martial!=='none'&&!c.resources.some(function(r){return /martial focus/i.test(r.name);})) c.resources.push({id:'r'+uidG().slice(1),name:'Martial focus',max:'1',cur:1,reset:'short'});
   return true; }

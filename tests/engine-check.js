@@ -262,6 +262,18 @@ const T0 = Date.now();
       check('a damaged save converts and works out its numbers: ' + what, r, 'Damaged number');
     }
     check('something that is not a character becomes a blank one', await page.evaluate(() => [null, 5, 'x'].map(v => window.SheetEngine.sanitize(v).app).join(' ')), 'spheres-sheet spheres-sheet spheres-sheet');
+    /* level plan feat and class feature rows (2026-11-12): older entries keep their text, the rows are cleaned */
+    const pl = await page.evaluate(() => { const E = window.SheetEngine, base = { app: 'spheres-sheet', v: 1, id: 'pl1', name: 'P', classes: { c1: { name: 'Hero', hd: 10 } }, levels: [{ cls: 'c1', hp: 10, picks: [] }] };
+      const old = E.sanitize(Object.assign({}, base, { plan: [{ cls: 'c1', feats: 'Toughness', features: 'Arsenal Tricks: Weapon Summon' }] })).plan[0];
+      const neu = E.sanitize(Object.assign({}, base, { plan: [{ cls: 'nope' }, { cls: 'c1', fr: [{ name: ' Iron Will ', kind: 'bonus', mods: [{ target: 'will', val: 2, type: 'odd' }, { target: 'hp', val: '0' }, 'x', { val: 1 }] }, { name: '', kind: 'feat' }, 7, { name: 'Dodge', kind: 'x' }],
+        xr: [{ name: 'Weapon Summon', under: 'Arsenal Tricks', notes: 'n', mods: 'bad' }, null] }] })).plan;
+      const d = E.derive(E.sanitize(Object.assign({}, base, { plan: [{ cls: 'c1', fr: 5, xr: { a: 1 } }] })));
+      return { old: ['fr' in old, 'xr' in old, old.feats, old.features].join(' | '), n: neu.length, fr: JSON.stringify(neu[0].fr), xr: JSON.stringify(neu[0].xr), d: typeof d.hpMax }; });
+    check('an older plan entry keeps its typed feats and features (no rows)', pl.old, 'false | false | Toughness | Arsenal Tricks: Weapon Summon');
+    check('plan feat rows: trimmed, unknown kinds become Feat, empty and broken rows and effects dropped, unknown bonus type untyped', [pl.n, pl.fr].join(' '),
+      '1 [{"name":"Iron Will","notes":"","mods":[{"target":"will","val":"2","type":"untyped"}],"kind":"bonus"},{"name":"Dodge","notes":"","mods":[],"kind":"feat"}]');
+    check('plan class feature rows keep the feature they go under', pl.xr, '[{"name":"Weapon Summon","notes":"n","mods":[],"under":"Arsenal Tricks"}]');
+    check('plan rows that are not lists still give a working character', pl.d, 'number');
   }
 
   /* ---------- D. the handle leaves no trace ---------- */

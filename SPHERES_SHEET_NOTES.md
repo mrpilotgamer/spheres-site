@@ -75,7 +75,7 @@ so every `firebase deploy` (Cloud Shell or GitHub) first checks the description 
 Normal sheet updates don't need this step; the `talents/` folder stays as it is.
 
 **Checks before deploying (optional):** `tests/check.js` opens the sheet in a headless browser, loads
-both example characters and runs 442 checks (about 95 seconds) against values worked out by hand (HP, AC, saves,
+both example characters and runs 459 checks (about 95 seconds) against values worked out by hand (HP, AC, saves,
 DCs, spell points, talents, skill ranks, attacks, toggles, the theme, free sphere ranks, blast augments, Roll20 macros,
 raised undead, temporary talents, cohorts, Workshop, wiki descriptions, adding talents from the wiki and more). It sits outside `public/`, so it is never deployed. Run it with:
 ```
@@ -99,12 +99,14 @@ package) checks the script policy against the page. `tests/fuzz-check.js` (27 ch
 loads both examples with script payloads injected into their data (four ways: free text, map keys, every string, every number),
 opens every tab, details, "why" dialog and the print view, and fails if any injected markup or script shows up or a page error
 is thrown (2026-11-11; it was run against a deliberately unescaped character name and caught it). `tests/engine-check.js`
-(325 checks, about 2 seconds, Playwright only, no clicking and no sleeps) tests the numbers directly through `window.SheetEngine`:
+(329 checks, about 2 seconds, Playwright only, no clicking and no sleeps) tests the numbers directly through `window.SheetEngine`:
 both examples (the numbers `check.js` reads off the screen), rule tables typed from the wiki and Core Rulebook, old saves,
 and that the handle leaves no trace (2026-11-12). GitHub runs all nine (the seven since 2026-11-09, `fuzz-check.js` since
 2026-11-11, `engine-check.js` since 2026-11-12, in front of `check.js` so the fast one fails first).
 Last full run: 2026-11-12, `engine-check.js` 325, `check.js` 447 (about 95 seconds, 10 of 10 runs passed), `fuzz-check.js` 27, `talents-check.js` 31, `config-check.js` 12, `csp-check.js` 6,
 `rules-check.js` 90 (not rerun since 2026-11-10; the rules are unchanged), `party-check.js` 38, `save-check.js` 12: all passed.
+After the level-up feat and feature rows (2026-11-12, later): `engine-check.js` 329, `check.js` 459, `fuzz-check.js` 27, `talents-check.js` 31,
+`config-check.js` 12 passed; `csp-check.js` and the emulator checks were not run in that session (the database code is unchanged).
 
 **Rollback:** Firebase console → Hosting → release history → roll back. With GitHub: also revert the commit (the
 commit's page → "Revert"), or the next push puts the broken version back.
@@ -585,6 +587,26 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
 ---
 
 ## Open items and ideas
+
+- **Level up: feat and class feature rows (2026-11-12, owner: "just a line to type" felt weak).** The "Feats & talents" step
+  (`step4` in `levelUpFlow`) now has rows instead of the two text boxes:
+  - **Feats:** name, Feat / Bonus feat (no feat slot; saved as kind `bonus`), notes (saved as the pick's notes). A line says
+    how many feat slots this level gives and how many are filled; it never blocks. No feat list or suggestions (owner's
+    call: the wiki has only the Spheres feats, see "Feats from the wiki" below).
+  - **Class features:** "New feature" or "Choice under X" (`haveFeatures()`: the features the character has, or the planning
+    copy has, plus new ones typed in rows above), name, notes. A choice goes into that feature's `subs` with its level and
+    notes, and creates the feature if needed. Typing "Feature: Choice" in a new feature's name still files a choice
+    (`luUnder`). The class's Build-tab notes (`features`) show folded above the rows for reference.
+  - **"+ Effect"** on any row: target (the Modifiers tab's list), value (number or formula), bonus type. Saved as an
+    Always-on modifier named after the row (`luAddMods`), so the review's numbers include it and the row's "N modifiers
+    named after it" link works. Situational and toggled bonuses are still made on the Modifiers tab. The level's history
+    line absorbs these modifiers like the level's picks (no separate "added modifier" lines).
+  - **Level plan:** entries keep the rows as `fr` (feats) and `xr` (features), cleaned in `sanitizeChar` (`luRowsClean`);
+    `feats`/`features` text is still written too. Entries from before have only the text, and `luRowsOf` turns it into rows.
+    Planned effects count in the plan page's preview and in later planned levels (`planApply`), and mass level-up adds them.
+  - **Pinned for later (owner, 2026-11-12): each class remembering its features by class level**, so level-up and the plan
+    fill the feature rows in by themselves. Wanted eventually, but archetypes make it tricky (they replace or change
+    base features), so it waits until there is a plan for archetypes too (see "Archetypes from the wiki" below).
 
 - **Any talent can be taken more than once (2026-11-10, owner's call: "just to simplify").** Talents from a tradition
   (casting, martial, trade) now have "Times taken" too, on the Talents tab and the Traditions tab (its row shows ×N);

@@ -1463,6 +1463,44 @@ function check(what, got, want) {
     check('…“Drop the plan” clears it after the level', [c.levels.length, c.levels[3].cls, 'plan' in c].join(' '), '4 c2 false');
     await go('Advanced', 'Level plan');
     check('the page offers to plan level 5 next', (await page.locator('[data-a="planLevel"][data-k="-1"]').innerText()).trim(), 'Plan level 5');
+
+    /* feat and class feature rows (2026-11-12): bonus feat, notes, a choice under a feature, effects; planned, then taken */
+    await mkP({ levels: [{ cls: 'c1', hp: 10, picks: [{ kind: 'feature', name: 'Arsenal Tricks', subs: [] }] }, { cls: 'c1', hp: 6, picks: [] }, { cls: 'c1', hp: 6, picks: [] }] }); await page.reload(); await settle();
+    const hp3 = await page.evaluate(id => window.SheetEngine.derive(window.SheetEngine.sanitize(JSON.parse(localStorage.getItem('spheres-sheet-v1:' + id)))).hpMax, pid);
+    await go('Advanced', 'Level plan');
+    await page.click('[data-a="planLevel"][data-k="-1"]'); await settle(); await next(); await dlg().locator('select[name="inc"]').selectOption('str'); await next();
+    check('feats: no row and no slot at an even level', [await dlg().locator('.ft-item').count(), (await dlg().locator('#ftleft').innerText()).trim()].join(' | '), '0 | No feat slot this level.');
+    await dlg().locator('#ftMore').click(); const ft = dlg().locator('.ft-item').first();
+    await ft.locator('.lu-nm').fill('Toughness'); await ft.locator('.ft-kind').selectOption('bonus'); await ft.locator('.lu-notes').fill('+3 hp');
+    await ft.locator('.lu-fx').click(); await ft.locator('.fx-t').selectOption('hp'); await ft.locator('.fx-v').fill('3');
+    check('…“Add a feat” adds one; a bonus feat is counted apart', (await dlg().locator('#ftleft').innerText()).trim(), 'No feat slot this level · 1 bonus feat.');
+    const x1 = dlg().locator('.xr-item').nth(0);
+    check('class features: a choice can go under a feature you have', (await x1.locator('.xr-under option').allInnerTexts()).join(' | '), 'New feature | Choice under Arsenal Tricks');
+    await x1.locator('.xr-under').selectOption('Arsenal Tricks'); await x1.locator('.lu-nm').fill('Weapon Summon'); await x1.locator('.lu-notes').fill('ws notes');
+    await dlg().locator('#xrMore').click(); await dlg().locator('.xr-item').nth(1).locator('.lu-nm').fill('Martial Flexibility');
+    await dlg().locator('#xrMore').click(); const x3 = dlg().locator('.xr-item').nth(2);
+    check('…or under a new one typed above it', (await x3.locator('.xr-under option').allInnerTexts()).join(' | '), 'New feature | Choice under Arsenal Tricks | Choice under Martial Flexibility');
+    await x3.locator('.lu-notes').fill('orphan notes'); await dlg().locator('button', { hasText: /^Next$/ }).click(); await settle();
+    check('…notes without a name are stopped', [/needs its name/.test(await dlg().innerText()), /3 · Feats & talents/.test(await dlg().locator('.steps .cur').innerText())].join(' '), 'true true');
+    await x3.locator('.lu-del').click();
+    check('…and “×” removes the row', await dlg().locator('.xr-item').count(), 2);
+    await next(); await next();
+    check('the review lists the feats, features and effects', /Planned:.*Toughness \(bonus\).*Arsenal Tricks: Weapon Summon, Martial Flexibility.*Toughness: Hit points \(max\) \+3/.test((await dlg().innerText()).replace(/\s+/g, ' ')), true);
+    await dlg().locator('button', { hasText: 'Save to plan' }).click(); await settle();
+    c = await stored();
+    check('the plan entry keeps the rows', JSON.stringify([c.plan[0].fr, c.plan[0].xr]), '[[{"name":"Toughness","notes":"+3 hp","mods":[{"target":"hp","val":"3","type":"untyped"}],"kind":"bonus"}],[{"name":"Weapon Summon","notes":"ws notes","mods":[],"under":"Arsenal Tricks"},{"name":"Martial Flexibility","notes":"","mods":[],"under":""}]]');
+    check('the plan’s preview counts the effect (+6 average, +1 favored, +3 Toughness)', new RegExp('HP ' + (hp3 + 6 + (c.plan[0].fcb === 'hp' ? 1 : 0) + 3) + '\\b').test(await page.locator('#main').innerText()), true);
+    await page.click('[data-a="planLevel"][data-k="0"]'); await settle(); await next(); await next();
+    check('editing the planned level fills the rows in again', [await dlg().locator('.ft-item .lu-nm').inputValue(), await dlg().locator('.ft-kind').inputValue(), await dlg().locator('.fx-v').inputValue(), await dlg().locator('.xr-item .xr-under').first().inputValue(), await dlg().locator('.xr-item .lu-notes').first().inputValue()].join(' | '), 'Toughness | bonus | 3 | Arsenal Tricks | ws notes');
+    await cancelOrEsc(dlg().locator('button', { hasText: 'Cancel' }).first()); await settle();
+    await page.click('[data-a="levelUp"]'); await settle();
+    await dlg().locator('button', { hasText: 'Apply as planned' }).click(); await settle(); await next();
+    await dlg().locator('button', { hasText: /^Level up$/ }).click(); await settle();
+    c = await stored();
+    check('levelling up: the bonus feat with its notes, the new feature, the choice filed under Arsenal Tricks with its level and notes',
+      [c.levels[3].picks.map(p => p.kind + ':' + p.name + ':' + (p.notes || '')).join(','), JSON.stringify(c.levels[0].picks[0].subs)].join(' | '), 'bonus:Toughness:+3 hp,feature:Martial Flexibility: | [{"name":"Weapon Summon","lvl":4,"notes":"ws notes"}]');
+    check('…the effect is an always-on modifier, and the history has one line for the level',
+      [c.mods.filter(m => m.src === 'Toughness').map(m => [m.target, m.val, m.when].join(' ')).join(','), (c.history || []).filter(h => /Toughness/.test(h.text)).map(h => h.t).join(',')].join(' | '), 'hp 3 always | level');
   }
   await page.unroute(SITE + '**', localTalents);
 
