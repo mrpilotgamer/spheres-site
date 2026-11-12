@@ -3809,10 +3809,12 @@ function subsBlock(r){
   var p=r.p, subs=(p.subs||[]).map(function(x,j){ return {x:x,j:j}; }).sort(function(a,b){ return (a.x.lvl||0)-(b.x.lvl||0); }), key='sf-'+r.where.replace(/\W/g,'')+'-'+r.i;
   var h='<div style="margin-top:8px"><span class="note">Choices under this feature'+(subs.length?' ('+subs.length+')':'')+'</span>';
   h+=subs.map(function(o){ var x=o.x, j=o.j; return '<details data-keep="'+key+'-'+j+'" style="background:var(--sunken);border:1px solid var(--soft);border-radius:var(--r);padding:2px 10px;margin:4px 0">'+
-      '<summary style="color:var(--ink);font-weight:600;display:flex;align-items:center;gap:8px;min-height:34px"><span style="flex:1">'+esc(x.name)+(x.notes?'':' <span class="note" style="font-weight:400">· no notes</span>')+'</span>'+(x.lvl?'<span class="tag">Level '+x.lvl+'</span>':'')+
+      '<summary style="color:var(--ink);font-weight:600;display:flex;align-items:center;gap:8px;min-height:34px"><span style="flex:1">'+esc(x.name)+(x.notes?'':(function(){ var W3=cwLookup(r.lvl,x.name,p.name); return W3&&!W3.need?' <span class="note" style="font-weight:400">· wiki text</span>':' <span class="note" style="font-weight:400">· no notes</span>'; })())+'</span>'+(x.lvl?'<span class="tag">Level '+x.lvl+'</span>':'')+
       '<button class="link" data-a="subEdit" data-w="'+r.where+'" data-i="'+r.i+'" data-j="'+j+'" style="font-size:13px;font-weight:400">Edit</button>'+
       '<button class="link" data-a="subDel" data-w="'+r.where+'" data-i="'+r.i+'" data-j="'+j+'" aria-label="Remove '+esc(x.name)+'" style="color:var(--muted);font-size:16px;text-decoration:none">×</button></summary>'+
-      '<div style="font-size:14px;line-height:1.5;padding-bottom:6px">'+(x.notes?mdLite(x.notes):'<p class="note">Edit to add what it does.</p>')+'</div></details>'; }).join('');
+      '<div style="font-size:14px;line-height:1.5;padding-bottom:6px">'+(function(){ var W2=cwLookup(r.lvl,x.name,p.name), wt=W2&&!W2.need?W2.d.f[W2.f][2][W2.o][1]:'';
+        var wk=W2&&W2.need?'<p class="note" data-cwneed="'+esc(W2.need.join(' '))+'">Loading the wiki text…</p>':wt?'<p class="note" style="margin:0 0 2px">From the wiki ('+esc(W2.d.n)+'):</p>'+mdLite(wt):'';
+        return x.notes?mdLite(x.notes)+(wt?'<details style="margin-top:4px"><summary class="note">Wiki text</summary>'+wk+'</details>':wk&&W2.need?wk:''):(wk||'<p class="note">Edit to add what it does.</p>'); })()+'</div></details>'; }).join('');
   h+='<div class="row" style="margin:6px 0 0"><input type="text" id="'+key+'" data-enter="'+key+'-go" placeholder="Add a choice (e.g. a knack or trick)" style="width:15rem" aria-label="New choice under '+esc(p.name)+'">'+
     '<select id="'+key+'-lv" aria-label="Taken at level">'+lvlOpts(ch.levels.length).replace('Not tied to a level','No level')+'</select>'+
     '<button class="mini" id="'+key+'-go" data-a="subAdd" data-w="'+r.where+'" data-i="'+r.i+'" data-in="'+key+'">Add</button></div></div>';
@@ -3848,7 +3850,7 @@ function pickForm(r,talent){
       (talent?'<label class="fld"><span>Sphere</span><input type="text" data-f="'+base+'sphere" value="'+esc(p.sphere||'')+'" list="spheresList" style="width:10rem"></label>'+fS(base+'tkind','Type',TKINDS)
        :fS(base+'kind','Kind',GKINDS))+(isBase(p)?'':fN(base+'n','Times taken',' min="1" max="50" placeholder="1" style="width:5rem"'))+'</div>'+notesBox(base+'notes',p.notes)+
       '<div class="row" style="margin-bottom:0"><span class="note">'+(n?plural(n,'modifier')+' named after it':'No modifiers: text only')+'</span><span class="spacer"></span><button class="mini" data-a="pickMod" data-name="'+esc(p.name)+'">+ Modifier</button><button class="mini danger" data-a="delPick" data-w="'+r.where+'" data-i="'+r.i+'" aria-label="Remove '+esc(p.name)+'">Remove</button></div></div>'; }
-  return '<div class="edit">'+(talent&&!isBase(p)?wkBox(p,r.where+'.'+r.i,'talent'):'')+'<div class="fields">'+
+  return '<div class="edit">'+(talent&&!isBase(p)?wkBox(p,r.where+'.'+r.i,'talent'):'')+(!talent&&p.kind==='feature'?cwBox(p,r.lvl,r.where+'.'+r.i):'')+'<div class="fields">'+
     '<label class="fld wide"><span>Name</span><input type="text" data-f="'+base+'name" value="'+esc(p.name)+'"></label>'+
     (talent?'<label class="fld"><span>Sphere</span><input type="text" data-f="'+base+'sphere" value="'+esc(p.sphere||'')+'" list="spheresList" style="width:10rem"></label>'+
       '<label class="fld"><span>Type</span><select data-f="'+base+'tkind">'+TKINDS.map(function(k){return '<option value="'+k[0]+'"'+((p.tkind||'')===k[0]?' selected':'')+'>'+k[1]+'</option>';}).join('')+(p.tkind?'':'<option value="" selected>—</option>')+'</select></label>'+
@@ -3916,8 +3918,25 @@ function cwFind(d,name,under){ if(!d) return null; var n=wkNorm(name), u=wkNorm(
   var fi=function(x){ x=bare(x); for(var i=0;i<d._n.length;i++){ if(d._n[i]===x||bare(d._n[i])===x) return i; } return -1; };
   if(u){ var j=fi(u); if(j<0) return null; var o=(d.f[j][2]||[]).map(function(c){ return wkNorm(c[0]); }).indexOf(n); return {f:j,o:o}; }
   var i=fi(n); return i<0?null:{f:i,o:-1}; }
+/* the wiki class files a feature pick could come from: the class of the level it was taken at, else every class you have */
+function cwClassesFor(lvl){ var L0=lvl>0?ch.levels[lvl-1]:null, ids=L0?[L0.cls]:Object.keys(ch.classes||{});
+  return ids.map(function(id){ return ch.classes[id]; }).filter(function(k){ return k&&clsWiki(k); }); }
+/* a feature (or a choice under one) in those files: {d, f, o} once they're loaded; {need: [slugs]} while some are loading */
+function cwLookup(lvl,name,under){ var ks=cwClassesFor(lvl), need=[];
+  for(var i=0;i<ks.length;i++){ var sl=clsWiki(ks[i]), st=cwState(sl); if(st==='none'||st==='loading'){ need.push(sl); continue; } if(st!=='ok') continue;
+    var h=cwFind(CW.f[sl],name,under); if(h&&(!under||h.o>=0)) return {d:CW.f[sl],f:h.f,o:h.o}; }
+  return need.length?{need:need}:null; }
+/* the wiki text of a class feature pick, in the same box as a talent's (Feats & features tab) */
+function cwBox(p,lvl,path){ if(!String(p.name||'').trim()) return ''; var R=cwLookup(lvl,p.name);
+  if(!R) return ''; if(R.need) return '<div class="wk" data-cwneed="'+esc(R.need.join(' '))+'"><p class="note">Loading the wiki text…</p></div>';
+  var f=R.d.f[R.f], md=f[1]||'', key='cw-'+path, more=!!(UI.wkMore||{})[key], long=md.length>900, nopt=(f[2]||[]).length;
+  var h='<div class="wk"><div class="wkh"><b>'+esc(cwName(f[0]))+'</b><span class="spacer"></span><a class="note" href="'+esc(WK_WIKI+R.d.p)+'" target="_blank" rel="noopener">Wiki ↗</a></div><div class="note" style="margin:0 0 4px">'+esc(R.d.n)+' class feature'+(nopt?' · '+plural(nopt,'choice')+' in its list':'')+'</div>';
+  if(md) h+='<div class="wkt'+(long&&!more?' clip':'')+'">'+mdLite(md)+'</div>'+(long?'<button class="link" data-a="wkMore" data-k="'+esc(key)+'">'+(more?'Show less':'Show all')+'</button>':'');
+  else h+='<p class="note" style="margin:0">The wiki lists its choices; add the ones you take below.</p>';
+  return h+'</div>'; }
 /* rows that are open and still waiting for a file start loading it (runs after each paint and when a row opens) */
-function wkScan(){ var m=$('main'); if(!m) return; m.querySelectorAll('[data-wkneed]').forEach(function(el){ var d=el.closest('details'); if(d&&!d.open) return; el.dataset.wkneed.split(' ').forEach(function(f){ if(f) wkGet(f); }); });
+function wkScan(){ var m=$('main'); if(!m) return; m.querySelectorAll('[data-cwneed]').forEach(function(el){ var d=el.closest('details'); if(d&&!d.open) return; el.dataset.cwneed.split(' ').forEach(function(f){ if(f) cwGet(f,function(){ if(ch) paintSoon(); }); }); });
+  m.querySelectorAll('[data-wkneed]').forEach(function(el){ var d=el.closest('details'); if(d&&!d.open) return; el.dataset.wkneed.split(' ').forEach(function(f){ if(f) wkGet(f); }); });
   m.querySelectorAll('input[data-wkq]').forEach(function(i){ if(i.value) wkSearch(i); });
   m.querySelectorAll('input[data-wkpick]').forEach(function(i){ if(i.value&&document.activeElement===i) wkPickSearch(i); });
   wkBrowseFill(); }

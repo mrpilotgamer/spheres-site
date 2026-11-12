@@ -1552,6 +1552,20 @@ function check(what, got, want) {
     await cancelOrEsc(dlg().locator('button', { hasText: 'Cancel' }).first()); await settle();
     await go('Character', 'Build');
     check('the Build tab shows the class’s wiki link', await page.locator('select[data-f="classes.c1.wiki"]').inputValue(), '-');
+    /* the Feats & features tab shows a feature's wiki text like a talent's, and a choice's under it */
+    await mkS({}, [{ cls: 'c1', hp: 10, picks: [{ kind: 'feature', name: 'Tension (Ex)' }] }, { cls: 'c1', hp: 6, picks: [{ kind: 'feature', name: 'Striker Art (Ex)', subs: [{ name: 'Adrenaline Rush', lvl: 2, notes: '' }] }, { kind: 'feature', name: 'My Homebrew Thing' }] }]);
+    await page.reload(); await idle(); await go('Character', 'Feats & features');
+    const item = n => page.locator('details.item', { has: page.locator('summary', { hasText: n }) }).first();
+    for (const n of ['Tension', 'Striker Art', 'My Homebrew']) await item(n).locator('summary').first().click();
+    await idle(); await until('the Striker wiki text', () => [...document.querySelectorAll('#main .wk .note')].some(e => /Striker class feature/.test(e.textContent)));
+    const box = async n => (await item(n).locator('.wk').count()) ? (await item(n).locator('.wk').first().innerText()).replace(/\s+/g, ' ') : 'none';
+    check('a feature pick shows its wiki text, from the class of its level', /^Tension \(Ex\) Wiki ↗ Striker class feature A striker is at home in battle/.test(await box('Tension')), true);
+    check('…a feature with a list says how many choices it has', /Striker class feature · 42 choices in its list/.test(await box('Striker Art')), true);
+    check('…a homebrew feature shows no wiki box', await box('My Homebrew'), 'none');
+    const sub = item('Striker Art').locator('details', { hasText: 'Adrenaline Rush' }).first();
+    check('a choice without notes says it has wiki text', /Adrenaline Rush · wiki text/.test((await sub.locator('summary').innerText()).replace(/\s+/g, ' ')), true);
+    await sub.locator('summary').click(); await idle();
+    check('…and shows it', /From the wiki \(Striker\):.*spend an additional point of tension/.test((await sub.innerText()).replace(/\s+/g, ' ')), true);
   }
 
   /* ---------- armor check penalty with the encumbrance house rule; an action that throws ---------- */

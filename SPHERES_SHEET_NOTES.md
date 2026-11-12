@@ -107,7 +107,7 @@ Last full run: 2026-11-12, `engine-check.js` 325, `check.js` 447 (about 95 secon
 `rules-check.js` 90 (not rerun since 2026-11-10; the rules are unchanged), `party-check.js` 38, `save-check.js` 12: all passed.
 After the level-up feat and feature rows (2026-11-12, later): `engine-check.js` 329, `check.js` 459, `fuzz-check.js` 27, `talents-check.js` 31,
 `config-check.js` 12 passed; `csp-check.js` and the emulator checks were not run in that session (the database code is unchanged).
-After class features from the wiki (2026-11-12, latest): `engine-check.js` 330, `check.js` 470, `fuzz-check.js` 27, `talents-check.js` 41
+After class features from the wiki (2026-11-12, latest): `engine-check.js` 330, `check.js` 475 (with the Feats tab text), `fuzz-check.js` 27, `talents-check.js` 41
 (with the class files), `config-check.js` 12 passed; `csp-check.js` and the emulator checks were not run in that session.
 
 **Rollback:** Firebase console → Hosting → release history → roll back. With GitHub: also revert the commit (the
@@ -630,7 +630,12 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
     (`cwFind`, `mdLite`). The line above the rows says what the table gives, with a wiki link. Rows filled in and left
     unchanged (`auto`) are taken out again if you go Back and pick another class. A blank choice row is skipped, not an error.
     A plan entry opened again keeps its own rows (`W.cwSkip`). No file, or offline: a note, and rows are typed as before.
-  - **Not yet:** mass level-up doesn't fill features in; the Feats & features tab doesn't show the wiki text of feature picks;
+  - **Feats & features tab** (owner asked, 2026-11-12: "only gives the names, no notes"): a class feature pick shows its wiki
+    text in the same box as a talent's (`cwBox`: name, "<Class> class feature", how many choices its list has, Wiki ↗, Show
+    all). The file is the class of the level it was taken at (`cwClassesFor`), else every class you have; it loads when the
+    row opens (`data-cwneed`, picked up by `wkScan`). A choice under a feature shows its wiki text when it has no notes of
+    yours ("· wiki text" in its summary), and folded under your notes when it has. Homebrew names: no box.
+  - **Not yet:** mass level-up doesn't fill features in;
     archetypes (owner, 2026-11-12: Spheres-class archetypes, plus the basic Paizo sphere conversions like Sphere Wizard and
     Sphere Sorcerer).
 
