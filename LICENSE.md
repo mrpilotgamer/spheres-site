@@ -13,7 +13,7 @@ You may copy, share, change and build on them, for any purpose, as long as you c
 
 ## 2. Rules text: Open Game License 1.0a
 
-The Spheres of Power, Spheres of Might and Spheres of Guile rules text (`public/talents/*.json`, and the
+The Spheres of Power, Spheres of Might and Spheres of Guile rules text (`public/talents/*.json`, `public/classes/*.json`, and the
 `#baseLib`, `#classLib`, `#traitLib`, `#wsLib` and `#persLib` data blocks in `public/index.html`) is Open Game
 Content used under the Open Game License Version 1.0a. It is **not** under CC BY: the terms, the Product
 Identity exclusions and the copyright notices are in [`OGL.md`](OGL.md).

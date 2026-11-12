@@ -817,6 +817,7 @@ function libLabel(e){ return e.n+' — '+e.c+(e.sk==null||!e.cs.length?' (check 
 function libFind(v){ v=String(v||'').trim().toLowerCase(); if(!v) return null; return CLASSLIB.filter(function(e){ return libLabel(e).toLowerCase()===v; })[0]||CLASSLIB.filter(function(e){ return e.n.toLowerCase()===v; })[0]||null; }
 function libClass(e){
   var k=Object.assign(blankClass(e.n),{hd:e.hd,bab:e.bab,good:e.good.slice(),skills:e.sk==null?2:e.sk,classSkills:e.cs.filter(function(x){ return SKN[x]; }),cast:e.cast||'none',martial:e.mart||'none',skill:e.skill||'none',talents:e.tal||'auto',utilx:e.ux||'',prestige:!!e.pre,bonusTalents:n0(e.bt),talx:own(TALX,e.tx)?e.tx:''});
+  if(e.c==='Spheres') k.wiki=clsSlug(e.n);
   k.features='From the class list ('+e.c+'). Check it against your class table'+(e.c==='Spheres'?' and archetypes':'')+'; everything here stays editable.'+(e.sk==null?' Skill ranks per level weren’t listed: set them.':'')+(!e.cs.length?' Class skills weren’t listed: tick them below.':'')+(e.nt?' '+e.nt:'');
   return k;
 }
@@ -827,7 +828,7 @@ function libPreview(e){ if(!e) return '<span class="note">Type to search: name o
 function libInput(name,cur){ return '<input type="text" name="'+name+'" list="classLibList" aria-label="Search the class list" placeholder="Search the class list…" autocomplete="off" style="width:100%" value="'+(cur?esc(libLabel(cur)):'')+'"><datalist id="classLibList">'+CLASSLIB.slice().sort(function(a,b){ return a.n.localeCompare(b.n); }).map(function(e){ return '<option value="'+esc(libLabel(e))+'">'; }).join('')+'</datalist><p class="lib-prev" style="margin:6px 0 0">'+libPreview(cur||null)+'</p>'; }
 function libWire(root,name){ var i=root.querySelector('[name='+name+']'), pv=root.querySelector('.lib-prev'); i.addEventListener('input',function(){ pv.innerHTML=libPreview(libFind(i.value)); }); }
 function applyLibSideEffects(c,k){ if(/^undead$/i.test(k.name)&&c.hpAb!=='cha'){ c.hpAb='cha'; return 'Hit points and Fortitude now use Charisma (undead).'; } if(/^construct$/i.test(k.name)&&c.hpAb==='con'){ c.hpAb='none'; return 'Hit points now use no ability (construct). Constructs also get bonus hp by size: add it as a modifier.'; } return ''; }
-function blankClass(name){ return {name:name||'New class',hd:8,bab:'3/4',good:['will'],skills:4,classSkills:[],cast:'none',martial:'none',skill:'none',util:false,utilx:'',prestige:false,talents:'auto',bonusTalents:0,talx:'',features:''}; }
+function blankClass(name){ return {name:name||'New class',hd:8,bab:'3/4',good:['will'],skills:4,classSkills:[],cast:'none',martial:'none',skill:'none',util:false,utilx:'',prestige:false,talents:'auto',bonusTalents:0,talx:'',features:'',wiki:''}; }
 
 /* ---------- temporary talents ----------
    Core rules, "Temporary Talents": talents held for less than 24 hours (implements don't count). Effects made with one end when it's
@@ -1619,7 +1620,7 @@ function sanitizeChar(o){
   /* class ids end up inside attributes and formulas (lvl.<id>): an imported one that isn't plain letters, digits, - or _ gets a new id */
   var cRe={}; Object.keys(b.classes).forEach(function(id){ if(/^[A-Za-z0-9_-]{1,60}$/.test(id)) return; var nid='c'+uidG().slice(1); while(own(b.classes,nid)) nid+='x'; b.classes[nid]=b.classes[id]; delete b.classes[id]; cRe[id]=nid; });
   Object.keys(b.classes).forEach(function(id){ var k=b.classes[id]=Object.assign(blankClass(),b.classes[id]&&typeof b.classes[id]==='object'&&!Array.isArray(b.classes[id])?b.classes[id]:{}); k.talents=own(TALP_OLD,k.talents)?TALP_OLD[k.talents]:own(TALP,k.talents)?k.talents:'auto';
-    if(!Array.isArray(k.classSkills)) k.classSkills=[]; k.classSkills=k.classSkills.filter(function(x){ return typeof x==='string'; }); if(!Array.isArray(k.good)) k.good=[]; k.name=String(k.name==null?'':k.name); if(!own(TALX,k.talx)) k.talx=''; });
+    if(!Array.isArray(k.classSkills)) k.classSkills=[]; k.classSkills=k.classSkills.filter(function(x){ return typeof x==='string'; }); if(!Array.isArray(k.good)) k.good=[]; k.name=String(k.name==null?'':k.name); if(!own(TALX,k.talx)) k.talx=''; k.wiki=typeof k.wiki==='string'&&/^(-|[a-z0-9-]{1,80})?$/.test(k.wiki)?k.wiki:''; });
   Object.keys(b.conds).forEach(function(k){ if(!own(CONDM,k)||!b.conds[k]) delete b.conds[k]; });
   if(!own(SIZES,b.size)) b.size='M';
   var t0=o.traditions&&typeof o.traditions==='object'?o.traditions:{}; b.traditions=Object.assign(blankTrads(),t0);
@@ -3028,6 +3029,9 @@ function rBuild(){
       (D.xtal&&n0(k.bonusTalents)>0?'<p class="note warn" style="margin:0 0 6px">Your '+esc(xtalFeats(ch).map(function(x){ return x.name+(x.n>1?' ×'+x.n:''); }).join(', '))+' feat'+(xtalFeats(ch).length>1||D.xtal>1?'s':'')+' now count'+(D.xtal>1?'':'s')+' toward your talents on '+(D.xtal>1?'their':'its')+' own. If you raised “Bonus talents” here for '+(D.xtal>1?'them':'it')+', lower it so '+(D.xtal>1?'they aren’t':'it isn’t')+' counted twice. <button class="link" data-a="xtalFix" data-id="'+esc(id)+'" data-n="'+Math.min(D.xtal,n0(k.bonusTalents))+'">Lower Bonus talents by '+Math.min(D.xtal,n0(k.bonusTalents))+'</button></p>':'')+
       '<details data-keep="cs-'+esc(id)+'"><summary>Class skills ('+(k.classSkills||[]).length+')'+(D.tradeSkills?' · not used: your trade tradition sets class skills':'')+'</summary><div class="skgrid" style="max-height:none">'+SKILLS.map(function(s){ return '<label class="ck"><input type="checkbox" data-in="'+p+'classSkills" data-v="'+s[0]+'"'+((k.classSkills||[]).indexOf(s[0])>=0?' checked':'')+'> '+s[1]+'</label>'; }).join('')+'</div></details>'+
       '<label class="fld" style="margin-top:6px"><span>Class features (notes)</span><textarea data-f="'+p+'features" rows="2">'+esc(k.features||'')+'</textarea></label>'+
+      (function(){ var auto=k.wiki?'':clsWiki(k), en=CLASSLIB.filter(function(e){ return e.c==='Spheres'; }).map(function(e){ return [clsSlug(e.n),e.n]; }).sort(function(a2,b2){ return a2[1].localeCompare(b2[1]); });
+        return '<div class="fields">'+fS(p+'wiki','Class features from the wiki',[['',auto?'By its name ('+(en.filter(function(x){ return x[0]===auto; })[0]||['',auto])[1]+')':'By its name (no match)'],['-','None']].concat(en))+'</div>'+
+          '<p class="note" style="margin:0 0 6px">Level up fills in this class’s features from the wiki class table, with their text. An archetype renamed from a class keeps it; set it here if the name doesn’t match.</p>'; })()+
       '<div class="row"><span class="note">'+(D.cc[id]?plural(D.cc[id],'level'):'No levels yet')+'</span><span class="spacer"></span>'+(D.cc[id]?'':'<button class="mini danger" data-a="delClass" data-id="'+esc(id)+'">Remove</button>')+'</div></div>';
   });
   h+='</section>';
@@ -3892,6 +3896,26 @@ function wkGet(file,cb){ var st=wkState(file); if(st==='ok'||st==='err'){ if(cb)
       else if(file==='drawbacks'){ d._n=(d.d||[]).map(function(x){ return wkNorm(x[0]); }); }
       else d._n=(d.t||[]).map(function(x){ return wkNorm(x[0]); });
       done(d); },function(){ done('err'); }); }catch(e){ WK.f[file]='err'; } }
+/* class features from the wiki (2026-11-12): tools/build-classes.py writes classes/<slug>.json, one per Spheres class:
+   {n, p: wiki page, f: [[feature, text, [[choice, text, group]...]]...], lv: {"1": [[table entry, feature index or -1, choice index?]...]}}.
+   A class links to its file by k.wiki: '' = by its name (a renamed archetype "Striker (Brawler)" still finds Striker), '-' = none. */
+var CW_SITE='https://spheres-character-sheet.web.app/classes/', CW={f:{},cb:{}};
+function clsSlug(n){ return String(n||'').toLowerCase().replace(/\[[^\]]*\]|\([^)]*\)/g,' ').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,''); }
+function clsWiki(k){ if(!k||k.wiki==='-') return ''; if(k.wiki) return k.wiki; var s=clsSlug(k.name); return CLASSLIB.some(function(e){ return e.c==='Spheres'&&clsSlug(e.n)===s; })?s:''; }
+function cwState(sl){ var v=CW.f[sl]; return v===undefined?'none':v==='loading'||v==='err'?v:'ok'; }
+function cwGet(sl,cb){ var st=cwState(sl); if(st==='ok'||st==='err'){ if(cb) cb(st); return; } if(cb) (CW.cb[sl]=CW.cb[sl]||[]).push(cb); if(st==='loading') return; CW.f[sl]='loading';
+  var done=function(v){ CW.f[sl]=v; var cs=CW.cb[sl]||[]; delete CW.cb[sl]; cs.forEach(function(f){ try{ f(cwState(sl)); }catch(e){} }); };
+  try{ fetch((/^https?:$/.test(location.protocol)?'classes/':CW_SITE)+encodeURIComponent(sl)+'.json').then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+    .then(function(d){ if(!d||typeof d!=='object'||!Array.isArray(d.f)) throw new Error('bad file'); d._n=d.f.map(function(x){ return wkNorm(x[0]); }); done(d); },function(){ done('err'); }); }catch(e){ done('err'); } }
+/* the loaded file of class k, or null; a promise that waits for it (or for its failure: then null) */
+function cwOf(k){ var sl=clsWiki(k); return sl&&cwState(sl)==='ok'?CW.f[sl]:null; }
+function cwLoad(k){ var sl=clsWiki(k); return sl?new Promise(function(res){ cwGet(sl,function(){ res(cwOf(k)); }); }):Promise.resolve(null); }
+function cwName(f){ return String(f||'').replace(/\s*\[[^\]]*\]/g,'').trim(); }
+/* the feature (and choice) of a class file by name: {f: index, o: choice index or -1} or null */
+function cwFind(d,name,under){ if(!d) return null; var n=wkNorm(name), u=wkNorm(under), bare=function(x){ return x.replace(/(ex|su|sp)$/,''); };
+  var fi=function(x){ x=bare(x); for(var i=0;i<d._n.length;i++){ if(d._n[i]===x||bare(d._n[i])===x) return i; } return -1; };
+  if(u){ var j=fi(u); if(j<0) return null; var o=(d.f[j][2]||[]).map(function(c){ return wkNorm(c[0]); }).indexOf(n); return {f:j,o:o}; }
+  var i=fi(n); return i<0?null:{f:i,o:-1}; }
 /* rows that are open and still waiting for a file start loading it (runs after each paint and when a row opens) */
 function wkScan(){ var m=$('main'); if(!m) return; m.querySelectorAll('[data-wkneed]').forEach(function(el){ var d=el.closest('details'); if(d&&!d.open) return; el.dataset.wkneed.split(' ').forEach(function(f){ if(f) wkGet(f); }); });
   m.querySelectorAll('input[data-wkq]').forEach(function(i){ if(i.value) wkSearch(i); });
@@ -5240,7 +5264,7 @@ function levelUpFlow(opts){
   var L=ch.levels.length, W={cls:ch.levels.length?ch.levels[L-1].cls:(Object.keys(ch.classes)[0]||'__lib'),nk:blankClass(''),hp:'',fcb:'hp',inc:'',ranks:{},feats:'',talents:'',features:'',fr:[],xr:[]};
   /* a plan entry fills the dialog: when planning (editing it) or levelling up (the next planned level) */
   function fromPlan(e){ if(!e) return; if(e.newClass&&!ch.classes[e.cls]){ W.cls='__new'; W.nk=JSON.parse(JSON.stringify(e.newClass)); W.newId=e.cls; } else W.cls=e.cls;
-    W.fcb=e.fcb||'none'; W.inc=e.inc||''; W.ranks=JSON.parse(JSON.stringify(e.ranks||{})); W.feats=e.feats||''; W.talents=e.talents||''; W.features=e.features||''; var R0=luRowsOf(e); W.fr=R0.fr; W.xr=R0.xr; if(n0(e.hp)) W.hp=n0(e.hp); }
+    W.fcb=e.fcb||'none'; W.inc=e.inc||''; W.ranks=JSON.parse(JSON.stringify(e.ranks||{})); W.feats=e.feats||''; W.talents=e.talents||''; W.features=e.features||''; var R0=luRowsOf(e); W.fr=R0.fr; W.xr=R0.xr; W.cwSkip=true; if(n0(e.hp)) W.hp=n0(e.hp); }
   var NEXT=PM?null:planOf(ch)[0]||null; if(PM) fromPlan(opts.preset);
   var before=D;
   function stepsBar(n){ return '<div class="steps">'+['Class','Hit points','Feats & talents','Skills','Review'].map(function(s,i){ return '<span class="'+(i===n?'cur':'')+'">'+(i+1)+' · '+s+'</span>'; }).join('')+'</div>'; }
@@ -5349,14 +5373,37 @@ function levelUpFlow(opts){
       read:function(root){ W.ranks={}; root.querySelectorAll('[name^=sk-]').forEach(function(i){ var v=Math.max(0,parseInt(i.value,10)||0), id=i.name.slice(3), cur=n0(ch.skillRanks[id]); v=Math.min(v,Math.max(0,cap-cur-spNew(id))); if(v) W.ranks[id]=v; }); return 1; }})
       .then(function(r){ if(r.value==='back') return step4(); if(r.value!=='next') return null; var t=Object.keys(W.ranks).reduce(function(s,k2){return s+W.ranks[k2];},0); if(t>budget) return alertBox('That’s '+t+' ranks; this level gives '+budget+'.').then(step3); return step5(); });
   }
-  function step4(){
+  /* the class's wiki file loads first (a short wait the first time; nothing if the class has none or it can't load) */
+  function step4(){ return cwLoad(K()).then(step4b); }
+  /* features from the class table at this class level, as rows: new features, a choice row for a feature with a list,
+     an empty Bonus feat row; features you have already only "improve" (listed, no row) */
+  function cwPrefill(d,n,have){ var out={xr:[],fr:[],info:[]}, hv=have.map(wkNorm), cap=function(t){ return t.charAt(0).toUpperCase()+t.slice(1); };
+    var had=function(nm){ return hv.indexOf(wkNorm(nm))>=0||out.xr.some(function(r){ return !r.under&&wkNorm(r.name)===wkNorm(nm); }); };
+    ((d.lv||{})[String(n)]||[]).forEach(function(e){ var t=String(e[0]||''), f=e[1]>=0?d.f[e[1]]:null, nm=f?cwName(f[0]):'';
+      if(/^bonus\s+(\w+\s+)?talents?\b/i.test(t)){ out.info.push([t,'counted with your talents']); return; }
+      if(/^bonus\s+(\w+\s+)?feats?\b/i.test(t)){ out.fr.push({name:'',kind:'bonus',notes:'',mods:[],ph:cap(t)+' ('+d.n+')'}); out.info.push([t,'a Bonus feat row']); return; }
+      if(!f){ if(!had(t)) out.xr.push({name:cap(t),under:'',notes:'',mods:[],auto:1}); out.info.push([t,'not on the wiki page as its own feature']); return; }
+      if(e.length>2&&f[2][e[2]]){ if(!had(nm)) out.xr.push({name:nm,under:'',notes:'',mods:[],auto:1}); out.xr.push({name:cwName(f[2][e[2]][0]),under:nm,notes:'',mods:[],auto:1}); out.info.push([t,'']); return; }
+      if((f[2]||[]).length){ if(!had(nm)) out.xr.push({name:nm,under:'',notes:'',mods:[],auto:1}); out.xr.push({name:'',under:nm,notes:'',mods:[],auto:1}); out.info.push([t,'pick one from its list']); return; }
+      if(had(nm)){ out.info.push([t,'you have it: it improves']); return; }
+      out.xr.push({name:nm,under:'',notes:'',mods:[],auto:1}); out.info.push([t,'']); });
+    return out; }
+  function step4b(){
     var k=K(), n=nIn(), feat=(L+1)%2===1, tsN=classTalentSplit(k,n), tsP=classTalentSplit(k,n-1), utl=tsN.util-tsP.util, tal=tsN.any-tsP.any+(k.cast!=='none'&&!D.castLv&&!D.trad.bonus2&&ch.traditions.mode!=='unified'?2:0);
-    var TOPT=targetOpts(), HAVE=haveFeatures(), kn=String(k.features||'').trim();
+    var TOPT=targetOpts(), HAVE=haveFeatures(), kn=String(k.features||'').trim(), CD=cwOf(k), key=W.cls+':'+n, CI=[];
+    if(CD&&!W.cwSkip&&W.cwKey!==key){
+      /* a different class or level than last time: drop the rows filled in for it that nobody changed */
+      if(W.cwKey){ W.xr=(W.xr||[]).filter(function(r){ return !r.auto||r.notes||(r.mods||[]).length; }); W.fr=(W.fr||[]).filter(function(r){ return r.name; }); }
+      W.cwKey=key; var pf=cwPrefill(CD,n,HAVE); W.xr=(W.xr||[]).concat(pf.xr); W.fr=(W.fr||[]).concat(pf.fr); W.cwInfo=pf.info; }
+    if(CD) CI=(W.cwKey===key&&W.cwInfo)||cwPrefill(CD,n,HAVE).info;
     var html=stepsBar(2)+'<p>'+(feat?'<b>A feat</b> this level (odd character level). ':'No feat this level. ')+(tal||utl?'<b>'+[tal?plural(tal,'talent'):'',utl?plural(utl,'[utility] talent'):''].filter(Boolean).join(' and ')+'</b> from '+esc(k.name)+' (as the sheet reads its progression; follow your class table if it differs).':'No talents from the class progression this level (check your class table).')+'</p>'+
       '<div class="opt" style="display:block"><span>Talents</span><div id="talRows"></div><button type="button" class="mini" id="talMore">Add another talent</button></div>'+
       '<datalist id="luSph">'+luSpheres().map(function(n){ return '<option value="'+esc(n)+'">'; }).join('')+'</datalist>'+
       '<div class="opt" style="display:block"><span>Feats</span><p class="note" id="ftleft" style="margin:2px 0"></p><div id="ftRows"></div><button type="button" class="mini" id="ftMore">Add a feat</button></div>'+
       '<div class="opt" style="display:block"><span>Class features</span><p class="note" style="margin:2px 0">A new feature, or a choice under one you have (an arsenal trick, a knack, a bonus feat pick…).</p>'+
+        (CD?'<p class="note" style="margin:2px 0">From the '+esc(CD.n)+' table at class level '+n+(CI.length?': '+CI.map(function(x){ return esc(x[0])+(x[1]?' <i>('+esc(x[1])+')</i>':''); }).join(', '):': nothing listed')+'. Rows are filled in; change or remove them as your class and archetype say. <a href="'+esc(WK_WIKI+CD.p)+'" target="_blank" rel="noopener">Wiki page</a></p>'+
+          CD.f.map(function(f,i){ return (f[2]||[]).length?'<datalist id="cwo'+i+'">'+f[2].map(function(o){ return '<option value="'+esc(cwName(o[0]))+'">'; }).join('')+'</datalist>':''; }).join(''):
+          (clsWiki(k)?'<p class="note" style="margin:2px 0">The wiki class features for '+esc(k.name)+' couldn’t be loaded (offline?). Type them in.</p>':''))+
         (kn?'<details class="lu-kn"><summary class="note">Your notes on '+esc(k.name)+' (Build tab)</summary><p class="note" style="white-space:pre-wrap;margin:4px 0">'+esc(kn)+'</p></details>':'')+
         '<div id="xrRows"></div><button type="button" class="mini" id="xrMore">Add a class feature</button></div>'+
       '<p class="note">“+ Effect” adds an always-on modifier named after the feat or feature (Modifiers tab), and the review shows what it changes. Situational or toggled bonuses: add them on the Modifiers tab afterwards.</p>';
@@ -5367,11 +5414,11 @@ function levelUpFlow(opts){
     function itemTail(r,what){ return '<button type="button" class="mini lu-fx">+ Effect</button><button type="button" class="mini danger lu-del" aria-label="Remove this '+what+'">×</button></div>'+
       '<textarea class="lu-notes" aria-label="'+what+' notes" rows="1" placeholder="Notes (optional): what it does, prerequisites… (Enter for a new line)" style="width:100%;min-height:2.4rem;resize:vertical">'+esc(r.notes||'')+'</textarea><div class="fxs">'+(r.mods||[]).map(fxHtml).join('')+'</div></div>'; }
     function ftHtml(r){ r=r||{name:'',kind:'feat'}; return '<div class="lu-item ft-item" style="border-top:1px solid var(--soft);padding:4px 0"><div class="row" style="margin:4px 0;gap:4px">'+
-      '<input type="text" class="lu-nm" aria-label="Feat" placeholder="Feat name" autocomplete="off" style="flex:1 1 11rem" value="'+esc(r.name||'')+'">'+
+      '<input type="text" class="lu-nm" aria-label="Feat" placeholder="'+esc(r.ph||'Feat name')+'" autocomplete="off" style="flex:1 1 11rem" value="'+esc(r.name||'')+'">'+
       '<select class="ft-kind" aria-label="Feat or bonus feat"><option value="feat">Feat</option><option value="bonus"'+(r.kind==='bonus'?' selected':'')+'>Bonus feat (no feat slot)</option></select>'+itemTail(r,'feat'); }
-    function xrHtml(r){ r=r||{name:'',under:''}; return '<div class="lu-item xr-item" style="border-top:1px solid var(--soft);padding:4px 0"><div class="row" style="margin:4px 0;gap:4px">'+
+    function xrHtml(r){ r=r||{name:'',under:''}; return '<div class="lu-item xr-item"'+(r.auto?' data-auto="'+esc((r.under||'')+'|'+(r.name||''))+'"':'')+' style="border-top:1px solid var(--soft);padding:4px 0"><div class="row" style="margin:4px 0;gap:4px">'+
       '<select class="xr-under" aria-label="A new feature, or a choice under one" data-v="'+esc(r.under||'')+'" style="max-width:14rem"></select>'+
-      '<input type="text" class="lu-nm" aria-label="Class feature" autocomplete="off" style="flex:1 1 11rem" value="'+esc(r.name||'')+'">'+itemTail(r,'class feature'); }
+      '<input type="text" class="lu-nm" aria-label="Class feature" autocomplete="off" style="flex:1 1 11rem" value="'+esc(r.name||'')+'">'+itemTail(r,'class feature').replace(/<\/div>$/,'<div class="lu-wk"></div></div>'); }
     function readFx(it){ return luFx([].slice.call(it.querySelectorAll('.fxrow')).map(function(x){ return {target:x.querySelector('.fx-t').value,val:x.querySelector('.fx-v').value,type:x.querySelector('.fx-ty').value}; })); }
     return modal({title:PM?'Plan level '+(L+1):'Level up',html:html,buttons:[{label:'Back',value:'back'},{label:'Next',value:'next',primary:true}],
       onOpen:function(root){ var box=root.querySelector('#talRows'), fb=root.querySelector('#ftRows'), xb=root.querySelector('#xrRows'), lc=function(t){ return String(t||'').trim().toLowerCase(); };
@@ -5391,7 +5438,14 @@ function levelUpFlow(opts){
           xb.querySelectorAll('.xr-item').forEach(function(o){ if(o===it) return; var u=o.querySelector('.xr-under'); if(('v' in u.dataset?u.dataset.v:u.value)) return; var nm=o.querySelector('.lu-nm').value.trim(); if(nm&&!/:/.test(nm)&&names.map(lc).indexOf(lc(nm))<0) names.push(nm); });
           if(cur&&names.map(lc).indexOf(lc(cur))<0) names.push(cur);
           sel.innerHTML='<option value="">New feature</option>'+names.map(function(nm){ return '<option value="'+esc(nm)+'"'+(lc(nm)===lc(cur)?' selected':'')+'>Choice under '+esc(nm)+'</option>'; }).join('');
-          it.querySelector('.lu-nm').placeholder=sel.value?'Choice (e.g. Weapon Summon)':'Feature name'; }); }
+          var nmI=it.querySelector('.lu-nm'), pf0=sel.value?cwFind(CD,sel.value):null;
+          nmI.placeholder=sel.value?(pf0&&(CD.f[pf0.f][2]||[]).length?'Choose from its list (type to search)':'Choice (e.g. Weapon Summon)'):'Feature name';
+          if(pf0&&(CD.f[pf0.f][2]||[]).length) nmI.setAttribute('list','cwo'+pf0.f); else nmI.removeAttribute('list');
+          wkRow(it); }); }
+        /* the wiki text of a row's feature or choice, folded under it */
+        function wkRow(it){ var box=it.querySelector('.lu-wk'); if(!box) return; var nm=it.querySelector('.lu-nm').value.trim(), u=it.querySelector('.xr-under').value, hit=nm?cwFind(CD,nm,u):null;
+          if(hit&&u&&hit.o<0) hit=null; var tx=hit?(hit.o>=0?CD.f[hit.f][2][hit.o][1]:CD.f[hit.f][1]):'', k2=hit?hit.f+':'+hit.o:'';
+          if(box.dataset.k===k2) return; box.dataset.k=k2; box.innerHTML=tx?'<details><summary class="note">Wiki text: '+esc(cwName(hit.o>=0?CD.f[hit.f][2][hit.o][0]:CD.f[hit.f][0]))+'</summary><div style="font-size:14px;line-height:1.5">'+mdLite(tx)+'</div></details>':''; }
         (W.fr||[]).forEach(function(r){ fb.insertAdjacentHTML('beforeend',ftHtml(r)); }); if(!(W.fr||[]).length&&feat) fb.insertAdjacentHTML('beforeend',ftHtml());
         (W.xr||[]).forEach(function(r){ xb.insertAdjacentHTML('beforeend',xrHtml(r)); }); if(!(W.xr||[]).length) xb.insertAdjacentHTML('beforeend',xrHtml());
         ftCount(); unders(); root.querySelectorAll('.lu-notes').forEach(grow);
@@ -5403,16 +5457,18 @@ function levelUpFlow(opts){
             else if(b.classList.contains('fx-del')){ var fr0=b.closest('.fxrow'), nx=fr0.nextElementSibling||fr0.previousElementSibling; fr0.remove(); (nx?nx.querySelector('.fx-t'):it.querySelector('.lu-fx')).focus(); }
             else if(b.classList.contains('lu-del')){ var nx2=it.nextElementSibling||it.previousElementSibling; it.remove(); (nx2?nx2.querySelector('.lu-nm'):(bx===fb?root.querySelector('#ftMore'):root.querySelector('#xrMore'))).focus(); }
             ftCount(); unders(); });
-          bx.addEventListener('input',function(ev){ if(ev.target.classList.contains('lu-notes')) grow(ev.target); if(bx===fb) ftCount(); else if(ev.target.classList.contains('lu-nm')) unders(); });
+          bx.addEventListener('input',function(ev){ if(ev.target.classList.contains('lu-notes')) grow(ev.target); if(bx===fb) ftCount(); else if(ev.target.classList.contains('lu-nm')){ unders(); } });
           bx.addEventListener('change',function(){ if(bx===fb) ftCount(); else unders(); }); }); },
       check:function(root,v){ if(v!=='next') return ''; var bad=[].slice.call(root.querySelectorAll('.talrow')).filter(function(r){ return r.querySelector('.tr-base').checked&&!r.querySelector('.tr-sph').value.trim(); }); if(bad.length) return 'A base sphere needs its sphere name.';
         var it=[].slice.call(root.querySelectorAll('.lu-item'));
         if(it.some(function(x){ return !x.querySelector('.lu-nm').value.trim()&&(readFx(x).length||x.querySelector('.lu-notes').value.trim()); })) return 'A feat or class feature with notes or an effect needs its name.';
-        var ch0=it.filter(function(x){ return x.classList.contains('xr-item')&&x.querySelector('.xr-under').value&&!x.querySelector('.lu-nm').value.trim(); })[0];
-        return ch0?'Name the choice under '+ch0.querySelector('.xr-under').value+' (or remove that row).':''; },
+        return ''; },
       read:function(root){
         W.fr=luRowsClean([].slice.call(root.querySelectorAll('.ft-item')).map(function(it){ return {name:it.querySelector('.lu-nm').value,kind:it.querySelector('.ft-kind').value,notes:it.querySelector('.lu-notes').value,mods:readFx(it)}; }),false);
         W.xr=luRowsClean([].slice.call(root.querySelectorAll('.xr-item')).map(function(it){ return {name:it.querySelector('.lu-nm').value,under:it.querySelector('.xr-under').value,notes:it.querySelector('.lu-notes').value,mods:readFx(it)}; }),true).map(luUnder);
+        /* rows filled in from the class table and left as they were (so a change of class or level can take them out again) */
+        var AK={}; root.querySelectorAll('.xr-item[data-auto]').forEach(function(it){ if(it.dataset.auto===it.querySelector('.xr-under').value+'|'+it.querySelector('.lu-nm').value.trim()) AK[it.dataset.auto]=1; });
+        W.xr.forEach(function(r){ if(AK[(r.under||'')+'|'+r.name]) r.auto=1; });
         W.feats=W.fr.map(function(r){ return r.name; }).join('\n'); W.features=W.xr.map(function(r){ return r.under?r.under+': '+r.name:r.name; }).join('\n');
         W.talMeta={};
         W.talents=[].slice.call(root.querySelectorAll('.talrow')).map(function(r){ var sp=r.querySelector('.tr-sph').value.trim(), nm=r.querySelector('.tr-nm').value.trim(), line=r.querySelector('.tr-base').checked&&sp?sp+' sphere':sp&&nm?sp+': '+nm:nm||(sp?sp+' sphere':'');

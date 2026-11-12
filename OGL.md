@@ -1,6 +1,6 @@
 # Open Game License
 
-The rules text in this site (the wiki descriptions in `public/talents/`, and the rules data blocks inside
+The rules text in this site (the wiki descriptions in `public/talents/` and `public/classes/`, and the rules data blocks inside
 `public/index.html`: `#baseLib`, `#classLib`, `#traitLib`, `#wsLib`, `#persLib`) comes from the
 [Spheres of Power Wiki](http://spheresofpower.wikidot.com/legal:start) and is Open Game Content under the
 Open Game License Version 1.0a below. It is **not** covered by the Creative Commons licence in `LICENSE.md`.

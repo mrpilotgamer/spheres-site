@@ -59,6 +59,11 @@ function check(what, got, want) {
   /* click a dialog's Cancel button if it's there, else press Escape (no waiting for a button that isn't there) */
   const cancelOrEsc = async loc => { if (await loc.count()) await loc.click({ timeout: 5000 }).catch(() => page.keyboard.press('Escape')); else await page.keyboard.press('Escape'); };
 
+  /* class feature files (2026-11-12) come from the local folder for the whole run, never the live site */
+  const CLS = path.resolve(__dirname, '..', 'public', 'classes'), CSITE = 'https://spheres-character-sheet.web.app/classes/', clsReq = [];
+  await page.route(CSITE + '**', route => { const f = decodeURIComponent(route.request().url().slice(CSITE.length)); clsReq.push(f);
+    if (!/^[a-z0-9-]+\.json$/.test(f) || !require('fs').existsSync(path.join(CLS, f))) return route.abort();
+    route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: require('fs').readFileSync(path.join(CLS, f)) }); });
   await page.goto(FILE); await settle();
 
   /* ---------- Ilyra Voss, Incanter 12 ---------- */
@@ -1504,6 +1509,50 @@ function check(what, got, want) {
       [c.mods.filter(m => m.src === 'Toughness').map(m => [m.target, m.val, m.when].join(' ')).join(','), (c.history || []).filter(h => /Toughness/.test(h.text)).map(h => h.t).join(',')].join(' | '), 'hp 3 always | level');
   }
   await page.unroute(SITE + '**', localTalents);
+
+  /* ---------- class features from the wiki in the level-up dialog (2026-11-12) ---------- */
+  console.log('Class features from the wiki');
+  {
+    /* each case is its own character: reloading writes the open one back, so editing it in storage first would be lost */
+    let sid = '', nS = 0;
+    const mkS = (cls, levels, extra) => page.evaluate(([cls, levels, extra, id]) => { localStorage.setItem('spheres-sheet-v1:' + id, JSON.stringify(Object.assign({ app: 'spheres-sheet', v: 1, id, name: 'Punch',
+      classes: { c1: Object.assign({ name: 'Striker (Brawler)', hd: 10, bab: 'full', good: ['fort', 'ref'], skills: 4, martial: 'expert' }, cls) }, levels, rules: { hpMethod: 'avgup' } }, extra)));
+      localStorage.setItem('spheres-sheet-v1:last', JSON.stringify(id)); }, [cls, levels, extra || {}, sid = 'zz-cls' + (++nS)]);
+    const stored = () => page.evaluate(id => JSON.parse(localStorage.getItem('spheres-sheet-v1:' + id)), sid);
+    const dlg = () => page.locator('.dlg-back').last();
+    const next = async () => { await dlg().locator('button', { hasText: /^Next$/ }).click(); await idle(); };
+    const rowsNow = async () => { const r = dlg().locator('.xr-item'), out = []; for (let i = 0; i < await r.count(); i++) out.push((await r.nth(i).locator('.xr-under').inputValue()) + '>' + (await r.nth(i).locator('.lu-nm').inputValue())); return out.join(', '); };
+    await mkS({}, [{ cls: 'c1', hp: 10, picks: [{ kind: 'feature', name: 'Tension (Ex)' }] }]); await page.reload(); await idle();
+    clsReq.length = 0;
+    await page.locator('[data-a="levelUp"]').first().click(); await idle(); await next(); await next();
+    check('a renamed archetype (“Striker (Brawler)”) loads the Striker file', clsReq.join(' '), 'striker.json');
+    check('level 2 fills in the table’s new features, with a choice row under Striker Art', await rowsNow(), '>Striker Art (Ex), Striker Art (Ex)>, >Tension Boost (Ex)');
+    check('…and says what the table gives', /From the Striker table at class level 2: Striker art \(pick one from its list\), tension boost/.test((await dlg().innerText()).replace(/\s+/g, ' ')), true);
+    const chRow = dlg().locator('.xr-item').nth(1);
+    check('the choice row offers the Striker Art list', [await chRow.locator('.lu-nm').getAttribute('list'), await dlg().locator('datalist#' + await chRow.locator('.lu-nm').getAttribute('list') + ' option[value="Adrenaline Rush"]').count()].join(' '), 'cwo5 1');
+    await chRow.locator('.lu-nm').fill('Adrenaline Rush');
+    check('picking a choice shows its wiki text', /Wiki text: Adrenaline Rush/.test(await chRow.locator('.lu-wk').innerText()), true);
+    await dlg().locator('.xr-item').nth(2).locator('.lu-del').click();
+    await next(); await next(); await dlg().locator('button', { hasText: /^Level up$/ }).click(); await idle();
+    let c = await stored();
+    check('levelling up saves the feature with its choice; a removed row is not taken', JSON.stringify(c.levels[1].picks.map(p => [p.name, (p.subs || []).map(x => x.name + '@' + x.lvl)])), '[["Striker Art (Ex)",["Adrenaline Rush@2"]]]');
+    /* a feature you have only "improves"; Back to another class takes the untouched rows away */
+    await mkS({}, Array.from({ length: 12 }, (x, i) => ({ cls: 'c1', hp: 6, picks: i === 1 ? [{ kind: 'feature', name: 'Tension Boost (Ex)' }] : [] })), { classes: { c1: { name: 'Striker', hd: 10, bab: 'full', good: ['fort', 'ref'], skills: 4, martial: 'expert' }, c2: { name: 'Wanderer', hd: 8, bab: '3/4', good: [], skills: 4 } } });
+    await page.reload(); await idle();
+    await page.locator('[data-a="levelUp"]').first().click(); await idle(); await next(); await next();
+    check('a feature you already have improves: listed, no row', [await rowsNow(), /Tension boost \(you have it: it improves\)/.test((await dlg().innerText()).replace(/\s+/g, ' '))].join(' | '), '> | true');
+    await dlg().locator('button', { hasText: 'Back' }).click(); await idle(); await dlg().locator('button', { hasText: 'Back' }).click(); await idle();
+    await dlg().locator('select[name="cls"]').selectOption('c2'); await next(); await next();
+    check('a class with no wiki file: no rows, no wiki line', [await rowsNow(), /From the .* table/.test(await dlg().innerText())].join(' | '), '> | false');
+    await cancelOrEsc(dlg().locator('button', { hasText: 'Cancel' }).first()); await settle();
+    /* the Build tab can switch it off */
+    await mkS({ wiki: '-' }, [{ cls: 'c1', hp: 10, picks: [] }]); await page.reload(); await idle();
+    await page.locator('[data-a="levelUp"]').first().click(); await idle(); await next(); await next();
+    check('“None” on the Build tab: no wiki rows', await rowsNow(), '>');
+    await cancelOrEsc(dlg().locator('button', { hasText: 'Cancel' }).first()); await settle();
+    await go('Character', 'Build');
+    check('the Build tab shows the class’s wiki link', await page.locator('select[data-f="classes.c1.wiki"]').inputValue(), '-');
+  }
 
   /* ---------- armor check penalty with the encumbrance house rule; an action that throws ---------- */
   console.log('Armor check penalty and a failing action');

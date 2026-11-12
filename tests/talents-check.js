@@ -3,7 +3,7 @@
      python3 tools/build-talents.py <path to SoP-Claude-Bundles>
      node tests/talents-check.js
 
-   Run it after rebuilding the files from a new wiki bundle. It checks every file the index names is there and
+   Run it after rebuilding the files from a new wiki bundle (and the class feature files: python3 tools/build-classes.py <bundle>). It checks every file the index names is there and
    matches it, that no entry has empty text, and that some well-known talents and drawbacks are found where
    they should be. Exit code 0 = every check passed. */
 const fs = require('fs'), path = require('path');
@@ -59,5 +59,34 @@ check('no drawback has empty text', D.d.every(d => String(d[3] || '').trim()), D
 const size = fs.readdirSync(DIR).reduce((a, f) => a + fs.statSync(path.join(DIR, f)).size, 0);
 check('all files together under 6 MB', size < 6 * 1048576, (size / 1048576).toFixed(1) + ' MB');
 
-console.log(`\n${pass} passed, ${fail} failed (${slugs.length} spheres, ${total} talents, ${D.d.length} drawbacks and boons)`);
+/* ---------- class feature files (public/classes/, tools/build-classes.py, 2026-11-12) ---------- */
+const CDIR = path.resolve(__dirname, '..', 'public', 'classes');
+const cread = f => JSON.parse(fs.readFileSync(path.join(CDIR, f), 'utf8'));
+const CI = cread('index.json'), cslugs = Object.keys(CI.classes);
+check('class index lists at least 110 Spheres classes', cslugs.length >= 110, cslugs.length);
+const cmiss = [], cbad = [], cidx = [], cempty = [];
+let nfeat = 0;
+for (const s of cslugs) {
+  if (!fs.existsSync(path.join(CDIR, s + '.json'))) { cmiss.push(s); continue; }
+  const F = cread(s + '.json');
+  if (F.f.length !== CI.classes[s].c || F.n !== CI.classes[s].n) cbad.push(s);
+  nfeat += F.f.length;
+  F.f.forEach(f => { if (!String(f[0] || '').trim() || !(String(f[1] || '').trim() || (f[2] || []).length)) cempty.push(F.n + ' / ' + f[0]); });
+  Object.entries(F.lv).forEach(([l, es]) => es.forEach(e => {
+    if (!(+l >= 1 && +l <= 20) || !(e[1] >= -1 && e[1] < F.f.length) || (e.length > 2 && !(e[1] >= 0 && e[2] >= 0 && e[2] < F.f[e[1]][2].length))) cidx.push(F.n + ' ' + l + ' ' + e[0]); }));
+}
+check('every class in the index has its file, with the feature count and name it says', !cmiss.length && !cbad.length, cmiss.concat(cbad).join(', '));
+check('every class level entry points at a feature (or none) and a choice that exist', !cidx.length, cidx.slice(0, 10).join('; '));
+check('no feature without a name or without text and choices', !cempty.length, cempty.slice(0, 10).join('; '));
+const corph = fs.readdirSync(CDIR).filter(f => f.endsWith('.json') && f !== 'index.json' && !CI.classes[f.slice(0, -5)]);
+check('no leftover class files from an older build', !corph.length, corph.join(', '));
+const cfeat = (c, n) => (cread(c + '.json').f.find(f => norm(f[0]) === norm(n)) || null);
+check('Striker: Striker Art has its list (at least 30 arts, Adrenaline Rush among them)', (cfeat('striker', 'Striker Art') || [0, 0, []])[2].length >= 30 && cfeat('striker', 'Striker Art')[2].some(o => norm(o[0]) === 'adrenalinerush'));
+check('Striker level 2 names Striker Art and Tension Boost', cread('striker.json').lv['2'].map(e => cread('striker.json').f[e[1]][0]).join(', '), 'Striker Art (Ex), Tension Boost (Ex)');
+check('Troubadour: Actor Training lists Gossip', (cfeat('troubadour', 'Actor Training') || [0, 0, []])[2].some(o => norm(o[0]) === 'gossip'));
+check('Incanter has a Specializations feature with its text', !!cfeat('incanter', 'Incanter Specializations') && cfeat('incanter', 'Incanter Specializations')[1].length > 100);
+const csize = fs.readdirSync(CDIR).reduce((a, f) => a + fs.statSync(path.join(CDIR, f)).size, 0);
+check('all class files together under 4 MB', csize < 4 * 1048576, (csize / 1048576).toFixed(1) + ' MB');
+
+console.log(`\n${pass} passed, ${fail} failed (${slugs.length} spheres, ${total} talents, ${D.d.length} drawbacks and boons; ${cslugs.length} classes, ${nfeat} class features)`);
 process.exit(fail ? 1 : 0);
