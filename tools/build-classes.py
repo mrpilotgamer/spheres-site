@@ -34,7 +34,7 @@ Archetypes (2026-11-12): the 06- bundle files. Kept: archetypes of a Spheres cla
 title "(X Archetype)", or, untitled, the class whose features its "This replaces ..." lines name), and the sphere conversions
 ("Sphere Wizard", "Spheres Oathbound (Paladin and Antipaladin Archetype)") of any class in the class list. A feature is a
 heading (or, on pages without headings, a bold-lead paragraph "**Name (Ex):**"); its level is the first "at Nth level" in
-its text (1 if none); "This ability replaces X, Y and Z." names the base features it removes (matched by name; the full
+its text, else the first level of the base feature it replaces or alters, else 1; "This ability replaces X, Y and Z." names the base features it removes (matched by name; the full
 sentence is kept for the player either way).
 """
 import gzip, json, os, re, sys, unicodedata
@@ -205,7 +205,7 @@ def match(key, fnorm):
     return best if bl >= 5 else -1
 
 
-REP = re.compile(r'\b(?:This|These|which|it)\s+(?:\w+\s+){0,3}?(replaces?|modif(?:y|ies)|alters?|changes?)\s+([^.]{2,200})\.', re.I)
+REP = re.compile(r'\b(?:This|These|which|it)\s+(?:\w+\s+){0,3}?(replaces?|modif(?:y|ies)|alters?|changes?)\s+([^.\n]{2,200})(?:\.|\n|$)', re.I)   # some pages leave off the full stop
 LVL = re.compile(r'\b(?:At|Starting at|Beginning at|Upon reaching|at)\s+(\d+)(?:st|nd|rd|th)\s+level', re.I)
 
 
@@ -255,9 +255,17 @@ def arch_features(body):
     for name, txt in out:
         txt = re.split(r'\n#\s', txt)[0]
         lv = LVL.search(txt)
-        rtext = ' '.join(m.group(0).strip() for m in REP.finditer(txt))
-        res.append([cname(name), clean_md(txt), int(lv.group(1)) if lv else 1, rtext])
+        rtext = '\n'.join(m.group(0).strip() for m in REP.finditer(txt))   # one per line: they are read again, and some lack a full stop
+        res.append([cname(name), clean_md(txt), int(lv.group(1)) if lv else 0, rtext])   # 0: no level in the text (set below)
     return [r for r in res if r[1] or r[3]]
+
+
+def first_level(d, fi):
+    """The first class level whose table entry names base feature fi (0 if the table never does)."""
+    for k in sorted(d.get('lv', {}), key=int):
+        if any(e[1] == fi for e in d['lv'][k]):
+            return int(k)
+    return 0
 
 
 def cname(s):
@@ -300,7 +308,13 @@ def archetypes(pages, L, files, report):
                     i = feat_index(k, fn)
                     if i >= 0 and not any(x[0] == i and x[1] == lv for x in reps):
                         reps.append([i, lv, how])
-            out.append([f[0], f[1], f[2], reps, f[3]])
+            lvl = f[2]
+            if not lvl:
+                # no "at Nth level": the level of what it replaces or alters (its first level in the class table), else 1
+                firsts = [r[1] or first_level(files[sl], r[0]) for r in reps]
+                firsts = [x for x in firsts if x]
+                lvl = min(firsts) if firsts else 1
+            out.append([f[0], f[1], lvl, reps, f[3]])
         files[sl]['a'].append([title, ps, out])
         return True
 
@@ -355,7 +369,7 @@ def archetypes(pages, L, files, report):
                 fs = arch_features(body)
                 if fs and (sl, norm(title)) not in seen:
                     seen.add((sl, norm(title)))
-                    files[sl]['a'].append([title, ps, [[f[0], f[1], f[2], [], f[3]] for f in fs]])
+                    files[sl]['a'].append([title, ps, [[f[0], f[1], f[2] or 1, [], f[3]] for f in fs]])
             continue
         cands = [sph[norm(b)] for b in bases if norm(b) in sph]
         if not bases:
