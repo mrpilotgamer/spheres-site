@@ -107,6 +107,8 @@ Last full run: 2026-11-12, `engine-check.js` 325, `check.js` 447 (about 95 secon
 `rules-check.js` 90 (not rerun since 2026-11-10; the rules are unchanged), `party-check.js` 38, `save-check.js` 12: all passed.
 After the level-up feat and feature rows (2026-11-12, later): `engine-check.js` 329, `check.js` 459, `fuzz-check.js` 27, `talents-check.js` 31,
 `config-check.js` 12 passed; `csp-check.js` and the emulator checks were not run in that session (the database code is unchanged).
+After class features from the wiki (2026-11-12, latest): `engine-check.js` 330, `check.js` 470, `fuzz-check.js` 27, `talents-check.js` 41
+(with the class files), `config-check.js` 12 passed; `csp-check.js` and the emulator checks were not run in that session.
 
 **Rollback:** Firebase console → Hosting → release history → roll back. With GitHub: also revert the commit (the
 commit's page → "Revert"), or the next push puts the broken version back.
@@ -606,9 +608,31 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
   - **Level plan:** entries keep the rows as `fr` (feats) and `xr` (features), cleaned in `sanitizeChar` (`luRowsClean`);
     `feats`/`features` text is still written too. Entries from before have only the text, and `luRowsOf` turns it into rows.
     Planned effects count in the plan page's preview and in later planned levels (`planApply`), and mass level-up adds them.
-  - **Pinned for later (owner, 2026-11-12): each class remembering its features by class level**, so level-up and the plan
-    fill the feature rows in by themselves. Wanted eventually, but archetypes make it tricky (they replace or change
-    base features), so it waits until there is a plan for archetypes too (see "Archetypes from the wiki" below).
+  - ~~Pinned: each class remembering its features by class level~~: done from the wiki, see the next item.
+
+- **Class features from the wiki (2026-11-12).** `tools/build-classes.py <bundle>` writes `public/classes/<slug>.json` for every
+  Spheres class in the class list (117 of 132; Cyborg and the racial classes have no class features section, Qahngol no
+  page) plus `index.json`: about 2.5 MB, 760 KB gzipped, one file loads only when that class levels up. Layout:
+  `{n, p: wiki page, f: [[feature, text, [[choice, text, group]...]]...], lv: {"2": [[table entry, feature index or -1,
+  choice index?]...]}}`. The page is found like `verify-classes.py`; features are the level-2 headings under "Class
+  Features"/"Class Abilities" (level 3 when there are none), choices are the level-4 headings under a feature, levels come
+  from the table's Special column matched by name (93% of entries match; the script prints the rest as "check:" lines,
+  mostly abilities that are part of another feature's text). Hosting: `/classes/**` has the same headers as `/talents/**`
+  (CORS for downloaded copies, 1-hour cache). It is a separate folder because `build-talents.py` clears `talents/`.
+  - **Which file:** a class's `wiki` field: '' = by its name (`clsWiki`; parenthesised words are ignored, so an archetype
+    renamed "Striker (Brawler)" finds Striker), '-' = none, or a file name. Classes added from the class list get it set;
+    the Build tab has a "Class features from the wiki" selector under each class.
+  - **Level up** (`step4` loads the file first, `cwPrefill`): the table entries at the new class level become rows. A new
+    feature: a "New feature" row. A feature with a list (Striker Art, Actor Training, knacks…): the feature row if you don't
+    have it, plus a "Choice under" row whose name box suggests the list (a `datalist`). A table entry that names one choice:
+    that choice. A feature you already have: listed as "you have it: it improves", no row. Bonus feat: an empty Bonus feat
+    row. Bonus talent: listed only (the sheet counts talents). Every feature and choice row shows its wiki text folded
+    (`cwFind`, `mdLite`). The line above the rows says what the table gives, with a wiki link. Rows filled in and left
+    unchanged (`auto`) are taken out again if you go Back and pick another class. A blank choice row is skipped, not an error.
+    A plan entry opened again keeps its own rows (`W.cwSkip`). No file, or offline: a note, and rows are typed as before.
+  - **Not yet:** mass level-up doesn't fill features in; the Feats & features tab doesn't show the wiki text of feature picks;
+    archetypes (owner, 2026-11-12: Spheres-class archetypes, plus the basic Paizo sphere conversions like Sphere Wizard and
+    Sphere Sorcerer).
 
 - **Any talent can be taken more than once (2026-11-10, owner's call: "just to simplify").** Talents from a tradition
   (casting, martial, trade) now have "Times taken" too, on the Talents tab and the Traditions tab (its row shows ×N);

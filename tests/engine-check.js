@@ -274,6 +274,10 @@ const T0 = Date.now();
       '1 [{"name":"Iron Will","notes":"","mods":[{"target":"will","val":"2","type":"untyped"}],"kind":"bonus"},{"name":"Dodge","notes":"","mods":[],"kind":"feat"}]');
     check('plan class feature rows keep the feature they go under', pl.xr, '[{"name":"Weapon Summon","notes":"n","mods":[],"under":"Arsenal Tricks"}]');
     check('plan rows that are not lists still give a working character', pl.d, 'number');
+    /* a class's link to its wiki class file (2026-11-12): '' by name, '-' none, or a file name */
+    check('class wiki link: kept when valid, cleared when not', await page.evaluate(() => { const E = window.SheetEngine, c = E.sanitize({ app: 'spheres-sheet', v: 1, id: 'w1', name: 'W',
+      classes: { a: { name: 'A', wiki: 'striker' }, b: { name: 'B', wiki: '-' }, c: { name: 'C', wiki: '../x' }, d: { name: 'D', wiki: 5 }, e: { name: 'E' } } }).classes;
+      return ['a', 'b', 'c', 'd', 'e'].map(k => JSON.stringify(c[k].wiki)).join(' '); }), '"striker" "-" "" "" ""');
   }
 
   /* ---------- D. the handle leaves no trace ---------- */
