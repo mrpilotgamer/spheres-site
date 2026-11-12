@@ -645,7 +645,7 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
     06- pages whose "This replaces …" lines name that class's features. Checked against the live wiki the same day (all 117
     class pages): its lists match the bundle's, except Commander's Administrator, which the October bundle lacks; it is saved in
     `tools/wiki-extra/administrator.md` (the live page in the bundle's format), which the build reads after the bundle. Not
-    read as archetypes: Genius (Thaumaturge) and Wunderkind (Fey Adept), which the wiki presents as whole classes. Its features: the page's headings, or its "**Name (Ex):**" paragraphs on pages without headings; level =
+    read as archetypes: Genius (Thaumaturge) and Wunderkind (Fey Adept), which the wiki presents as whole classes; both are in the class list (Genius added 2026-11-12, see below). Its features: the page's headings, or its "**Name (Ex):**" paragraphs on pages without headings; level =
     the first "at Nth level" in the text (else 1). "This ability replaces X, Y and the Z gained at 5th level" → `[[feature,
     level or 0, "r"]]`; "modifies/alters/changes" → `"m"` (the base feature stays). 80% of the features that say they replace
     something are matched to a base feature; the full sentence is kept for the rest.
@@ -703,6 +703,24 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
     - Stat-named archetype features whose value was read (`cwStatFeat`) are not feature rows and not "check by hand" lines.
     - **Clashes:** two archetypes that both set saves, BAB, hit die, skill ranks, a whole class-skill list or a trade tradition
       can't be combined (`cwArchClash`); adding or removing different class skills combines.
+  - **Genius added to the class list (2026-11-12, owner).** A Thaumaturge archetype the wiki presents as its own class (page
+    `genius`): d8, ¾ BAB, good Will, 8 + Int ranks, `skill: 'trained'` (its "Any Talents" + "Utility Talents" columns are
+    exactly the trained split: any ⌊n/4⌋, [utility] ⌈n/2⌉), class skills from its trade tradition (the list holds the trade base
+    set: Artistry, Craft, Lore, Perception, Perform, Profession), and a class note that it counts as a Thaumaturge for feats and
+    options. `build-classes.py` gives it a class file (8 features); `verify-classes.py` has its two expected differences in
+    `KNOWN`/`KNOWN2` (the cumulative "Any Talents" column, and "Class Skills: See Trade Tradition") and passes for all 133.
+  - **To keep an eye on (owner, 2026-11-12): how strict the archetype clash rule should be.** Two open questions, to settle
+    against the rules as written before changing anything:
+    1. **Same number, same value.** Two archetypes that both set a number now clash even when they agree (both make the hit
+       die d10). The alternative: clash only when the values differ. With the October 2026 data it changes nothing: the
+       only same-value pairs (Raveler: Casting + Scholastic, Martial + Resolute; trade traditions: Eliciter Bellwether +
+       Proclaimer, Prodigy Exploitant + Sync, Symbiat Cerebral Singer + Champion Symbiat) also share a class feature, and the
+       one pair the number rule blocks on its own (Hedgewitch Iron Mage + Dragonblooded Mortal) has different saves.
+    2. **Identical alterations.** Two archetypes that alter the same feature in exactly the same way (Bellwether and
+       Proclaimer both give "Blended Training", altering Magic Talents) clash under the rule as the owner described it; some
+       tables allow them. Proclaimer's page only says its trade tradition doesn't conflict with another archetype's.
+    Re-check both after a wiki update (a list of the pairs is quick to make from `public/classes/*.json`: `a[3]` for the
+    numbers, `a[2][i][3]` for the features each archetype changes). The rule lives in `cwArchClash` in `public/index.html`.
   - **Not yet:** archetypes of Paizo classes other than the sphere conversions (owner's call: not wanted for now).
 
 - **Any talent can be taken more than once (2026-11-10, owner's call: "just to simplify").** Talents from a tradition

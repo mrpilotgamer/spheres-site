@@ -29,6 +29,7 @@ import json, os, re, sys, glob
 
 # expected differences: the wiki table doesn't show it, or the sheet handles it some other way
 KNOWN = {
+    'Genius': 'its "Any Talents" column is cumulative (0,0,0,1,1,1,1,2…) and is read as per-level; the sheet (trained: any ⌊n/4⌋ + [utility] ⌈n/2⌉) matches the table\'s totals at every level',
     'Advisor': 'Leader: Communication sphere + an (assist) talent at 1st, in the text, not the table (sheet: Bonus talents 2)',
     'Scholar': 'Problem Solver: Alchemy and Scout spheres at 1st, in the text, not the table (sheet: Bonus talents 2)',
     'Troubadour': 'magic talents at 5th and every 4 levels are in the text; the table shows combat talents only',
@@ -41,6 +42,7 @@ KNOWN = {
 # 'skills', 'BAB', 'Fort', 'Ref', 'Will', 'NOPAGE', 'NOTABLE'. Only for a wiki that is itself non-standard or inconsistent
 # and that the sheet cannot represent; real data errors stay out of here so they keep being reported.
 KNOWN2 = {
+    ('Genius','skills'): 'the wiki says "Class Skills: See Trade Tradition"; the sheet lists the trade base set (Craft, Perception, Perform, Profession, plus Artistry and Lore), and a trade tradition sets them anyway',
     ('Enlightened Scholar','Ref'): 'the wiki Reflex column is a non-standard progression (+9 at 20th)',
     ('Willshackler','Ref'): 'the wiki Reflex column stays +2 from 7th to 10th where the standard prestige poor save is +3 from 8th, probably a wiki typo',
     ('Advisor','Ref'): 'the wiki Reflex column has +2 at 9th where the standard poor save is +3 (a one-cell wiki typo; same in Conduit)',
