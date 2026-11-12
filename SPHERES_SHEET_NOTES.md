@@ -107,7 +107,7 @@ Last full run: 2026-11-12, `engine-check.js` 325, `check.js` 447 (about 95 secon
 `rules-check.js` 90 (not rerun since 2026-11-10; the rules are unchanged), `party-check.js` 38, `save-check.js` 12: all passed.
 After the level-up feat and feature rows (2026-11-12, later): `engine-check.js` 329, `check.js` 459, `fuzz-check.js` 27, `talents-check.js` 31,
 `config-check.js` 12 passed; `csp-check.js` and the emulator checks were not run in that session (the database code is unchanged).
-After class features from the wiki (2026-11-12, latest): `engine-check.js` 331, `check.js` 482 (with the Feats tab text and archetypes), `fuzz-check.js` 27, `talents-check.js` 49
+After class features from the wiki (2026-11-12, latest): `engine-check.js` 331, `check.js` 486 (with the Feats tab text, archetypes and mass level-up), `fuzz-check.js` 27, `talents-check.js` 49
 (with the class files and archetypes), `config-check.js` 12 passed; `csp-check.js` and the emulator checks were not run in that session.
 
 **Rollback:** Firebase console → Hosting → release history → roll back. With GitHub: also revert the commit (the
@@ -656,8 +656,17 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
       their wiki text. A Paizo class with no conversion ticked gets a note saying which conversions the wiki has.
     - **Feats & features tab** (`cwBox`): archetype features show their text ("<Archetype> (<Class> archetype)"), and a base
       feature your archetype replaces or changes says so.
-  - **Not yet:** mass level-up doesn't fill features in; archetypes of Paizo classes other than the sphere conversions
-    (owner's call: not wanted for now).
+    - **Combining archetypes (2026-11-12, owner's rule):** two archetypes of one class can only be taken together if they
+      replace or alter different base features. `cwArchClash`: they clash when both touch (replace or change) the same
+      feature at overlapping levels (a whole feature overlaps any level; "the striker art at 2nd" and "… at 5th" don't). On the
+      Build tab an archetype that clashes with a ticked one can't be ticked ("Can't combine with X: both change Y"); an older
+      save with two clashing ones ticked shows a warning to untick one. Only the features matched by name are checked.
+  - **Mass level-up** (2026-11-12): fills in each new level's class features from the wiki file (loaded before the review,
+    `W.cwMass`), with the ticked archetypes, using `cwPrefill` per level (levels taken from the plan keep the plan's picks):
+    plain features become picks, a choice the table names goes under its feature, open choices and bonus feats are added to
+    "To choose afterwards" ("2 Striker Art choices"). The review lists the features with their class levels; the history keeps
+    one "Reached levels …" line.
+  - **Not yet:** archetypes of Paizo classes other than the sphere conversions (owner's call: not wanted for now).
 
 - **Any talent can be taken more than once (2026-11-10, owner's call: "just to simplify").** Talents from a tradition
   (casting, martial, trade) now have "Times taken" too, on the Talents tab and the Traditions tab (its row shows ×N);
