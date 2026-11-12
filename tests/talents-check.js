@@ -108,6 +108,7 @@ check('…a list with two Knowledges keeps both (Iron Mage), with its ranks', as
 check('…a page’s own Class Skills feature wins over an inline variant (Darkshaper)', ast('armorist', 'Darkshaper'), '{"ca":["stealth"],"cr":["keng"],"sk":4}');
 check('…a trade tradition replacing class skills is flagged (Administrator); ranks in a sentence count (Gambler)', [ast('commander', 'Administrator'), ast('thaumaturge', 'Gambler')].join(' '), '{"trade":1} {"trade":1,"sk":6}');
 check('…a companion’s saves are not the class’s (Verminspeaker)', ast('truenamer', 'Verminspeaker'), '{}');
+check('Genius (a Thaumaturge archetype presented as a class) has its own file: Flexible Training, Eureka and Invocations at 1st', (() => { const G = cread('genius.json'); return G.n === 'Genius' && G.lv['1'].map(e => e[1] >= 0 ? G.f[e[1]][0] : e[0]).join(', '); })(), 'Flexible Training (Ex), Eureka (Ex), Invocations');
 check('Commander has Administrator (a page saved from the live wiki, tools/wiki-extra/)', (cread('commander.json').a || []).some(a => a[0] === 'Administrator'));
 check('Sphere Wizard is in wizard.json, a class file with no base features', (() => { const W = cread('wizard.json'); return W.pz === 1 && !W.f.length && W.a.some(a => a[0] === 'Sphere Wizard'); })());
 const pzList = JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', 'public', 'index.html'), 'utf8').match(/var CW_PZ=(\[[^\]]*\])/)[1].replace(/'/g, '"'));
