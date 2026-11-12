@@ -597,6 +597,8 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
     copy has, plus new ones typed in rows above), name, notes. A choice goes into that feature's `subs` with its level and
     notes, and creates the feature if needed. Typing "Feature: Choice" in a new feature's name still files a choice
     (`luUnder`). The class's Build-tab notes (`features`) show folded above the rows for reference.
+  - **Notes** on each row are a text box (2026-11-12, owner: one line at a time was too little): Enter starts a new line, blank
+    lines make paragraphs, and the box grows with the text up to about 12 lines, then scrolls.
   - **"+ Effect"** on any row: target (the Modifiers tab's list), value (number or formula), bonus type. Saved as an
     Always-on modifier named after the row (`luAddMods`), so the review's numbers include it and the row's "N modifiers
     named after it" link works. Situational and toggled bonuses are still made on the Modifiers tab. The level's history
