@@ -205,7 +205,7 @@ def match(key, fnorm):
     return best if bl >= 5 else -1
 
 
-REP = re.compile(r'\b(?:This|These|which|it)\s+(?:\w+\s+){0,3}?(replaces?|modif(?:y|ies)|alters?|changes?)\s+([^.]{2,200})\.', re.I)
+REP = re.compile(r'\b(?:This|These|which|it)\s+(?:\w+\s+){0,3}?(replaces?|modif(?:y|ies)|alters?|changes?)\s+([^.\n]{2,200})(?:\.|\n|$)', re.I)   # some pages leave off the full stop
 LVL = re.compile(r'\b(?:At|Starting at|Beginning at|Upon reaching|at)\s+(\d+)(?:st|nd|rd|th)\s+level', re.I)
 
 
@@ -255,7 +255,7 @@ def arch_features(body):
     for name, txt in out:
         txt = re.split(r'\n#\s', txt)[0]
         lv = LVL.search(txt)
-        rtext = ' '.join(m.group(0).strip() for m in REP.finditer(txt))
+        rtext = '\n'.join(m.group(0).strip() for m in REP.finditer(txt))   # one per line: they are read again, and some lack a full stop
         res.append([cname(name), clean_md(txt), int(lv.group(1)) if lv else 1, rtext])
     return [r for r in res if r[1] or r[3]]
 

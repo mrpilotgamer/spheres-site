@@ -95,6 +95,10 @@ const bpb = (cread('striker.json').a || []).find(a => a[0] === 'Black Powder Bra
 check('Black Powder Brawler: Gun Genius at 2nd replaces Tension Boost at 2nd and Uncanny Dodge', gg ? [gg[2]].concat(gg[3].map(r => cread('striker.json').f[r[0]][0] + '@' + r[1] + r[2])).join(', ') : 'missing', '2, Tension Boost (Ex)@2r, Uncanny Dodge (Ex)@0r, Improved Uncanny Dodge (Ex)@0r');
 check('Black Powder Brawler: Firearm Fighter changes (not replaces) the Striker Art at 2nd', JSON.stringify((bpb[2].find(x => /^Firearm Fighter/.test(x[0])) || [])[3]), '[[5,2,"m"]]');
 check('Bravo has all 9 archetypes its class page lists (some live in the bundle’s “other” files)', (cread('bravo.json').a || []).map(a => a[0]).join(', '), 'Allusionist, Daredevil, Dreadnought, Dynamo, Eclectic, Quicksilver, Serendipitist, Smasher, Tracer');
+check('a “replaces/modifies” line without a full stop still counts: Allusionist modifies Cunning Celerity, so it clashes with Dreadnought', (() => { const B = cread('bravo.json'), by = n => new Set(B.a.find(a => a[0] === n)[2].flatMap(x => x[3].map(r => r[0]))), cc = B.f.findIndex(f => /^Cunning Celerity/.test(f[0]));
+  return by('Allusionist').has(cc) && by('Dreadnought').has(cc); })());
+check('Serendipitist: its “replaces careful footwork, dynamic dodge…” stays a replacement after a “modifies” line with no full stop', (() => { const B = cread('bravo.json'), cf = B.f.findIndex(f => /^Careful Footwork/.test(f[0]));
+  return B.a.find(a => a[0] === 'Serendipitist')[2].some(x => x[3].some(r => r[0] === cf && r[2] === 'r')); })());
 check('Commander has Administrator (a page saved from the live wiki, tools/wiki-extra/)', (cread('commander.json').a || []).some(a => a[0] === 'Administrator'));
 check('Sphere Wizard is in wizard.json, a class file with no base features', (() => { const W = cread('wizard.json'); return W.pz === 1 && !W.f.length && W.a.some(a => a[0] === 'Sphere Wizard'); })());
 const pzList = JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', 'public', 'index.html'), 'utf8').match(/var CW_PZ=(\[[^\]]*\])/)[1].replace(/'/g, '"'));
