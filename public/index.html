@@ -5365,7 +5365,7 @@ function levelUpFlow(opts){
         '<input type="text" class="fx-v" aria-label="Effect: by how much (a number or a formula)" placeholder="+1" style="width:5rem" value="'+esc(m.val)+'"><select class="fx-ty" aria-label="Bonus type">'+TYPES.map(function(t){ return '<option value="'+t+'"'+(t===m.type?' selected':'')+'>'+t+'</option>'; }).join('')+'</select>'+
         '<button type="button" class="mini fx-del" aria-label="Remove this effect">×</button></div>'; }
     function itemTail(r,what){ return '<button type="button" class="mini lu-fx">+ Effect</button><button type="button" class="mini danger lu-del" aria-label="Remove this '+what+'">×</button></div>'+
-      '<input type="text" class="lu-notes" aria-label="'+what+' notes" placeholder="Notes (optional): what it does, prerequisites…" style="width:100%" value="'+esc(r.notes||'')+'"><div class="fxs">'+(r.mods||[]).map(fxHtml).join('')+'</div></div>'; }
+      '<textarea class="lu-notes" aria-label="'+what+' notes" rows="1" placeholder="Notes (optional): what it does, prerequisites… (Enter for a new line)" style="width:100%;min-height:2.4rem;resize:vertical">'+esc(r.notes||'')+'</textarea><div class="fxs">'+(r.mods||[]).map(fxHtml).join('')+'</div></div>'; }
     function ftHtml(r){ r=r||{name:'',kind:'feat'}; return '<div class="lu-item ft-item" style="border-top:1px solid var(--soft);padding:4px 0"><div class="row" style="margin:4px 0;gap:4px">'+
       '<input type="text" class="lu-nm" aria-label="Feat" placeholder="Feat name" autocomplete="off" style="flex:1 1 11rem" value="'+esc(r.name||'')+'">'+
       '<select class="ft-kind" aria-label="Feat or bonus feat"><option value="feat">Feat</option><option value="bonus"'+(r.kind==='bonus'?' selected':'')+'>Bonus feat (no feat slot)</option></select>'+itemTail(r,'feat'); }
@@ -5383,6 +5383,8 @@ function levelUpFlow(opts){
         /* feats: the slot this level, and how many are filled */
         function ftCount(){ var nf=0, nb=0; fb.querySelectorAll('.ft-item').forEach(function(it){ if(!it.querySelector('.lu-nm').value.trim()) return; if(it.querySelector('.ft-kind').value==='bonus') nb++; else nf++; });
           root.querySelector('#ftleft').textContent=(feat?'1 feat slot this level: '+(nf?nf+' chosen'+(nf>1?' (more than this level gives: fine if they come from somewhere else; a class bonus feat can be marked “Bonus feat”)':''):'not chosen yet'):'No feat slot this level'+(nf?' ('+plural(nf,'feat')+' chosen anyway)':''))+(nb?' · '+plural(nb,'bonus feat'):'')+'.'; }
+        /* notes boxes grow with their text (up to about 12 lines, then they scroll) */
+        function grow(t){ t.style.height='auto'; t.style.height=Math.min(t.scrollHeight+2,300)+'px'; }
         /* features: "choice under" lists the features you have plus the new ones typed above */
         function unders(){ xb.querySelectorAll('.xr-item').forEach(function(it){ var sel=it.querySelector('.xr-under'), cur='v' in sel.dataset?sel.dataset.v:sel.value, names=HAVE.slice();
           delete sel.dataset.v;
@@ -5392,7 +5394,7 @@ function levelUpFlow(opts){
           it.querySelector('.lu-nm').placeholder=sel.value?'Choice (e.g. Weapon Summon)':'Feature name'; }); }
         (W.fr||[]).forEach(function(r){ fb.insertAdjacentHTML('beforeend',ftHtml(r)); }); if(!(W.fr||[]).length&&feat) fb.insertAdjacentHTML('beforeend',ftHtml());
         (W.xr||[]).forEach(function(r){ xb.insertAdjacentHTML('beforeend',xrHtml(r)); }); if(!(W.xr||[]).length) xb.insertAdjacentHTML('beforeend',xrHtml());
-        ftCount(); unders();
+        ftCount(); unders(); root.querySelectorAll('.lu-notes').forEach(grow);
         root.querySelector('#ftMore').addEventListener('click',function(){ fb.insertAdjacentHTML('beforeend',ftHtml()); var a=fb.querySelectorAll('.lu-nm'); a[a.length-1].focus(); ftCount(); });
         root.querySelector('#xrMore').addEventListener('click',function(){ xb.insertAdjacentHTML('beforeend',xrHtml()); unders(); var a=xb.querySelectorAll('.lu-nm'); a[a.length-1].focus(); });
         [fb,xb].forEach(function(bx){
@@ -5401,7 +5403,7 @@ function levelUpFlow(opts){
             else if(b.classList.contains('fx-del')){ var fr0=b.closest('.fxrow'), nx=fr0.nextElementSibling||fr0.previousElementSibling; fr0.remove(); (nx?nx.querySelector('.fx-t'):it.querySelector('.lu-fx')).focus(); }
             else if(b.classList.contains('lu-del')){ var nx2=it.nextElementSibling||it.previousElementSibling; it.remove(); (nx2?nx2.querySelector('.lu-nm'):(bx===fb?root.querySelector('#ftMore'):root.querySelector('#xrMore'))).focus(); }
             ftCount(); unders(); });
-          bx.addEventListener('input',function(ev){ if(bx===fb) ftCount(); else if(ev.target.classList.contains('lu-nm')) unders(); });
+          bx.addEventListener('input',function(ev){ if(ev.target.classList.contains('lu-notes')) grow(ev.target); if(bx===fb) ftCount(); else if(ev.target.classList.contains('lu-nm')) unders(); });
           bx.addEventListener('change',function(){ if(bx===fb) ftCount(); else unders(); }); }); },
       check:function(root,v){ if(v!=='next') return ''; var bad=[].slice.call(root.querySelectorAll('.talrow')).filter(function(r){ return r.querySelector('.tr-base').checked&&!r.querySelector('.tr-sph').value.trim(); }); if(bad.length) return 'A base sphere needs its sphere name.';
         var it=[].slice.call(root.querySelectorAll('.lu-item'));
