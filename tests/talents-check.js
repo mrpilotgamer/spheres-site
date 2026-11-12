@@ -99,6 +99,15 @@ check('a “replaces/modifies” line without a full stop still counts: Allusion
   return by('Allusionist').has(cc) && by('Dreadnought').has(cc); })());
 check('Serendipitist: its “replaces careful footwork, dynamic dodge…” stays a replacement after a “modifies” line with no full stop', (() => { const B = cread('bravo.json'), cf = B.f.findIndex(f => /^Careful Footwork/.test(f[0]));
   return B.a.find(a => a[0] === 'Serendipitist')[2].some(x => x[3].some(r => r[0] === cf && r[2] === 'r')); })());
+/* what archetypes change in the class's numbers (2026-11-12) */
+const ast = (c, n) => JSON.stringify(((cread(c + '.json').a || []).find(a => a[0] === n) || [])[3] || null);
+check('archetype saves: Dreadnought has good Fort and Will', ast('bravo', 'Dreadnought'), '{"g":["fort","will"]}');
+check('archetype base attack and hit die: Feylord (BAB “equal to an incanter”, d6)', ast('commander', 'Feylord'), '{"bab":"1/2","hd":6}');
+check('archetype class skills: Dreadlord adds four and removes four', ast('commander', 'Dreadlord'), '{"ca":["karc","krel","umd","spell"],"cr":["keng","surv","climb","swim"]}');
+check('…a list with two Knowledges keeps both (Iron Mage), with its ranks', ast('hedgewitch', 'Iron Mage'), '{"ca":["khis","knob","intim"],"cr":[],"sk":4,"g":["fort","will"]}');
+check('…a page’s own Class Skills feature wins over an inline variant (Darkshaper)', ast('armorist', 'Darkshaper'), '{"ca":["stealth"],"cr":["keng"],"sk":4}');
+check('…a trade tradition replacing class skills is flagged (Administrator); ranks in a sentence count (Gambler)', [ast('commander', 'Administrator'), ast('thaumaturge', 'Gambler')].join(' '), '{"trade":1} {"trade":1,"sk":6}');
+check('…a companion’s saves are not the class’s (Verminspeaker)', ast('truenamer', 'Verminspeaker'), '{}');
 check('Commander has Administrator (a page saved from the live wiki, tools/wiki-extra/)', (cread('commander.json').a || []).some(a => a[0] === 'Administrator'));
 check('Sphere Wizard is in wizard.json, a class file with no base features', (() => { const W = cread('wizard.json'); return W.pz === 1 && !W.f.length && W.a.some(a => a[0] === 'Sphere Wizard'); })());
 const pzList = JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', 'public', 'index.html'), 'utf8').match(/var CW_PZ=(\[[^\]]*\])/)[1].replace(/'/g, '"'));

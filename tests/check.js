@@ -1609,7 +1609,7 @@ function check(what, got, want) {
     await page.locator('#main input[data-v="Dreadnought"]').click(); await idle();
     const rtx = (await dlg().innerText()).replace(/\s+/g, ' ');
     check('retraining Bravo 5 into Dreadnought: the preview removes the altered and replaced features and adds the archetype’s at their levels', [/Bravo: no archetype → Dreadnought/.test(rtx), /Remove Cunning Celerity \(Ex\) \(level 2\) Careful Footwork \(Ex\) \(level 3\)/.test(rtx), /Tenacious Determination \(level 2, Bravo 2\) Enduring Tenacity \(level 3, Bravo 3\)/.test(rtx), /Remove Careful Footwork \(Ex\) \(AC 1\)/.test(rtx)].join(' '), 'true true true true');
-    check('…nothing changes until it’s confirmed', JSON.stringify((await stored()).classes.c1.arch), '[]');
+    check('…nothing changes until it’s confirmed; the class change (saves) is in the same preview', [JSON.stringify((await stored()).classes.c1.arch), /Class changes Good saves: Ref → Fort, Will/.test(rtx), /Add Saving Throws/.test(rtx)].join(' '), '[] true false');
     await dlg().locator('button', { hasText: 'Swap features' }).click(); await idle();
     c = await stored();
     check('“Swap features”: the features swap on their levels, the modifier goes, one history line', [JSON.stringify(c.classes.c1.arch), c.levels.slice(1, 3).map(l => l.picks.map(p => p.name).join('+')).join(' | '), c.mods.length, c.history.filter(h => h.t === 'retrain').length, c.history.filter(h => h.t === 'remove' || h.t === 'add').length].join(' # '),
@@ -1622,6 +1622,25 @@ function check(what, got, want) {
     await dlg().locator('button', { hasText: 'Swap features' }).click(); await idle();
     c = await stored();
     check('unticking it swaps back', [JSON.stringify(c.classes.c1.arch), c.levels.slice(1, 3).map(l => l.picks.map(p => p.name).join('+')).join(' | ')].join(' # '), '[] # Steadfast (Ex)+Cunning Celerity (Ex) | Exploit Uncertainty (Ex)+Careful Footwork (Ex)');
+    /* archetypes that change the class's numbers (2026-11-12): saves on a class with no levels, put back when unticked */
+    await mkS({ name: 'Bravo', hd: 10, bab: 'full', good: ['ref'], skills: 6, classSkills: ['acro'] }, []); await page.reload(); await idle(); await go('Character', 'Build');
+    await until('the Bravo archetypes', () => [...document.querySelectorAll('#main summary')].some(e => /^Archetypes \(9 on the wiki\)/.test(e.textContent.trim())));
+    await page.locator('details', { has: page.locator('summary', { hasText: /^Archetypes/ }) }).first().locator('summary').click();
+    check('the archetype list says what it changes in the numbers', /Dreadnought Wiki ↗ Replaces .*; good Fort, Will saves/.test((await page.locator('#main label', { has: page.locator('input[data-v="Dreadnought"]') }).innerText()).replace(/\s+/g, ' ')), true);
+    await page.locator('#main input[data-v="Dreadnought"]').click(); await idle();
+    check('ticking it (no levels yet) asks first, showing the class change', [/^Archetype\s/.test((await dlg().innerText()).trim()), /Class changes Good saves: Ref → Fort, Will/.test((await dlg().innerText()).replace(/\s+/g, ' ')), /Check these by hand/.test(await dlg().innerText())].join(' '), 'true true false');
+    await dlg().locator('button', { hasText: /^Apply$/ }).click(); await idle();
+    c = await stored();
+    check('“Apply”: the class gets the saves, its own are kept', [JSON.stringify(c.classes.c1.good), JSON.stringify(c.classes.c1.archBase.good)].join(' '), '["fort","will"] ["ref"]');
+    await page.locator('#main input[data-v="Dreadnought"]').click(); await idle(); await dlg().locator('button', { hasText: /^Apply$/ }).click(); await idle();
+    c = await stored();
+    check('unticking it puts the class’s own saves back', [JSON.stringify(c.classes.c1.good), 'archBase' in c.classes.c1].join(' '), '["ref"] false');
+    /* two archetypes that rewrite the same number can't be combined, even with no feature in common (Hedgewitch: saves) */
+    await mkS({ name: 'Hedgewitch', hd: 6, bab: '1/2', good: ['will'], skills: 2, cast: 'high', martial: 'none', arch: ['Iron Mage'] }, []); await page.reload(); await idle(); await go('Character', 'Build');
+    await until('the Hedgewitch archetypes', () => !!document.querySelector('#main input[data-v="Dragonblooded Mortal"]'));
+    await page.locator('details', { has: page.locator('summary', { hasText: /^Archetypes/ }) }).first().locator('summary').click();
+    const dbm = page.locator('#main label', { has: page.locator('input[data-v="Dragonblooded Mortal"]') });
+    check('two archetypes that both rewrite saving throws clash', [await dbm.locator('input').isDisabled(), /Can’t combine with Iron Mage: both change saving throws/.test(await dbm.innerText())].join(' '), 'true true');
     /* a Paizo class: its sphere conversion fills in its features */
     await mkS({ name: 'Wizard', hd: 6, bab: '1/2', good: ['will'], skills: 2, cast: 'high', martial: 'none', arch: ['Sphere Wizard'] }, []); await page.reload(); await idle();
     await page.locator('[data-a="levelUp"]').first().click(); await idle(); await next(); await next();

@@ -107,7 +107,7 @@ Last full run: 2026-11-12, `engine-check.js` 325, `check.js` 447 (about 95 secon
 `rules-check.js` 90 (not rerun since 2026-11-10; the rules are unchanged), `party-check.js` 38, `save-check.js` 12: all passed.
 After the level-up feat and feature rows (2026-11-12, later): `engine-check.js` 329, `check.js` 459, `fuzz-check.js` 27, `talents-check.js` 31,
 `config-check.js` 12 passed; `csp-check.js` and the emulator checks were not run in that session (the database code is unchanged).
-After class features from the wiki (2026-11-12, latest): `engine-check.js` 331, `check.js` 492 (with the Feats tab text, archetypes, mass level-up and retraining), `fuzz-check.js` 27, `talents-check.js` 51
+After class features from the wiki (2026-11-12, latest): `engine-check.js` 332, `check.js` 497 (with the Feats tab text, archetypes, mass level-up, retraining and class numbers), `fuzz-check.js` 27, `talents-check.js` 58
 (with the class files and archetypes), `config-check.js` 12 passed; `csp-check.js` and the emulator checks were not run in that session.
 
 **Rollback:** Firebase console → Hosting → release history → roll back. With GitHub: also revert the commit (the
@@ -685,6 +685,24 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
     feature, and the new archetype's "replaces" lines that couldn't be matched (check by hand). "Swap features" applies the
     ticked ones; "Only change the archetype" leaves the features. One "Retrained" history line (`HIST_T.retrain`), no
     separate added/removed lines. Resources, toggles and notes made by hand aren't touched (the dialog says so).
+  - **Archetypes that change the class's numbers (2026-11-12, owner: saves, class skills, BAB, hit die, skill ranks).**
+    `build-classes.py` (`arch_stats`) reads an archetype's features named after the stat ("Saving Throws", "Base Attack
+    Bonus", "Hit Die(s)", "Skill Ranks per Level", "Class Skills", "Trade Tradition") and inline "**Class Skills:**"-style
+    lines (only for a stat the page's own features don't set: Darkshaper's own list wins over a variant's), into `a[3]`:
+    `g` good saves ("good Fortitude and Will saves", "all good saving throws", "save progressions equal to an armorist"),
+    `bab` ("equal to their class level" = full, ½, ¾, or "equal to a commander of his class level" from the class list), `hd`,
+    `sk` (also "gains 4 + Int modifier skills per level" in another feature), `ca`/`cr` class skills added/removed (gains/adds vs
+    loses/removes/does not gain/instead of; skill names → ids as in verify-classes.py), `cs` a whole list, `trade` (a trade
+    tradition replaces the class skills), `chk` stat lines not understood. About 90 archetypes have some (class skills 34,
+    trade 18, hit die 11, BAB 11, saves 8, ranks 7).
+    - **On the sheet:** ticking or unticking an archetype whose numbers differ opens the preview even on a class with no
+      levels ("Archetype", button "Apply"); with levels it is a "Class changes" section of the retrain preview. Applying sets
+      the class's own fields (Build tab), so every number follows; the values from before are kept in `k.archBase` (cleaned in
+      `sanitizeChar`) and put back when no archetype is left (`archBaseOf`, `archEff`, `archStatLines`). Rolled hit points
+      stay as rolled when the die changes (the preview says so). `trade`: the preview points to the Traditions tab.
+    - Stat-named archetype features whose value was read (`cwStatFeat`) are not feature rows and not "check by hand" lines.
+    - **Clashes:** two archetypes that both set saves, BAB, hit die, skill ranks, a whole class-skill list or a trade tradition
+      can't be combined (`cwArchClash`); adding or removing different class skills combines.
   - **Not yet:** archetypes of Paizo classes other than the sphere conversions (owner's call: not wanted for now).
 
 - **Any talent can be taken more than once (2026-11-10, owner's call: "just to simplify").** Talents from a tradition

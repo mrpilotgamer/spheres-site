@@ -281,6 +281,9 @@ const T0 = Date.now();
     check('class archetypes: a list of names, anything else dropped', await page.evaluate(() => { const E = window.SheetEngine, c = E.sanitize({ app: 'spheres-sheet', v: 1, id: 'w2', name: 'W',
       classes: { a: { name: 'A', arch: ['Black Powder Brawler', 5, '', null, 'Voidrusher'] }, b: { name: 'B', arch: 'x' }, c: { name: 'C' } } }).classes;
       return ['a', 'b', 'c'].map(k => JSON.stringify(c[k].arch)).join(' '); }), '["Black Powder Brawler","Voidrusher"] [] []');
+    check('a class’s values from before its archetypes: kept when sound, dropped when not', await page.evaluate(() => { const E = window.SheetEngine, c = E.sanitize({ app: 'spheres-sheet', v: 1, id: 'w3', name: 'W',
+      classes: { a: { name: 'A', archBase: { good: ['ref', 'x'], bab: 'full', hd: 30, skills: 6, classSkills: ['acro', 5] } }, b: { name: 'B', archBase: { good: [], bab: 'lots', hd: 8, skills: 2, classSkills: [] } }, c: { name: 'C', archBase: 'x' } } }).classes;
+      return [JSON.stringify(c.a.archBase), 'archBase' in c.b, 'archBase' in c.c].join(' '); }), '{"good":["ref"],"bab":"full","hd":12,"skills":6,"classSkills":["acro"]} false false');
   }
 
   /* ---------- D. the handle leaves no trace ---------- */

@@ -260,6 +260,132 @@ def arch_features(body):
     return [r for r in res if r[1] or r[3]]
 
 
+# skill names -> the sheet's skill ids (the same maps as tools/verify-classes.py)
+SK = {'acrobatics': 'acro', 'appraise': 'appr', 'bluff': 'bluff', 'climb': 'climb', 'craft': 'craft', 'diplomacy': 'diplo', 'disable device': 'disable',
+      'disguise': 'disguise', 'escape artist': 'escape', 'fly': 'fly', 'handle animal': 'handle', 'heal': 'heal', 'intimidate': 'intim',
+      'linguistics': 'ling', 'perception': 'perc', 'perform': 'perform', 'profession': 'prof', 'ride': 'ride', 'sense motive': 'sense',
+      'sleight of hand': 'sleight', 'spellcraft': 'spell', 'stealth': 'stealth', 'survival': 'surv', 'swim': 'swim', 'use magic device': 'umd',
+      'artistry': 'art', 'lore': 'lore'}
+KN = {'arcana': 'karc', 'dungeoneering': 'kdun', 'engineering': 'keng', 'geography': 'kgeo', 'history': 'khis', 'local': 'kloc', 'nature': 'knat',
+      'nobility': 'knob', 'planes': 'kpla', 'religion': 'krel'}
+
+
+def skill_ids(s):
+    """Skill ids named in a piece of text: Knowledge (x) groups first, then the other skills in what is left."""
+    s = s.lower()
+    out = []
+    for m in re.finditer(r'knowledge\s*\(([^)]*)\)', s):
+        g = m.group(1)
+        if re.search(r'\ball\b', g):
+            ex = g.split('except')[-1] if 'except' in g else ''
+            out += [v for k, v in KN.items() if k not in ex]
+        else:
+            out += [v for k, v in KN.items() if k in g]
+    rest = re.sub(r'knowledge\s*\([^)]*\)', ' ', s)
+    for k, v in sorted(SK.items(), key=lambda kv: -len(kv[0])):
+        if re.search(r'\b' + k + r'\b', rest):
+            out.append(v)
+            rest = re.sub(r'\b' + k + r'\b', ' ', rest)
+    return list(dict.fromkeys(out))
+
+
+BABN = {'full': 'full', '3/4': '3/4', '1/2': '1/2'}
+
+
+def arch_stats(feats, L, base=None):
+    """What an archetype changes in the class's numbers (2026-11-12, owner): from its features named after the stat ("Saving
+    Throws", "Base Attack Bonus", "Hit Die(s)", "Skill Ranks per Level", "Class Skills", "Trade Tradition") and inline
+    "**Class Skills:**"-style lines. {g: good saves, bab, hd, sk: ranks per level, ca/cr: class skills added/removed,
+    cs: the whole class skill list, trade: 1 when a trade tradition replaces the class skills, chk: stat lines not understood}."""
+    st, chk = {}, []
+    byn = {norm(e['n']): e for e in L}
+
+    def part(name, txt):
+        n = name.lower().strip()
+        t = re.sub(r'\s+', ' ', txt)
+        if re.match(r'saving throws?$', n):
+            m = re.search(r'\bgood ((?:Fortitude|Reflex|Will)(?:,? (?:and )?(?:Fortitude|Reflex|Will))*) sav', t, re.I)
+            like = re.search(r'((?:Fortitude|Reflex|Will)(?:,? (?:and )?(?:Fortitude|Reflex|Will))*) save progressions? equal to an? ([A-Za-z]+)', t, re.I)
+            sv = lambda x: [{'fortitude': 'fort', 'reflex': 'ref', 'will': 'will'}[w.lower()] for w in re.findall(r'Fortitude|Reflex|Will', x)]
+            if re.search(r'\ball good saving throws\b|\ball good saves\b', t, re.I):
+                st['g'] = ['fort', 'ref', 'will']
+            elif m:
+                st['g'] = sv(m.group(1))
+            elif like and base and (byn.get(norm(like.group(2))) or {}).get('good') is not None:
+                # "Fortitude and Will save progressions equal to an armorist": those saves as that class has them, the other as before
+                named, other = sv(like.group(1)), byn[norm(like.group(2))]['good']
+                st['g'] = [x for x in ('fort', 'ref', 'will') if (x in other if x in named else x in base.get('good', []))]
+            else:
+                chk.append(name + ': ' + t[:160])
+        elif re.match(r'base attack', n):
+            m = re.search(r'equal to an? ([A-Za-z]+) of (?:his|her|their|its) class level', t, re.I)
+            if re.search(r'equal to (?:their|his|her|its) (?:class|[a-z]+) level\b|equal to their class level', t, re.I) and not re.search(r'½|1/2|half|¾|3/4', t):
+                st['bab'] = 'full'
+            elif re.search(r'¾|3/4', t):
+                st['bab'] = '3/4'
+            elif re.search(r'½|1/2|half', t):
+                st['bab'] = '1/2'
+            elif m and (byn.get(norm(m.group(1))) or {}).get('bab'):
+                st['bab'] = byn[norm(m.group(1))]['bab']
+            elif m and m.group(1).lower() in ('fighter', 'paladin', 'ranger', 'barbarian'):
+                st['bab'] = 'full'
+            else:
+                chk.append(name + ': ' + t[:160])
+        elif re.match(r'hit di', n):
+            m = re.search(r'\bd(4|6|8|10|12)s?\b', t)
+            if m:
+                st['hd'] = int(m.group(1))
+            else:
+                chk.append(name + ': ' + t[:160])
+        elif re.match(r'skill ranks', n):
+            m = re.search(r'(\d+) \+ (?:his |her |their )?Int', t)
+            if m:
+                st['sk'] = int(m.group(1))
+            else:
+                chk.append(name + ': ' + t[:160])
+        elif re.match(r'class skills?$', n):
+            t1 = re.split(r'\*\*', t)[0]
+            full = re.search(r"class skills (?:\(and the key ability for each\) )?are (.*?)(?:\.\s|$)", t1, re.I)
+            if full:
+                st['cs'] = skill_ids(full.group(1))
+            else:
+                ca, cr = [], []
+                verbs = list(re.finditer(r'\b(gains?|adds?|loses?|removes?|does not gain|do not gain|instead of|in place of)\b', t1, re.I))
+                for i, v in enumerate(verbs):
+                    seg = t1[v.end():verbs[i + 1].start() if i + 1 < len(verbs) else len(t1)]
+                    seg = re.split(r'\bin addition to\b', seg, flags=re.I)[0]
+                    ids = skill_ids(seg)
+                    (ca if re.match(r'gain|add', v.group(1), re.I) else cr).extend(ids)
+                if ca or cr:
+                    st['ca'] = list(dict.fromkeys(st.get('ca', []) + ca))
+                    st['cr'] = list(dict.fromkeys(st.get('cr', []) + [x for x in cr if x not in ca]))
+                elif not re.search(r'\b(alters?|modif\w+)\b', t1, re.I) or len(t1) > 40:
+                    chk.append(name + ': ' + t[:160])
+        elif re.match(r'trade tradition', n) and re.search(r"replaces? (?:the [\w’' -]+?)?normal class skills|replaces? (?:its|his|her|their) class skills", t, re.I):
+            st['trade'] = 1
+
+    for f in feats:
+        part(f[0], f[1])
+        # skill ranks stated inside another feature: "gains 4 + Int modifier skills per level", "skill ranks at each level equal to 6 + ..."
+        if 'sk' not in st:
+            t2 = re.sub(r'\s+', ' ', f[1])
+            m = (re.search(r'skill ranks (?:at each level |per level )?equal to (\d+) \+ (?:his |her |their )?Int', t2, re.I) or
+                 re.search(r'gains (\d+) \+ (?:his |her |their )?Int(?:elligence)?(?: modifier)?(?: skill ranks| skills| ranks)? (?:at each|per|each) level', t2, re.I))
+            if m:
+                st['sk'] = int(m.group(1))
+    # inline "**Class Skills:** ..." lines inside another feature count only for a stat the page's own features don't set
+    # (Darkshaper has its own "Class Skills" feature and a different inline list for a variant)
+    keys = {'class skills': ('ca', 'cr', 'cs'), 'saving throws': ('g',), 'hit di': ('hd',), 'base attack': ('bab',), 'skill ranks': ('sk',)}
+    for f in feats:
+        for m in re.finditer(r'\*\*(Class Skills|Saving Throws|Skill Ranks (?:per|at Each) Level|Hit Dice?|Base Attack Bonus)\s*:\*\*\s*([^\n]+)', f[1], re.I):
+            ks = next(v for k, v in keys.items() if m.group(1).lower().startswith(k))
+            if not any(k in st for k in ks):
+                part(m.group(1), m.group(2))
+    if chk:
+        st['chk'] = chk
+    return st
+
+
 def first_level(d, fi):
     """The first class level whose table entry names base feature fi (0 if the table never does)."""
     for k in sorted(d.get('lv', {}), key=int):
@@ -315,7 +441,7 @@ def archetypes(pages, L, files, report):
                 firsts = [x for x in firsts if x]
                 lvl = min(firsts) if firsts else 1
             out.append([f[0], f[1], lvl, reps, f[3]])
-        files[sl]['a'].append([title, ps, out])
+        files[sl]['a'].append([title, ps, out, arch_stats(fs, L, byname.get(norm(files[sl]['n'])) or byname.get(norm(files[sl]['n'] + ' (Spheres)')))])
         return True
 
     def body_of(t):
@@ -369,7 +495,7 @@ def archetypes(pages, L, files, report):
                 fs = arch_features(body)
                 if fs and (sl, norm(title)) not in seen:
                     seen.add((sl, norm(title)))
-                    files[sl]['a'].append([title, ps, [[f[0], f[1], f[2] or 1, [], f[3]] for f in fs]])
+                    files[sl]['a'].append([title, ps, [[f[0], f[1], f[2] or 1, [], f[3]] for f in fs], arch_stats(fs, L, e)])
             continue
         cands = [sph[norm(b)] for b in bases if norm(b) in sph]
         if not bases:

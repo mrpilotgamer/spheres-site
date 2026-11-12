@@ -1620,7 +1620,8 @@ function sanitizeChar(o){
   /* class ids end up inside attributes and formulas (lvl.<id>): an imported one that isn't plain letters, digits, - or _ gets a new id */
   var cRe={}; Object.keys(b.classes).forEach(function(id){ if(/^[A-Za-z0-9_-]{1,60}$/.test(id)) return; var nid='c'+uidG().slice(1); while(own(b.classes,nid)) nid+='x'; b.classes[nid]=b.classes[id]; delete b.classes[id]; cRe[id]=nid; });
   Object.keys(b.classes).forEach(function(id){ var k=b.classes[id]=Object.assign(blankClass(),b.classes[id]&&typeof b.classes[id]==='object'&&!Array.isArray(b.classes[id])?b.classes[id]:{}); k.talents=own(TALP_OLD,k.talents)?TALP_OLD[k.talents]:own(TALP,k.talents)?k.talents:'auto';
-    if(!Array.isArray(k.classSkills)) k.classSkills=[]; k.classSkills=k.classSkills.filter(function(x){ return typeof x==='string'; }); if(!Array.isArray(k.good)) k.good=[]; k.name=String(k.name==null?'':k.name); if(!own(TALX,k.talx)) k.talx=''; k.wiki=typeof k.wiki==='string'&&/^(-|[a-z0-9-]{1,80})?$/.test(k.wiki)?k.wiki:''; k.arch=(Array.isArray(k.arch)?k.arch:[]).filter(function(x){ return typeof x==='string'&&x.trim(); }).map(function(x){ return x.slice(0,120); }).slice(0,6); });
+    if(!Array.isArray(k.classSkills)) k.classSkills=[]; k.classSkills=k.classSkills.filter(function(x){ return typeof x==='string'; }); if(!Array.isArray(k.good)) k.good=[]; k.name=String(k.name==null?'':k.name); if(!own(TALX,k.talx)) k.talx=''; k.wiki=typeof k.wiki==='string'&&/^(-|[a-z0-9-]{1,80})?$/.test(k.wiki)?k.wiki:''; k.arch=(Array.isArray(k.arch)?k.arch:[]).filter(function(x){ return typeof x==='string'&&x.trim(); }).map(function(x){ return x.slice(0,120); }).slice(0,6);
+    var ab=k.archBase; if(ab&&typeof ab==='object'&&Array.isArray(ab.good)&&own(BABP,ab.bab)&&Array.isArray(ab.classSkills)) k.archBase={good:ab.good.filter(function(x){ return ['fort','ref','will'].indexOf(x)>=0; }),bab:ab.bab,hd:Math.max(4,Math.min(12,n0(ab.hd,8))),skills:Math.max(0,Math.min(20,n0(ab.skills,2))),classSkills:ab.classSkills.filter(function(x){ return typeof x==='string'; })}; else delete k.archBase; });
   Object.keys(b.conds).forEach(function(k){ if(!own(CONDM,k)||!b.conds[k]) delete b.conds[k]; });
   if(!own(SIZES,b.size)) b.size='M';
   var t0=o.traditions&&typeof o.traditions==='object'?o.traditions:{}; b.traditions=Object.assign(blankTrads(),t0);
@@ -3041,6 +3042,11 @@ function rBuild(){
         var blockBy=function(a){ if(on.indexOf(wkNorm(a[0]))>=0) return null; for(var i=0;i<mine.length;i++){ var c=cwArchClash(d,a,mine[i]); if(c) return [mine[i][0],c]; } return null; };
         var sum=function(a){ var R={}, M={}; a[2].forEach(function(x){ (x[3]||[]).forEach(function(r){ var nm=cwName(d.f[r[0]][0]).replace(/\s*\((Ex|Su|Sp)\)$/,'')+(r[1]?' at '+r[1]:''); (r[2]==='r'?R:M)[nm]=1; }); });
           var b=[]; if(Object.keys(R).length) b.push('Replaces '+Object.keys(R).join(', ')); if(Object.keys(M).length) b.push('changes '+Object.keys(M).join(', '));
+          /* its numbers: saves, base attack, hit die, ranks, class skills */
+          var st=a[3]||{}, sk=function(x){ return ((SKN[x]||[])[1])||x; }, nb=[];
+          if(st.g) nb.push('good '+(st.g.map(function(x){ return ({fort:'Fort',ref:'Ref',will:'Will'})[x]; }).join(', ')||'no')+' saves'); if(st.bab) nb.push((BABP[st.bab]||[0,st.bab])[1].replace(/ \(.*\)$/,'').toLowerCase()+' BAB'); if(st.hd) nb.push('d'+st.hd);
+          if(st.sk) nb.push(st.sk+' + Int ranks'); if(st.cs) nb.push('its own class skills'); else if((st.ca||[]).length||(st.cr||[]).length) nb.push('class skills '+[(st.ca||[]).length?'+ '+st.ca.map(sk).join(', '):'',(st.cr||[]).length?'− '+st.cr.map(sk).join(', '):''].filter(Boolean).join(' '));
+          if(st.trade) nb.push('a trade tradition for class skills'); if(nb.length) b.push(nb.join('; '));
           return b.length?b.join('; '):a[2].map(function(x){ return cwName(x[0]); }).slice(0,6).join(', ')+(a[2].length>6?'…':''); };
         return '<details data-keep="ar-'+esc(id)+'"><summary>Archetypes'+(mine.length?': '+esc(mine.map(function(a){ return a[0]; }).join(', ')):' ('+d.a.length+' on the wiki)')+'</summary>'+
           '<p class="note" style="margin:4px 0">Ticked archetypes change what level up fills in: replaced features are left out, altered ones are swapped for the archetype’s version, and the archetype’s own features come at their levels. On a class with levels, ticking or unticking one shows what it would swap first (retraining).</p>'+
@@ -3947,15 +3953,38 @@ function cwPrefill(d,n,have,k){ var out={xr:[],fr:[],info:[]}, hv=have.map(wkNor
     if((f[2]||[]).length){ if(!had(nm)) out.xr.push({name:nm,under:'',notes:'',mods:[],auto:1}); out.xr.push({name:'',under:nm,notes:'',mods:[],auto:1}); out.info.push([t,'pick one from its list']); return; }
     if(had(nm)){ out.info.push([t,'you have it: it improves']); return; }
     out.xr.push({name:nm,under:'',notes:'',mods:[],auto:1}); out.info.push([t,'']); });
-  cwArchs(d,k).forEach(function(a){ a[2].forEach(function(x){ if(x[2]!==n) return; var nm=cwName(x[0]);
+  cwArchs(d,k).forEach(function(a){ a[2].forEach(function(x){ if(x[2]!==n||cwStatFeat(a,x)) return; var nm=cwName(x[0]);
     if(had(nm)) return; out.xr.push({name:nm,under:'',notes:'',mods:[],auto:1}); out.info.push([nm,'from '+a[0]]); }); });
   return out; }
 /* retraining an archetype at a higher level (2026-11-12, owner): the class's features as the old and the new archetypes give
    them, level by level (cwPrefill), and what that changes on the character: features to remove (and where their choices go),
    features to add at the level they come, modifiers named after removed features, and "replaces" lines that couldn't be
    matched. null when there is nothing to work out (no levels in the class, or its wiki file isn't loaded). */
+/* what archetypes change in a class's numbers (2026-11-12, owner): a[3] = {g: good saves, bab, hd, sk: ranks, ca/cr: class skills
+   added/removed, cs: the whole list, trade: a trade tradition replaces the class skills}. The class keeps its values from
+   before (k.archBase) so unticking puts them back. */
+/* an archetype feature that only states a number the sheet applies itself ("Saving Throws", "Hit Dice", "Class Skills"…):
+   not a feature row, not a "check by hand" line, when the build script read its value */
+function cwStatFeat(a,x){ var st=a[3]||{}, n=String(x[0]||'').toLowerCase().trim();
+  return /^saving throws?$/.test(n)&&!!st.g||/^base attack/.test(n)&&!!st.bab||/^hit di/.test(n)&&!!st.hd||/^skill ranks/.test(n)&&!!st.sk||/^class skills?$/.test(n)&&!!(st.cs||st.ca||st.cr)||/^trade tradition$/.test(n)&&!!st.trade&&false; }
+function archBaseOf(k){ return k.archBase?JSON.parse(JSON.stringify(k.archBase)):{good:(k.good||[]).slice(),bab:k.bab,hd:n0(k.hd,8),skills:n0(k.skills),classSkills:(k.classSkills||[]).slice()}; }
+function archEff(base,archs){ var e=JSON.parse(JSON.stringify(base)); e.trade=[];
+  archs.forEach(function(a){ var st=a[3]||{}; if(st.g) e.good=st.g.slice(); if(st.bab) e.bab=st.bab; if(st.hd) e.hd=st.hd; if(st.sk) e.skills=st.sk; if(st.cs) e.classSkills=st.cs.slice();
+    (st.ca||[]).forEach(function(x){ if(e.classSkills.indexOf(x)<0) e.classSkills.push(x); }); e.classSkills=e.classSkills.filter(function(x){ return (st.cr||[]).indexOf(x)<0; }); if(st.trade) e.trade.push(a[0]); });
+  return e; }
+/* the lines that change: the class as it is now against what the archetypes make it */
+function archStatLines(k,e){ var L0=[], sv=function(g){ return g.length?g.map(function(x){ return ({fort:'Fort',ref:'Ref',will:'Will'})[x]; }).join(', '):'none'; }, skn=function(x){ return ((SKN[x]||[])[1])||x; };
+  var g0=(k.good||[]).slice().sort().join(), g1=e.good.slice().sort().join(); if(g0!==g1) L0.push(['Good saves',sv(k.good||[]),sv(e.good)]);
+  if(k.bab!==e.bab) L0.push(['Base attack',BABP[k.bab]?BABP[k.bab][1]:k.bab,BABP[e.bab]?BABP[e.bab][1]:e.bab]);
+  if(n0(k.hd,8)!==n0(e.hd,8)) L0.push(['Hit die','d'+n0(k.hd,8),'d'+n0(e.hd,8)]);
+  if(n0(k.skills)!==n0(e.skills)) L0.push(['Skill ranks per level',n0(k.skills)+' + Int',n0(e.skills)+' + Int']);
+  var cs0=k.classSkills||[], plus=e.classSkills.filter(function(x){ return cs0.indexOf(x)<0; }), minus=cs0.filter(function(x){ return e.classSkills.indexOf(x)<0; });
+  if(plus.length||minus.length) L0.push(['Class skills','',(plus.length?'+ '+plus.map(skn).join(', '):'')+(plus.length&&minus.length?'; ':'')+(minus.length?'− '+minus.map(skn).join(', '):'')]);
+  return L0; }
 function archSwapPlan(id,newArch){ var k=ch.classes[id], d=k?cwOf(k):null; if(!d) return null;
-  var lvIdx=[]; ch.levels.forEach(function(l,i){ if(l.cls===id) lvIdx.push(i); }); if(!lvIdx.length) return null;
+  var lvIdx=[]; ch.levels.forEach(function(l,i){ if(l.cls===id) lvIdx.push(i); });
+  var kN=Object.assign({},k,{arch:newArch.slice()}), base=archBaseOf(k), eff=archEff(base,cwArchs(d,kN)), stat=archStatLines(k,eff);
+  if(!lvIdx.length&&!stat.length&&!eff.trade.length) return null;
   var kOld=JSON.parse(JSON.stringify(k)), kNew=Object.assign({},kOld,{arch:newArch.slice()});
   var exp=function(kk){ var have=[], out={}; lvIdx.forEach(function(li,j){ cwPrefill(d,j+1,have,kk).xr.forEach(function(r){ if(r.under||!r.name) return; var key=wkNorm(r.name); if(!out[key]){ out[key]={name:r.name,n:j+1,li:li}; have.push(r.name); } }); }); return out; };
   var A=exp(kOld), B=exp(kNew);
@@ -3971,22 +4000,33 @@ function archSwapPlan(id,newArch){ var k=ch.classes[id], d=k?cwOf(k):null; if(!d
     else cwArchs(d,kOld).forEach(function(a){ a[2].forEach(function(x){ if(!r.to&&wkNorm(x[0])===wkNorm(r.name)&&(x[3]||[]).length) r.to=cwName(d.f[x[3][0][0]][0]); }); }); });
   var mods=(ch.mods||[]).map(function(m,i){ return {m:m,i:i}; }).filter(function(o){ return rem.some(function(r){ return o.m.src&&wkNorm(o.m.src)===wkNorm(r.name); }); });
   var onNew=cwArchs(d,kNew).filter(function(a){ return !cwArchs(d,kOld).some(function(b){ return b[0]===a[0]; }); });
-  var unmatched=[]; onNew.forEach(function(a){ a[2].forEach(function(x){ if(x[4]&&!(x[3]||[]).length) unmatched.push(a[0]+', '+cwName(x[0])+': '+x[4]); }); });
-  return {d:d,k:k,rem:rem,add:add,mods:mods,unmatched:unmatched,oldA:(k.arch||[]).slice(),newA:newArch.slice()}; }
+  var unmatched=[]; onNew.forEach(function(a){ a[2].forEach(function(x){ if(x[4]&&!(x[3]||[]).length&&!cwStatFeat(a,x)) unmatched.push(a[0]+', '+cwName(x[0])+': '+x[4]); }); });
+  /* stat lines the build script couldn't read, for the new archetypes */
+  onNew.forEach(function(a){ ((a[3]||{}).chk||[]).forEach(function(x){ unmatched.push(a[0]+', '+x); }); });
+  return {d:d,k:k,rem:rem,add:add,mods:mods,unmatched:unmatched,oldA:(k.arch||[]).slice(),newA:newArch.slice(),levels:lvIdx.length,base:base,eff:eff,stat:stat}; }
 function archSwapFlow(id,newArch){ var P=archSwapPlan(id,newArch); if(!P) return null;
-  var cn=P.k.name, chg=P.rem.length||P.add.length, lvOf=function(li){ return li<0?'no level':'level '+(li+1); };
+  var cn=P.k.name, chg=P.rem.length||P.add.length||P.stat.length, lvOf=function(li){ return li<0?'no level':'level '+(li+1); };
   var html='<p><b>'+esc(cn)+'</b>: '+(P.oldA.length?esc(P.oldA.join(', ')):'no archetype')+' → <b>'+(P.newA.length?esc(P.newA.join(', ')):'no archetype')+'</b>.</p>'+
-    (chg?'<p class="note">What the class gives at the levels you have, with the new archetypes, compared with what you have now. Untick anything you want to keep as it is.</p>':'<p class="note">Your class features don’t change at the levels you have; the new archetypes apply from your next level up.</p>')+
+    (chg?'<p class="note">'+(P.levels?'What the class gives at the levels you have, with the new archetypes, compared with what you have now. ':'What the archetypes change in the class. ')+'Untick anything you want to keep as it is.</p>':'<p class="note">Your class features don’t change at the levels you have; the new archetypes apply from your next level up.</p>')+
+    (P.stat.length?'<div class="opt" style="display:block"><span>Class changes</span><label class="ck" style="display:flex;gap:8px;margin:4px 0"><input type="checkbox" name="st" checked><span>'+P.stat.map(function(x){ return '<b>'+esc(x[0])+':</b> '+(x[1]?esc(x[1])+' → ':'')+esc(x[2]); }).join('<br>')+'</span></label>'+
+      (P.stat.some(function(x){ return x[0]==='Hit die'; })&&ch.levels.some(function(l){ return l.cls===id&&n0(l.hp); })?'<p class="note" style="margin:2px 0">Hit points you rolled stay as rolled; the ones worked out from the die change with it.</p>':'')+
+      '<p class="note" style="margin:2px 0">Unticking the archetype later puts the class’s own values back (edits you make to these fields in between are replaced).</p></div>':'')+
+    (P.eff.trade.length?'<p class="note">'+esc(P.eff.trade.join(', '))+': a trade tradition replaces the class skills. Choose it on the Traditions tab: it sets your class skills there.</p>':'')+
     (P.rem.length?'<div class="opt" style="display:block"><span>Remove</span>'+P.rem.map(function(r,i){ var ns=(r.p.subs||[]).length; return '<label class="ck" style="display:flex;gap:8px;margin:4px 0"><input type="checkbox" name="rm'+i+'" checked><span>'+esc(r.name)+' <span class="note">('+lvOf(r.li)+')'+
       (ns?' · its '+plural(ns,'choice')+(r.to?' move to '+esc(r.to):' are removed with it'):'')+'</span></span></label>'; }).join('')+'</div>':'')+
     (P.add.length?'<div class="opt" style="display:block"><span>Add</span>'+P.add.map(function(a,i){ return '<label class="ck" style="display:flex;gap:8px;margin:4px 0"><input type="checkbox" name="ad'+i+'" checked><span>'+esc(a.name)+' <span class="note">('+lvOf(a.li)+', '+esc(cn)+' '+a.n+')</span></span></label>'; }).join('')+'</div>':'')+
     (P.mods.length?'<div class="opt" style="display:block"><span>Modifiers named after a removed feature</span>'+P.mods.map(function(o,i){ return '<label class="ck" style="display:flex;gap:8px;margin:4px 0"><input type="checkbox" name="md'+i+'" checked><span>Remove '+esc(o.m.src)+' <span class="note">('+esc(TNAME[o.m.target]||o.m.target)+' '+esc(String(o.m.val))+')</span></span></label>'; }).join('')+'</div>':'')+
     (P.unmatched.length?'<p class="note warn">Check these by hand (the sheet couldn’t match what they replace): '+esc(P.unmatched.join(' · '))+'</p>':'')+
     '<p class="note">Resources, toggles and notes you made yourself aren’t touched; look them over afterwards.</p>';
-  return modal({title:'Retrain archetype',html:html,buttons:[{label:'Cancel',value:null},{label:'Only change the archetype',value:'only'},{label:chg?'Swap features':'Change the archetype',value:'ok',primary:true}],
-    read:function(root){ var f=rd(root); P.rmOn=P.rem.map(function(r,i){ return f.c('rm'+i); }); P.adOn=P.add.map(function(a,i){ return f.c('ad'+i); }); P.mdOn=P.mods.map(function(o,i){ return f.c('md'+i); }); return 1; }})
+  return modal({title:P.levels?'Retrain archetype':'Archetype',html:html,buttons:[{label:'Cancel',value:null},{label:'Only change the archetype',value:'only'},{label:chg?(P.levels?'Swap features':'Apply'):'Change the archetype',value:'ok',primary:true}],
+    read:function(root){ var f=rd(root); P.stOn=f.c('st'); P.rmOn=P.rem.map(function(r,i){ return f.c('rm'+i); }); P.adOn=P.add.map(function(a,i){ return f.c('ad'+i); }); P.mdOn=P.mods.map(function(o,i){ return f.c('md'+i); }); return 1; }})
     .then(function(r){ if(!r||!r.value) return null;
-      return function(){ var k=ch.classes[id]; k.arch=P.newA.slice(); if(r.value==='only'){ log('Archetype changed: '+cn+' → '+(P.newA.join(', ')||'none')+' (features left as they were).'); return; }
+      return function(){ var k=ch.classes[id]; k.arch=P.newA.slice();
+        /* the class's numbers: the archetypes' values, the class's own kept to put back (or put back when no archetype is left) */
+        var statTxt='';
+        if(r.value!=='only'&&P.stat.length&&P.stOn){ k.good=P.eff.good.slice(); k.bab=P.eff.bab; k.hd=P.eff.hd; k.skills=P.eff.skills; k.classSkills=P.eff.classSkills.slice();
+          if(P.newA.length) k.archBase=P.base; else delete k.archBase; statTxt=' · '+P.stat.map(function(x){ return x[0].toLowerCase()+' '+x[2]; }).join(', '); }
+        if(r.value==='only'){ log('Archetype changed: '+cn+' → '+(P.newA.join(', ')||'none')+' (features left as they were).'); return; }
         ensureIds(ch); if(histT){ clearTimeout(histT); histT=null; } if(!ch.histSnap) histSync(ch);
         var gone=[], came=[], moved={};
         P.rem.forEach(function(x,i){ if(!P.rmOn[i]) return; var list=x.li<0?ch.extraPicks:ch.levels[x.li].picks, at=list.indexOf(x.p); if(at<0) return; list.splice(at,1); gone.push(x.name);
@@ -3999,7 +4039,7 @@ function archSwapFlow(id,newArch){ var P=archSwapPlan(id,newArch); if(!P) return
         var dropM=P.mods.filter(function(o,i){ return P.mdOn[i]; }).map(function(o){ return o.m; }); ch.mods=(ch.mods||[]).filter(function(m){ return dropM.indexOf(m)<0; });
         /* one history line for the retrain, not an added/removed line per feature */
         var nowK=histKeys(ch), snap=ch.histSnap; Object.keys(nowK).forEach(function(k2){ if(!snap[k2]&&/^p:/.test(k2)) snap[k2]=nowK[k2]; }); Object.keys(snap).forEach(function(k2){ if(!nowK[k2]&&(/^p:/.test(k2)||/^m:/.test(k2))) delete snap[k2]; }); histSync(ch);
-        histPush(ch,{t:'retrain',text:cn+': '+(P.oldA.join(', ')||'no archetype')+' → '+(P.newA.join(', ')||'no archetype')+(gone.length?' · removed '+gone.join(', '):'')+(came.length?' · added '+came.join(', '):'')});
+        histPush(ch,{t:'retrain',text:cn+': '+(P.oldA.join(', ')||'no archetype')+' → '+(P.newA.join(', ')||'no archetype')+(gone.length?' · removed '+gone.join(', '):'')+(came.length?' · added '+came.join(', '):'')+statTxt});
         log('Retrained '+cn+': '+(P.newA.join(', ')||'no archetype')+'.'); UI.toast='Retrained '+cn+(gone.length||came.length?': '+[gone.length?plural(gone.length,'feature')+' removed':'',came.length?plural(came.length,'feature')+' added':''].filter(Boolean).join(', '):'')+'.'; }; }); }
 /* two archetypes of one class can't both replace or alter the same base feature (2026-11-12, owner's rule). Levels count:
    "the striker art gained at 2nd level" and "… at 5th level" are different instances; a whole feature (level 0) overlaps any.
@@ -4007,6 +4047,10 @@ function archSwapFlow(id,newArch){ var P=archSwapPlan(id,newArch); if(!P) return
    "replaces …" sentences are shown, not checked). */
 function cwArchClash(d,a,b){ var t=function(x){ var o=[]; x[2].forEach(function(f){ (f[3]||[]).forEach(function(r){ o.push(r); }); }); return o; }, A=t(a), B=t(b);
   for(var i=0;i<A.length;i++){ for(var j=0;j<B.length;j++){ if(A[i][0]===B[j][0]&&(!A[i][1]||!B[j][1]||A[i][1]===B[j][1])) return cwName(d.f[A[i][0]][0]).replace(/\s*\((Ex|Su|Sp)\)$/,'')+(A[i][1]&&A[i][1]===B[j][1]?' at '+A[i][1]:''); } }
+  /* both rewrite the same number (adding or removing different class skills still combines) */
+  var sa=a[3]||{}, sb=b[3]||{}, nm={g:'saving throws',bab:'base attack',hd:'hit die',sk:'skill ranks',cs:'class skills',trade:'class skills'};
+  for(var key in nm){ if(sa[key]&&sb[key]) return nm[key]; }
+  if((sa.cs&&(sb.ca||sb.cr))||(sb.cs&&(sa.ca||sa.cr))) return 'class skills';
   return ''; }
 /* what the chosen archetypes do to base feature fi at class level n (n 0 = at any level): {how: 'r'|'m', by: archetype, x: its feature} */
 function cwArchHit(d,k,fi,n){ var out=null; cwArchs(d,k).forEach(function(a){ a[2].forEach(function(x){ (x[3]||[]).forEach(function(r){ if(r[0]===fi&&(!r[1]||!n||r[1]===n)&&(!out||r[2]==='r')) out={how:r[2],by:a,x:x}; }); }); }); return out; }
