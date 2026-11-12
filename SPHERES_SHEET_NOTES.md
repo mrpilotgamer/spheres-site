@@ -107,7 +107,7 @@ Last full run: 2026-11-12, `engine-check.js` 325, `check.js` 447 (about 95 secon
 `rules-check.js` 90 (not rerun since 2026-11-10; the rules are unchanged), `party-check.js` 38, `save-check.js` 12: all passed.
 After the level-up feat and feature rows (2026-11-12, later): `engine-check.js` 329, `check.js` 459, `fuzz-check.js` 27, `talents-check.js` 31,
 `config-check.js` 12 passed; `csp-check.js` and the emulator checks were not run in that session (the database code is unchanged).
-After class features from the wiki (2026-11-12, latest): `engine-check.js` 331, `check.js` 486 (with the Feats tab text, archetypes and mass level-up), `fuzz-check.js` 27, `talents-check.js` 49
+After class features from the wiki (2026-11-12, latest): `engine-check.js` 331, `check.js` 492 (with the Feats tab text, archetypes, mass level-up and retraining), `fuzz-check.js` 27, `talents-check.js` 51
 (with the class files and archetypes), `config-check.js` 12 passed; `csp-check.js` and the emulator checks were not run in that session.
 
 **Rollback:** Firebase console → Hosting → release history → roll back. With GitHub: also revert the commit (the
@@ -666,6 +666,25 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
     plain features become picks, a choice the table names goes under its feature, open choices and bonus feats are added to
     "To choose afterwards" ("2 Striker Art choices"). The review lists the features with their class levels; the history keeps
     one "Reached levels …" line.
+  - **Altered features are swapped (2026-11-12, owner's call):** a base feature an archetype alters ("This alters cunning
+    celerity") is replaced by the archetype's version at that level, in level up, mass level-up and retraining, like a
+    replaced one; if it has a choice list (Striker Art) its choice row stays. When one archetype feature alters two base
+    features, the second says "now part of …". On the Feats & features tab an archetype feature lists what it alters or
+    replaces, each with the base feature's text folded (the archetype's text often only says what changes).
+    `cwPrefill` is now a top-level function (level up, mass level-up and the retrain preview share it).
+  - **Archetype feature levels:** a feature whose text has no "at Nth level" takes the first level at which the base feature
+    it replaces or alters appears in the class table (Dreadnought's Inexorable: 13, with Capricious), else 1.
+  - **"Replaces" lines without a full stop** (fixed 2026-11-12, owner noticed Dreadnought + Allusionist could be combined):
+    a line end ends the sentence too, and a feature's sentences are kept one per line so "This modifies X" and a following
+    "This ability replaces Y" stay separate. 18 archetypes gained matches.
+  - **Retraining an archetype (2026-11-12, owner):** ticking or unticking an archetype on a class that has levels opens
+    "Retrain archetype" (`archSwapPlan`, `archSwapFlow`) instead of changing it at once: the class's features under the old
+    and new archetypes, level by level (`cwPrefill` per class level), compared with the picks you have. Lists, each with a
+    checkbox: features to remove (with where their choices go: to the archetype's version that alters or replaces them, or,
+    unticking, back to the base feature), features to add at the character level they come, modifiers named after a removed
+    feature, and the new archetype's "replaces" lines that couldn't be matched (check by hand). "Swap features" applies the
+    ticked ones; "Only change the archetype" leaves the features. One "Retrained" history line (`HIST_T.retrain`), no
+    separate added/removed lines. Resources, toggles and notes made by hand aren't touched (the dialog says so).
   - **Not yet:** archetypes of Paizo classes other than the sphere conversions (owner's call: not wanted for now).
 
 - **Any talent can be taken more than once (2026-11-10, owner's call: "just to simplify").** Talents from a tradition

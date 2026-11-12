@@ -1572,15 +1572,16 @@ function check(what, got, want) {
     const arD = page.locator('details', { has: page.locator('summary', { hasText: /^Archetypes/ }) }).first();
     await arD.locator('summary').click();
     check('the Build tab lists the class’s archetypes with what they replace and change', /Black Powder Brawler Wiki ↗ Replaces Bare Knuckles, Tension Boost at 2, .*; changes Combat Training, Tension, Striker Art at 2/.test((await arD.innerText()).replace(/\s+/g, ' ')), true);
-    await arD.locator('label', { hasText: 'Black Powder Brawler' }).locator('input').check(); await idle();
+    await arD.locator('label', { hasText: 'Black Powder Brawler' }).locator('input').click(); await idle();
+    await dlg().locator('button', { hasText: 'Only change the archetype' }).click(); await idle(); /* a class with levels: the retrain preview; this check is about the archetype only */
     const vr = page.locator('details', { has: page.locator('summary', { hasText: /^Archetypes/ }) }).first().locator('label', { hasText: 'Voidrusher' });
     check('ticking saves it; an archetype that changes the same feature can’t be ticked, and says why', [JSON.stringify((await stored()).classes.c1.arch), await vr.locator('input').isDisabled(), /Can’t combine with Black Powder Brawler: both change Drill Knuckle/.test(await vr.innerText())].join(' '), '["Black Powder Brawler"] true true');
     check('…one that changes different features still can (Barfighter)', await page.locator('details', { has: page.locator('summary', { hasText: /^Archetypes/ }) }).first().locator('label', { hasText: 'Barfighter' }).locator('input').isDisabled(), false);
     await page.locator('[data-a="levelUp"]').first().click(); await idle(); await next(); await next();
     const luT = (await dlg().innerText()).replace(/\s+/g, ' ');
-    check('level up: a replaced feature is left out, a changed one says so', [/tension boost \(replaced by Black Powder Brawler: Gun Genius \(Ex\)\)/.test(luT), /Striker art \(changed by Black Powder Brawler: Firearm Fighter \(Ex\)\)/.test(luT)].join(' '), 'true true');
-    check('…and the archetype’s own level-2 features are rows', await rowsNow(), '>Striker Art (Ex), Striker Art (Ex)>, >Firearm Fighter (Ex), >Gun Genius (Ex)');
-    check('…with their wiki text', /Wiki text: Gun Genius \(Ex\) \(Black Powder Brawler\)/.test(await dlg().locator('.xr-item').nth(3).locator('.lu-wk').innerText()), true);
+    check('level up: a replaced feature is left out, an altered one is swapped for the archetype’s version', [/tension boost \(replaced by Black Powder Brawler: Gun Genius \(Ex\)\)/.test(luT), /Striker art \(altered by Black Powder Brawler: now Firearm Fighter \(Ex\)\)/.test(luT)].join(' '), 'true true');
+    check('…the altered Striker Art keeps its choice row; the archetype’s level-2 features are rows', await rowsNow(), '>Firearm Fighter (Ex), Striker Art (Ex)>, >Gun Genius (Ex)');
+    check('…with their wiki text', /Wiki text: Gun Genius \(Ex\) \(Black Powder Brawler\)/.test(await dlg().locator('.xr-item').nth(2).locator('.lu-wk').innerText()), true);
     await cancelOrEsc(dlg().locator('button', { hasText: 'Cancel' }).first()); await settle();
     await go('Character', 'Feats & features'); await item('Bare Knuckles').locator('summary').first().click(); await idle();
     await until('the replaced note', () => /Replaced by your archetype/.test(document.querySelector('#main').textContent));
@@ -1589,16 +1590,38 @@ function check(what, got, want) {
     await page.locator('[data-a="levelUp"]').first().click(); await idle();
     await dlg().locator('input[name="cnt"]').fill('4'); await next(); if (await dlg().locator('select[name="inc3"]').count()) await dlg().locator('select[name="inc3"]').selectOption('str'); await next();
     const mrv = (await dlg().innerText()).replace(/\s+/g, ' ');
-    check('mass level-up: the review lists the features from the wiki and the archetype, and the choices left', [/Class features \(from the wiki, with Black Powder Brawler; class level in brackets\): Striker Art \(Ex\) \(2\), Firearm Fighter \(Ex\) \(2\), Gun Genius \(Ex\) \(2\), Accurate Shooter \(Ex\) \(3\)/.test(mrv), /To choose afterwards:.*2 Striker Art choices/.test(mrv)].join(' '), 'true true');
+    check('mass level-up: the review lists the features from the wiki and the archetype, and the choices left', [/Class features \(from the wiki, with Black Powder Brawler; class level in brackets\): Firearm Fighter \(Ex\) \(2\), Gun Genius \(Ex\) \(2\), Accurate Shooter \(Ex\) \(3\)/.test(mrv), /To choose afterwards:.*2 Striker Art choices/.test(mrv)].join(' '), 'true true');
     await dlg().locator('button', { hasText: 'Level up ×4' }).click(); await idle();
     c = await stored();
     check('…each level gets its features (replaced ones left out), and the history keeps one line for the levels', [c.levels.slice(1).map(l => l.picks.map(p => p.name).join('+')).join(' | '), c.history.filter(h => /Gun Genius|Accurate Shooter/.test(h.text)).length].join(' # '),
-      'Striker Art (Ex)+Firearm Fighter (Ex)+Gun Genius (Ex) | Accurate Shooter (Ex) | Desperate Tension (Ex) | Tension Training (Ex) # 0');
+      'Firearm Fighter (Ex)+Gun Genius (Ex) | Accurate Shooter (Ex) | Desperate Tension (Ex) | Striker Art (Ex)+Tension Training (Ex) # 0'); /* only the art at 2nd is altered: the one at 5th brings Striker Art itself */
     /* an older save with two clashing archetypes ticked gets the warning */
     await mkS({ arch: ['Black Powder Brawler', 'Voidrusher'] }, [{ cls: 'c1', hp: 10, picks: [] }]); await page.reload(); await idle();
     await go('Character', 'Build'); await until('the Striker archetypes', () => [...document.querySelectorAll('#main summary')].some(e => /^Archetypes/.test(e.textContent.trim())) && !/Loading the archetypes/.test(document.querySelector('#main').textContent));
     await page.locator('details', { has: page.locator('summary', { hasText: /^Archetypes/ }) }).first().locator('summary').click();
     check('two clashing archetypes ticked (an older save): warned to untick one', /Black Powder Brawler and Voidrusher both change .*can’t be taken together/.test(await page.locator('#main').innerText()), true);
+    /* retraining (2026-11-12): ticking an archetype on a class with levels shows what it swaps, at the levels it comes */
+    const BF = [['Blended Training (Ex)', 'Confounding Strike (Ex)', 'Moxie (Ex)', 'Whim'], ['Cunning Celerity (Ex)', 'Steadfast (Ex)'], ['Careful Footwork (Ex)', 'Exploit Uncertainty (Ex)'], ['Spontaneous Technique (Ex)'], ['Mercurial Celerity (Ex)']];
+    await mkS({ name: 'Bravo', hd: 10, bab: 'full', good: ['ref'], skills: 6 }, BF.map(l => ({ cls: 'c1', hp: 6, picks: l.map(n => ({ kind: 'feature', name: n })) })), { mods: [{ id: 'mcf', src: 'Careful Footwork (Ex)', target: 'ac', val: '1', type: 'dodge', when: 'always' }] });
+    await page.reload(); await idle(); await go('Character', 'Build');
+    await until('the Bravo archetypes', () => [...document.querySelectorAll('#main summary')].some(e => /^Archetypes \(9 on the wiki\)/.test(e.textContent.trim())));
+    await page.locator('details', { has: page.locator('summary', { hasText: /^Archetypes/ }) }).first().locator('summary').click();
+    await page.locator('#main input[data-v="Dreadnought"]').click(); await idle();
+    const rtx = (await dlg().innerText()).replace(/\s+/g, ' ');
+    check('retraining Bravo 5 into Dreadnought: the preview removes the altered and replaced features and adds the archetype’s at their levels', [/Bravo: no archetype → Dreadnought/.test(rtx), /Remove Cunning Celerity \(Ex\) \(level 2\) Careful Footwork \(Ex\) \(level 3\)/.test(rtx), /Tenacious Determination \(level 2, Bravo 2\) Enduring Tenacity \(level 3, Bravo 3\)/.test(rtx), /Remove Careful Footwork \(Ex\) \(AC 1\)/.test(rtx)].join(' '), 'true true true true');
+    check('…nothing changes until it’s confirmed', JSON.stringify((await stored()).classes.c1.arch), '[]');
+    await dlg().locator('button', { hasText: 'Swap features' }).click(); await idle();
+    c = await stored();
+    check('“Swap features”: the features swap on their levels, the modifier goes, one history line', [JSON.stringify(c.classes.c1.arch), c.levels.slice(1, 3).map(l => l.picks.map(p => p.name).join('+')).join(' | '), c.mods.length, c.history.filter(h => h.t === 'retrain').length, c.history.filter(h => h.t === 'remove' || h.t === 'add').length].join(' # '),
+      '["Dreadnought"] # Steadfast (Ex)+Tenacious Determination | Exploit Uncertainty (Ex)+Enduring Tenacity # 0 # 1 # 0');
+    check('Allusionist (it alters Cunning Celerity too) can’t be ticked now', await page.locator('#main input[data-v="Allusionist"]').isDisabled(), true);
+    await go('Character', 'Feats & features'); await item('Tenacious Determination').locator('summary').first().click(); await idle();
+    check('the tab says what an archetype feature alters, with the base feature’s text', /Dreadnought \(Bravo archetype\).*Alters: Cunning Celerity \(Ex\).*Alters: Quicksilver Celerity/.test((await item('Tenacious Determination').locator('.wk').innerText()).replace(/\s+/g, ' ')), true);
+    await go('Character', 'Build'); await page.locator('details', { has: page.locator('summary', { hasText: /^Archetypes/ }) }).first().locator('summary').click().catch(() => {});
+    await page.locator('#main input[data-v="Dreadnought"]').click(); await idle();
+    await dlg().locator('button', { hasText: 'Swap features' }).click(); await idle();
+    c = await stored();
+    check('unticking it swaps back', [JSON.stringify(c.classes.c1.arch), c.levels.slice(1, 3).map(l => l.picks.map(p => p.name).join('+')).join(' | ')].join(' # '), '[] # Steadfast (Ex)+Cunning Celerity (Ex) | Exploit Uncertainty (Ex)+Careful Footwork (Ex)');
     /* a Paizo class: its sphere conversion fills in its features */
     await mkS({ name: 'Wizard', hd: 6, bab: '1/2', good: ['will'], skills: 2, cast: 'high', martial: 'none', arch: ['Sphere Wizard'] }, []); await page.reload(); await idle();
     await page.locator('[data-a="levelUp"]').first().click(); await idle(); await next(); await next();

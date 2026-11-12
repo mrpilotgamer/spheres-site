@@ -3043,7 +3043,7 @@ function rBuild(){
           var b=[]; if(Object.keys(R).length) b.push('Replaces '+Object.keys(R).join(', ')); if(Object.keys(M).length) b.push('changes '+Object.keys(M).join(', '));
           return b.length?b.join('; '):a[2].map(function(x){ return cwName(x[0]); }).slice(0,6).join(', ')+(a[2].length>6?'…':''); };
         return '<details data-keep="ar-'+esc(id)+'"><summary>Archetypes'+(mine.length?': '+esc(mine.map(function(a){ return a[0]; }).join(', ')):' ('+d.a.length+' on the wiki)')+'</summary>'+
-          '<p class="note" style="margin:4px 0">Ticked archetypes change what level up fills in: replaced features are left out, changed ones say so, and the archetype’s own features come at their levels.</p>'+
+          '<p class="note" style="margin:4px 0">Ticked archetypes change what level up fills in: replaced features are left out, altered ones are swapped for the archetype’s version, and the archetype’s own features come at their levels. On a class with levels, ticking or unticking one shows what it would swap first (retraining).</p>'+
           d.a.map(function(a){ var bl=blockBy(a); return '<label class="ck" style="display:flex;align-items:flex-start;gap:8px;margin:6px 0'+(bl?';opacity:.6':'')+'"><input type="checkbox" data-in="'+p+'arch" data-v="'+esc(a[0])+'"'+(on.indexOf(wkNorm(a[0]))>=0?' checked':'')+(bl?' disabled':'')+'><span><b>'+esc(a[0])+'</b> <a class="note" href="'+esc(WK_WIKI+a[1])+'" target="_blank" rel="noopener">Wiki ↗</a><br><span class="note">'+esc(sum(a))+'</span>'+
             (bl?'<br><span class="note warn">Can’t combine with '+esc(bl[0])+': both change '+esc(bl[1])+'.</span>':'')+'</span></label>'; }).join('')+
           '<p class="note" style="margin:4px 0">Archetypes of one class combine only when they replace or change different features; one that clashes with a ticked one can’t be ticked. The check uses the features each page names; read the wiki page when in doubt.</p>'+
@@ -3316,7 +3316,7 @@ function rShape(){
 }
 function togOpts(){ return [['','(none)']].concat((ch.groups||[]).map(function(g){ return [g.id,g.name]; })); }
 /* ---------- HISTORY tab ---------- */
-var HIST_T={start:'Started',add:'Added',remove:'Removed',rename:'Renamed',level:'Level up',note:'Note',archive:'Archived'};
+var HIST_T={start:'Started',add:'Added',remove:'Removed',rename:'Renamed',level:'Level up',note:'Note',archive:'Archived',retrain:'Retrained'};
 function histText(list){ return list.map(function(e){ var d=new Date(e.at||0); return d.toLocaleString([], {dateStyle:'medium',timeStyle:'short'})+'  [Lvl '+n0(e.lvl)+']  '+(HIST_T[e.t]||e.t)+(e.cat?' '+e.cat:'')+': '+(e.text||''); }).join('\n'); }
 function rHist(){ var H0=ch.history||[], L=(ch.levels||[]).length, lv=UI.histLvl==null?'':String(UI.histLvl), size=JSON.stringify(H0).length;
   var h='<section class="card"><div class="cardhead"><h2>History</h2><span class="row" style="margin:0"><button class="mini" data-a="histTxt">Download as text</button><button class="mini" data-a="histArchive">Archive old history…</button></span></div>'+
@@ -3927,6 +3927,80 @@ function cwArchs(d,k){ var on=((k&&k.arch)||[]).map(wkNorm); return d&&d.a?d.a.f
 /* an archetype feature by name (chosen archetypes first, then any of the file's): {a: archetype, x: feature} */
 function cwArchFind(d,k,name){ if(!d||!d.a) return null; var n=wkNorm(name), pick=function(list){ for(var i=0;i<list.length;i++){ for(var j=0;j<list[i][2].length;j++){ if(wkNorm(list[i][2][j][0])===n) return {a:list[i],x:list[i][2][j]}; } } return null; };
   return pick(cwArchs(d,k))||pick(d.a); }
+/* features from the class table at class level n, as rows (level up, mass level-up, the retrain preview): new features, a
+   choice row for a feature with a list, an empty Bonus feat row; features you have already only "improve" (listed, no row).
+   Archetypes (2026-11-12): a feature they replace is left out; one they alter is swapped for the archetype's version at that
+   level (owner's call), keeping its choice row if it has a list; the archetypes' own features come at their levels. */
+function cwPrefill(d,n,have,k){ var out={xr:[],fr:[],info:[]}, hv=have.map(wkNorm), cap=function(t){ return t.charAt(0).toUpperCase()+t.slice(1); };
+  var had=function(nm){ return hv.indexOf(wkNorm(nm))>=0||out.xr.some(function(r){ return !r.under&&wkNorm(r.name)===wkNorm(nm); }); };
+  ((d.lv||{})[String(n)]||[]).forEach(function(e){ var t=String(e[0]||''), f=e[1]>=0?d.f[e[1]]:null, nm=f?cwName(f[0]):'', ah=f?cwArchHit(d,k,e[1],n):null;
+    if(ah&&ah.how==='r'){ out.info.push([t,'replaced by '+ah.by[0]+': '+cwName(ah.x[0])]); return; }
+    if(ah){ var an=cwName(ah.x[0]);
+      if(had(an)) out.info.push([t,'altered by '+ah.by[0]+': now part of '+an]);
+      else { out.xr.push({name:an,under:'',notes:'',mods:[],auto:1}); out.info.push([t,'altered by '+ah.by[0]+': now '+an]); }
+      if((f[2]||[]).length) out.xr.push({name:'',under:nm,notes:'',mods:[],auto:1});
+      return; }
+    if(/^bonus\s+(\w+\s+)?talents?\b/i.test(t)){ out.info.push([t,'counted with your talents']); return; }
+    if(/^bonus\s+(\w+\s+)?feats?\b/i.test(t)){ out.fr.push({name:'',kind:'bonus',notes:'',mods:[],ph:cap(t)+' ('+d.n+')'}); out.info.push([t,'a Bonus feat row']); return; }
+    if(!f){ if(!had(t)) out.xr.push({name:cap(t),under:'',notes:'',mods:[],auto:1}); out.info.push([t,'not on the wiki page as its own feature']); return; }
+    if(e.length>2&&f[2][e[2]]){ if(!had(nm)) out.xr.push({name:nm,under:'',notes:'',mods:[],auto:1}); out.xr.push({name:cwName(f[2][e[2]][0]),under:nm,notes:'',mods:[],auto:1}); out.info.push([t,'']); return; }
+    if((f[2]||[]).length){ if(!had(nm)) out.xr.push({name:nm,under:'',notes:'',mods:[],auto:1}); out.xr.push({name:'',under:nm,notes:'',mods:[],auto:1}); out.info.push([t,'pick one from its list']); return; }
+    if(had(nm)){ out.info.push([t,'you have it: it improves']); return; }
+    out.xr.push({name:nm,under:'',notes:'',mods:[],auto:1}); out.info.push([t,'']); });
+  cwArchs(d,k).forEach(function(a){ a[2].forEach(function(x){ if(x[2]!==n) return; var nm=cwName(x[0]);
+    if(had(nm)) return; out.xr.push({name:nm,under:'',notes:'',mods:[],auto:1}); out.info.push([nm,'from '+a[0]]); }); });
+  return out; }
+/* retraining an archetype at a higher level (2026-11-12, owner): the class's features as the old and the new archetypes give
+   them, level by level (cwPrefill), and what that changes on the character: features to remove (and where their choices go),
+   features to add at the level they come, modifiers named after removed features, and "replaces" lines that couldn't be
+   matched. null when there is nothing to work out (no levels in the class, or its wiki file isn't loaded). */
+function archSwapPlan(id,newArch){ var k=ch.classes[id], d=k?cwOf(k):null; if(!d) return null;
+  var lvIdx=[]; ch.levels.forEach(function(l,i){ if(l.cls===id) lvIdx.push(i); }); if(!lvIdx.length) return null;
+  var kOld=JSON.parse(JSON.stringify(k)), kNew=Object.assign({},kOld,{arch:newArch.slice()});
+  var exp=function(kk){ var have=[], out={}; lvIdx.forEach(function(li,j){ cwPrefill(d,j+1,have,kk).xr.forEach(function(r){ if(r.under||!r.name) return; var key=wkNorm(r.name); if(!out[key]){ out[key]={name:r.name,n:j+1,li:li}; have.push(r.name); } }); }); return out; };
+  var A=exp(kOld), B=exp(kNew);
+  var findPick=function(nm){ var w=wkNorm(nm); for(var j=0;j<lvIdx.length;j++){ var ps=ch.levels[lvIdx[j]].picks||[]; for(var q=0;q<ps.length;q++){ if(ps[q].kind==='feature'&&wkNorm(ps[q].name)===w) return {li:lvIdx[j],p:ps[q]}; } }
+    var ex=(ch.extraPicks||[]).filter(function(q){ return q.kind==='feature'&&wkNorm(q.name)===w; })[0]; return ex?{li:-1,p:ex}:null; };
+  var rem=[], add=[];
+  Object.keys(A).forEach(function(key){ if(B[key]) return; var h=findPick(A[key].name); if(h) rem.push({name:h.p.name,li:h.li,p:h.p,n:A[key].n}); });
+  Object.keys(B).forEach(function(key){ if(A[key]||findPick(B[key].name)) return; add.push(B[key]); });
+  /* a removed feature's choices go to what takes its place: the new archetype's version, or (unticking) the base feature back */
+  var bi=function(nm){ var w=wkNorm(nm); for(var i=0;i<d._n.length;i++){ if(d._n[i]===w) return i; } return -1; };
+  rem.forEach(function(r){ r.to=''; var b0=bi(r.name);
+    if(b0>=0) cwArchs(d,kNew).forEach(function(a){ a[2].forEach(function(x){ if(!r.to&&(x[3]||[]).some(function(z){ return z[0]===b0; })) r.to=cwName(x[0]); }); });
+    else cwArchs(d,kOld).forEach(function(a){ a[2].forEach(function(x){ if(!r.to&&wkNorm(x[0])===wkNorm(r.name)&&(x[3]||[]).length) r.to=cwName(d.f[x[3][0][0]][0]); }); }); });
+  var mods=(ch.mods||[]).map(function(m,i){ return {m:m,i:i}; }).filter(function(o){ return rem.some(function(r){ return o.m.src&&wkNorm(o.m.src)===wkNorm(r.name); }); });
+  var onNew=cwArchs(d,kNew).filter(function(a){ return !cwArchs(d,kOld).some(function(b){ return b[0]===a[0]; }); });
+  var unmatched=[]; onNew.forEach(function(a){ a[2].forEach(function(x){ if(x[4]&&!(x[3]||[]).length) unmatched.push(a[0]+', '+cwName(x[0])+': '+x[4]); }); });
+  return {d:d,k:k,rem:rem,add:add,mods:mods,unmatched:unmatched,oldA:(k.arch||[]).slice(),newA:newArch.slice()}; }
+function archSwapFlow(id,newArch){ var P=archSwapPlan(id,newArch); if(!P) return null;
+  var cn=P.k.name, chg=P.rem.length||P.add.length, lvOf=function(li){ return li<0?'no level':'level '+(li+1); };
+  var html='<p><b>'+esc(cn)+'</b>: '+(P.oldA.length?esc(P.oldA.join(', ')):'no archetype')+' → <b>'+(P.newA.length?esc(P.newA.join(', ')):'no archetype')+'</b>.</p>'+
+    (chg?'<p class="note">What the class gives at the levels you have, with the new archetypes, compared with what you have now. Untick anything you want to keep as it is.</p>':'<p class="note">Your class features don’t change at the levels you have; the new archetypes apply from your next level up.</p>')+
+    (P.rem.length?'<div class="opt" style="display:block"><span>Remove</span>'+P.rem.map(function(r,i){ var ns=(r.p.subs||[]).length; return '<label class="ck" style="display:flex;gap:8px;margin:4px 0"><input type="checkbox" name="rm'+i+'" checked><span>'+esc(r.name)+' <span class="note">('+lvOf(r.li)+')'+
+      (ns?' · its '+plural(ns,'choice')+(r.to?' move to '+esc(r.to):' are removed with it'):'')+'</span></span></label>'; }).join('')+'</div>':'')+
+    (P.add.length?'<div class="opt" style="display:block"><span>Add</span>'+P.add.map(function(a,i){ return '<label class="ck" style="display:flex;gap:8px;margin:4px 0"><input type="checkbox" name="ad'+i+'" checked><span>'+esc(a.name)+' <span class="note">('+lvOf(a.li)+', '+esc(cn)+' '+a.n+')</span></span></label>'; }).join('')+'</div>':'')+
+    (P.mods.length?'<div class="opt" style="display:block"><span>Modifiers named after a removed feature</span>'+P.mods.map(function(o,i){ return '<label class="ck" style="display:flex;gap:8px;margin:4px 0"><input type="checkbox" name="md'+i+'" checked><span>Remove '+esc(o.m.src)+' <span class="note">('+esc(TNAME[o.m.target]||o.m.target)+' '+esc(String(o.m.val))+')</span></span></label>'; }).join('')+'</div>':'')+
+    (P.unmatched.length?'<p class="note warn">Check these by hand (the sheet couldn’t match what they replace): '+esc(P.unmatched.join(' · '))+'</p>':'')+
+    '<p class="note">Resources, toggles and notes you made yourself aren’t touched; look them over afterwards.</p>';
+  return modal({title:'Retrain archetype',html:html,buttons:[{label:'Cancel',value:null},{label:'Only change the archetype',value:'only'},{label:chg?'Swap features':'Change the archetype',value:'ok',primary:true}],
+    read:function(root){ var f=rd(root); P.rmOn=P.rem.map(function(r,i){ return f.c('rm'+i); }); P.adOn=P.add.map(function(a,i){ return f.c('ad'+i); }); P.mdOn=P.mods.map(function(o,i){ return f.c('md'+i); }); return 1; }})
+    .then(function(r){ if(!r||!r.value) return null;
+      return function(){ var k=ch.classes[id]; k.arch=P.newA.slice(); if(r.value==='only'){ log('Archetype changed: '+cn+' → '+(P.newA.join(', ')||'none')+' (features left as they were).'); return; }
+        ensureIds(ch); if(histT){ clearTimeout(histT); histT=null; } if(!ch.histSnap) histSync(ch);
+        var gone=[], came=[], moved={};
+        P.rem.forEach(function(x,i){ if(!P.rmOn[i]) return; var list=x.li<0?ch.extraPicks:ch.levels[x.li].picks, at=list.indexOf(x.p); if(at<0) return; list.splice(at,1); gone.push(x.name);
+          if((x.p.subs||[]).length&&x.to) moved[wkNorm(x.to)]=(moved[wkNorm(x.to)]||[]).concat(x.p.subs); });
+        P.add.forEach(function(a,i){ if(!P.adOn[i]) return; var p={id:newId(),kind:'feature',name:a.name}; ch.levels[a.li].picks.push(p); came.push(a.name); });
+        /* choices to their new feature (found on any level, else a new pick at the level the old one was) */
+        Object.keys(moved).forEach(function(w){ var tgt=null; ch.levels.forEach(function(l){ (l.picks||[]).forEach(function(q){ if(!tgt&&q.kind==='feature'&&wkNorm(q.name)===w) tgt=q; }); });
+          if(!tgt){ var src=P.rem.filter(function(x){ return wkNorm(x.to)===w; })[0]; tgt={id:newId(),kind:'feature',name:src.to}; (src.li<0?ch.extraPicks:ch.levels[src.li].picks).push(tgt); came.push(src.to); }
+          tgt.subs=(tgt.subs||[]).concat(moved[w]); });
+        var dropM=P.mods.filter(function(o,i){ return P.mdOn[i]; }).map(function(o){ return o.m; }); ch.mods=(ch.mods||[]).filter(function(m){ return dropM.indexOf(m)<0; });
+        /* one history line for the retrain, not an added/removed line per feature */
+        var nowK=histKeys(ch), snap=ch.histSnap; Object.keys(nowK).forEach(function(k2){ if(!snap[k2]&&/^p:/.test(k2)) snap[k2]=nowK[k2]; }); Object.keys(snap).forEach(function(k2){ if(!nowK[k2]&&(/^p:/.test(k2)||/^m:/.test(k2))) delete snap[k2]; }); histSync(ch);
+        histPush(ch,{t:'retrain',text:cn+': '+(P.oldA.join(', ')||'no archetype')+' → '+(P.newA.join(', ')||'no archetype')+(gone.length?' · removed '+gone.join(', '):'')+(came.length?' · added '+came.join(', '):'')});
+        log('Retrained '+cn+': '+(P.newA.join(', ')||'no archetype')+'.'); UI.toast='Retrained '+cn+(gone.length||came.length?': '+[gone.length?plural(gone.length,'feature')+' removed':'',came.length?plural(came.length,'feature')+' added':''].filter(Boolean).join(', '):'')+'.'; }; }); }
 /* two archetypes of one class can't both replace or alter the same base feature (2026-11-12, owner's rule). Levels count:
    "the striker art gained at 2nd level" and "… at 5th level" are different instances; a whole feature (level 0) overlaps any.
    Returns the base feature they both touch, or ''. Only what was matched by name can be checked (the rest of a page's
@@ -3965,7 +4039,9 @@ function cwBox(p,lvl,path){ if(!String(p.name||'').trim()) return ''; var R=cwLo
   var AX=R.ax, f=AX?[AX.x[0],AX.x[1],[]]:R.d.f[R.f], md=f[1]||'', key='cw-'+path, more=!!(UI.wkMore||{})[key], long=md.length>900, nopt=(f[2]||[]).length, hit=AX?null:cwArchHit(R.d,R.k,R.f,lvl>0?ch.levels.slice(0,lvl).filter(function(l){ return l.cls===ch.levels[lvl-1].cls; }).length:0);
   var h='<div class="wk"><div class="wkh"><b>'+esc(cwName(f[0]))+'</b><span class="spacer"></span><a class="note" href="'+esc(WK_WIKI+(AX?AX.a[1]:R.d.p))+'" target="_blank" rel="noopener">Wiki ↗</a></div><div class="note" style="margin:0 0 4px">'+
     (AX?esc(AX.a[0])+' ('+esc(R.d.n)+' archetype)'+(AX.x[4]?' · '+esc(AX.x[4]):''):esc(R.d.n)+' class feature'+(nopt?' · '+plural(nopt,'choice')+' in its list':''))+'</div>'+
-    (hit?'<p class="note warn" style="margin:0 0 6px">'+(hit.how==='r'?'Replaced':'Changed')+' by your archetype '+esc(hit.by[0])+': '+esc(hit.x[0])+(hit.how==='r'?'. You may not have this feature any more.':'.')+'</p>':'');
+    (hit?'<p class="note warn" style="margin:0 0 6px">'+(hit.how==='r'?'Replaced':'Altered')+' by your archetype '+esc(hit.by[0])+': '+esc(cwName(hit.x[0]))+(hit.how==='r'?'. You may not have this feature any more.':'. The archetype’s version takes its place.')+'</p>':'')+
+    /* an archetype feature: what it alters or replaces, with the base feature's text folded (the archetype's text often only says what changes) */
+    (AX&&(AX.x[3]||[]).length?'<div style="margin:0 0 6px">'+(AX.x[3]).map(function(r){ var bf=R.d.f[r[0]]; return '<details><summary class="note">'+(r[2]==='r'?'Replaces':'Alters')+': '+esc(cwName(bf[0]))+(r[1]?' (the one at '+r[1]+')':'')+'</summary><div class="wkt" style="font-size:14px">'+mdLite(bf[1]||'')+'</div></details>'; }).join('')+'</div>':'');
   if(md) h+='<div class="wkt'+(long&&!more?' clip':'')+'">'+mdLite(md)+'</div>'+(long?'<button class="link" data-a="wkMore" data-k="'+esc(key)+'">'+(more?'Show less':'Show all')+'</button>':'');
   else h+='<p class="note" style="margin:0">The wiki lists its choices; add the ones you take below.</p>';
   return h+'</div>'; }
@@ -5443,26 +5519,6 @@ function levelUpFlow(opts){
   }
   /* the class's wiki file loads first (a short wait the first time; nothing if the class has none or it can't load) */
   function step4(){ return cwLoad(K()).then(step4b); }
-  /* features from the class table at this class level, as rows: new features, a choice row for a feature with a list,
-     an empty Bonus feat row; features you have already only "improve" (listed, no row) */
-  function cwPrefill(d,n,have,k){ var out={xr:[],fr:[],info:[]}, hv=have.map(wkNorm), cap=function(t){ return t.charAt(0).toUpperCase()+t.slice(1); };
-    var had=function(nm){ return hv.indexOf(wkNorm(nm))>=0||out.xr.some(function(r){ return !r.under&&wkNorm(r.name)===wkNorm(nm); }); };
-    ((d.lv||{})[String(n)]||[]).forEach(function(e){ var t=String(e[0]||''), f=e[1]>=0?d.f[e[1]]:null, nm=f?cwName(f[0]):'', ah=f?cwArchHit(d,k,e[1],n):null;
-      /* your archetype replaces it: no row; changes it: the row stays, the note says so */
-      if(ah&&ah.how==='r'){ out.info.push([t,'replaced by '+ah.by[0]+': '+cwName(ah.x[0])]); return; }
-      if(ah) out.info.push([t,'changed by '+ah.by[0]+': '+cwName(ah.x[0])]);
-      if(/^bonus\s+(\w+\s+)?talents?\b/i.test(t)){ out.info.push([t,'counted with your talents']); return; }
-      if(/^bonus\s+(\w+\s+)?feats?\b/i.test(t)){ out.fr.push({name:'',kind:'bonus',notes:'',mods:[],ph:cap(t)+' ('+d.n+')'}); out.info.push([t,'a Bonus feat row']); return; }
-      if(!f){ if(!had(t)) out.xr.push({name:cap(t),under:'',notes:'',mods:[],auto:1}); out.info.push([t,'not on the wiki page as its own feature']); return; }
-      var note=function(x){ if(!ah) out.info.push([t,x]); };
-      if(e.length>2&&f[2][e[2]]){ if(!had(nm)) out.xr.push({name:nm,under:'',notes:'',mods:[],auto:1}); out.xr.push({name:cwName(f[2][e[2]][0]),under:nm,notes:'',mods:[],auto:1}); note(''); return; }
-      if((f[2]||[]).length){ if(!had(nm)) out.xr.push({name:nm,under:'',notes:'',mods:[],auto:1}); out.xr.push({name:'',under:nm,notes:'',mods:[],auto:1}); note('pick one from its list'); return; }
-      if(had(nm)){ note('you have it: it improves'); return; }
-      out.xr.push({name:nm,under:'',notes:'',mods:[],auto:1}); note(''); });
-    /* the archetypes' own features at this class level */
-    cwArchs(d,k).forEach(function(a){ a[2].forEach(function(x){ if(x[2]!==n) return; var nm=cwName(x[0]);
-      if(!had(nm)) out.xr.push({name:nm,under:'',notes:'',mods:[],auto:1}); out.info.push([nm,'from '+a[0]]); }); });
-    return out; }
   function step4b(){
     var k=K(), n=nIn(), feat=(L+1)%2===1, tsN=classTalentSplit(k,n), tsP=classTalentSplit(k,n-1), utl=tsN.util-tsP.util, tal=tsN.any-tsP.any+(k.cast!=='none'&&!D.castLv&&!D.trad.bonus2&&ch.traditions.mode!=='unified'?2:0);
     var TOPT=targetOpts(), HAVE=haveFeatures(), kn=String(k.features||'').trim(), CD=cwOf(k), key=W.cls+':'+n, CI=[];
@@ -5695,7 +5751,11 @@ document.addEventListener('change',function(e){
     }
     if(/^possess\.(lengthen|willing)$/.test(t.dataset.f)&&ch.possess) possRetime(plUsed);
     if(t.dataset.f==='possessOpt.timer'&&v&&ch.possess&&ch.possess.left==null) possTimerStart(); }
-  else if(t.dataset.in){ var arr=getPath(ch,t.dataset.in)||[]; arr=arr.filter(function(x){return x!==t.dataset.v;}); if(t.checked) arr.push(t.dataset.v); setPath(ch,t.dataset.in,arr); }
+  else if(t.dataset.in){ var arr=getPath(ch,t.dataset.in)||[]; arr=arr.filter(function(x){return x!==t.dataset.v;}); if(t.checked) arr.push(t.dataset.v);
+    /* archetypes of a class that already has levels: the retrain preview decides (2026-11-12) */
+    var am=/^classes\.([^.]+)\.arch$/.exec(t.dataset.in);
+    if(am&&archSwapPlan(am[1],arr)){ var newA=arr, cid=am[1]; t.checked=!t.checked; runAction(function(){ return archSwapFlow(cid,newA); }); return; }
+    setPath(ch,t.dataset.in,arr); }
   else if(t.dataset.tgt!==undefined){ var mt=ch.mods[+t.dataset.tgt]; if(!mt) return; var tv=t.value.trim().toLowerCase(), hit=targetOpts().filter(function(o){ return o[1].toLowerCase()===tv||o[0].toLowerCase()===tv; })[0]||targetOpts().filter(function(o){ return o[1].toLowerCase().indexOf(tv)>=0; })[0];
     if(!tv||!hit){ if(tv) toast('Nothing matches “'+t.value.trim()+'”: try reflex, climb, fire…'); paintSoon(); return; } mt.target=hit[0]; }
   else if(t.dataset.msec!==undefined){ var m=ch.mods[+t.dataset.msec]; if(!m) return; var sv=t.value;
