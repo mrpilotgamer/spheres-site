@@ -266,17 +266,75 @@ def cname(s):
 
 def archetypes(pages, L, files, report):
     """Archetypes for the Spheres classes with a file, plus the "Sphere X" conversions of other classes (a file of their own,
-    with no base features: pz). Each: [name, page, [[feature, text, level, [[replaced feature index, level or 0]...], replaces text]...]]."""
+    with no base features: pz). Each: [name, page, [[feature, text, level, [[base feature index, level or 0, r/m]...], replaces text]...]].
+
+    Where they come from (2026-11-12, owner found Bravo had 1 of its 9): first the class page's own "# Archetypes" list
+    (its "## Name [book]" entries), each found by its page wherever the bundle keeps it (06- archetype files or the 14-
+    "other" files); then archetype pages titled "(X Archetype)"; then, for classes without such a list, untitled 06- pages
+    whose "This replaces ..." lines name that class's features. Genius and Wunderkind are archetypes the wiki presents as
+    whole classes (class pages with their own table), so they are not read as archetypes here."""
     byname = {norm(e['n']): e for e in L}
     fnorms = {sl: [norm(f[0]) for f in d['f']] for sl, d in files.items()}
     sph = {norm(d['n'].replace(' (Spheres)', '')): sl for sl, d in files.items()}
-    seen = set()
+    titles = {}
+    for ps, t in pages.items():
+        tm = re.match(r'\s*# (.+)', t)
+        if tm:
+            tt = re.sub(r'\s*\([^()]*Archetype\)\s*$', '', cname(tm.group(1)), flags=re.I)
+            titles.setdefault(norm(tt), []).append(ps)
+    seen, listed = set(), set()
+
+    def add(sl, title, ps, body):
+        if (sl, norm(title)) in seen:
+            return True
+        fs = arch_features(body)
+        if not fs:
+            return False
+        seen.add((sl, norm(title)))
+        fn, out = fnorms[sl], []
+        for f in fs:
+            reps = []
+            for r in REP.finditer(f[3] or ''):
+                how = 'r' if r.group(1).lower().startswith('replac') else 'm'
+                for k, lv in rep_parts(r.group(2)):
+                    i = feat_index(k, fn)
+                    if i >= 0 and not any(x[0] == i and x[1] == lv for x in reps):
+                        reps.append([i, lv, how])
+            out.append([f[0], f[1], f[2], reps, f[3]])
+        files[sl]['a'].append([title, ps, out])
+        return True
+
+    def body_of(t):
+        tm = re.match(r'\s*# (.+)', t)
+        return first_tab(t[tm.end():] if tm else t)
+
+    # 1. the class page's own list
+    for sl, d in list(files.items()):
+        if d.get('pz') or not d.get('p') or d['p'] not in pages:
+            continue
+        m = re.search(r'\n# Archetypes\s*\n(.*?)(?=\n# |\Z)', pages[d['p']], re.S)
+        if not m:
+            continue
+        listed.add(sl)
+        for nm in re.findall(r'^## (.+)$', m.group(1), re.M):
+            nm = cname(nm).lstrip('-').strip()         # "-Bearon": a sub-entry of the list, still an archetype
+            if re.match(r'old\s', nm, re.I) or re.match(r'favou?red class', nm, re.I):
+                continue                                  # superseded versions; a stray section heading
+            cands = [c for c in [slug(nm), slug(nm) + '-archetype'] if c in pages] + titles.get(norm(nm), [])
+            # an archetype page can sit in the class files too (Famine Spirit); a class page never counts
+            cands = [c for c in dict.fromkeys(cands) if not (WHERE.get(c, '').startswith('05-') and re.search(r'\*\*Hit Di', pages[c][:6000]))]
+            # prefer the page that names this class, then an archetype file
+            cands.sort(key=lambda c: (not re.search(r'\b' + re.escape(d['n'].replace(' (Spheres)', '').lower()), pages[c].lower()), not WHERE.get(c, '').startswith('06-')))
+            if not cands or not add(sl, nm, cands[0], body_of(pages[cands[0]])):
+                report.append('archetype listed but its page not found: %s / %s' % (d['n'], nm))
+
+    # 2. archetype pages with the class in the title, and the sphere conversions; 3. untitled ones by what they replace
     for ps, t in pages.items():
         if not WHERE.get(ps, '').startswith('06-'):
             continue
         tm = re.match(r'\s*# (.+)', t)
         title = cname(tm.group(1)) if tm else ps
-        body = first_tab(t[tm.end():] if tm else t)
+        body = body_of(t)
         bases = []
         m = re.search(r'\(([^()]+?)\s+Archetype\)\s*$', title, re.I)
         cm = re.match(r'Spheres? (.+?)(?:\s*\(.*)?$', title)
@@ -286,7 +344,6 @@ def archetypes(pages, L, files, report):
         if cm and not m:
             bases = [cm.group(1).strip()]
         if cm:
-            # a sphere conversion of a Paizo (or other) class: kept for any class in the class list
             for b in bases:
                 e = byname.get(norm(b)) or byname.get(norm(b + ' (Unchained)'))
                 if not e:
@@ -294,45 +351,28 @@ def archetypes(pages, L, files, report):
                 sl = slug(e['n'])
                 if sl not in files:
                     files[sl] = {'v': V, 'n': re.sub(r'\s*\(Unchained\)', '', e['n']), 'p': '', 'f': [], 'lv': {}, 'a': [], 'pz': 1}
+                    fnorms[sl] = []
                 fs = arch_features(body)
-                if fs and (sl, title) not in seen:
-                    seen.add((sl, title))
+                if fs and (sl, norm(title)) not in seen:
+                    seen.add((sl, norm(title)))
                     files[sl]['a'].append([title, ps, [[f[0], f[1], f[2], [], f[3]] for f in fs]])
-            continue
-        fs = arch_features(body)
-        if not fs:
             continue
         cands = [sph[norm(b)] for b in bases if norm(b) in sph]
         if not bases:
-            # no class in the title: the Spheres class whose features it replaces (at least two names, or one and the class named)
+            fs = arch_features(body)
             votes = {}
             for f in fs:
                 for r in REP.finditer(f[3] or ''):
                     for k, lv in rep_parts(r.group(2)):
                         for sl, fn in fnorms.items():
-                            if feat_index(k, fn) >= 0 and k in fn:
+                            if sl not in listed and k in fn:
                                 votes[sl] = votes.get(sl, 0) + 1
             if votes:
                 best = max(votes, key=votes.get)
                 if votes[best] >= 2 or re.search(r'\b' + re.escape(files[best]['n'].lower()), body.lower()):
                     cands = [best]
         for sl in cands:
-            if (sl, title) in seen:
-                continue
-            seen.add((sl, title))
-            fn, out, miss = fnorms[sl], [], []
-            for f in fs:
-                reps = []
-                for r in REP.finditer(f[3] or ''):
-                    how = 'r' if r.group(1).lower().startswith('replac') else 'm'
-                    for k, lv in rep_parts(r.group(2)):
-                        i = feat_index(k, fn)
-                        if i >= 0 and not any(x[0] == i and x[1] == lv for x in reps):
-                            reps.append([i, lv, how])
-                        elif i < 0:
-                            miss.append(k)
-                out.append([f[0], f[1], f[2], reps, f[3]])
-            files[sl]['a'].append([title, ps, out])
+            add(sl, title, ps, body)
     for sl, d in files.items():
         d['a'].sort(key=lambda a: a[0].lower())
 
@@ -341,6 +381,16 @@ def build(bundle, outdir):
     html = open(os.path.join(HERE, '..', 'public', 'index.html'), encoding='utf8').read()
     L = json.loads(re.search(r'id="classLib">(.*?)</script>', html).group(1))
     pages = load_pages(bundle)
+    # pages the bundle doesn't have yet, saved from the live wiki in the bundle's own format (tools/wiki-extra/<slug>.md)
+    extra = os.path.join(HERE, 'wiki-extra')
+    if os.path.isdir(extra):
+        for f in sorted(os.listdir(extra)):
+            if f.endswith('.md'):
+                parts = re.split(r'<!-- page: (\S+) -->', open(os.path.join(extra, f), encoding='utf8').read())
+                for i in range(1, len(parts), 2):
+                    if parts[i] not in pages:
+                        pages[parts[i]] = parts[i + 1]
+                        WHERE[parts[i]] = 'wiki-extra/' + f
     find = page_finder(pages)
 
     os.makedirs(outdir, exist_ok=True)

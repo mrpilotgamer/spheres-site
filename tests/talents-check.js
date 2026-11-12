@@ -94,11 +94,13 @@ check('every replaced or changed feature points at a base feature of that class'
 const bpb = (cread('striker.json').a || []).find(a => a[0] === 'Black Powder Brawler'), gg = bpb && bpb[2].find(x => /^Gun Genius/.test(x[0]));
 check('Black Powder Brawler: Gun Genius at 2nd replaces Tension Boost at 2nd and Uncanny Dodge', gg ? [gg[2]].concat(gg[3].map(r => cread('striker.json').f[r[0]][0] + '@' + r[1] + r[2])).join(', ') : 'missing', '2, Tension Boost (Ex)@2r, Uncanny Dodge (Ex)@0r, Improved Uncanny Dodge (Ex)@0r');
 check('Black Powder Brawler: Firearm Fighter changes (not replaces) the Striker Art at 2nd', JSON.stringify((bpb[2].find(x => /^Firearm Fighter/.test(x[0])) || [])[3]), '[[5,2,"m"]]');
+check('Bravo has all 9 archetypes its class page lists (some live in the bundle’s “other” files)', (cread('bravo.json').a || []).map(a => a[0]).join(', '), 'Allusionist, Daredevil, Dreadnought, Dynamo, Eclectic, Quicksilver, Serendipitist, Smasher, Tracer');
+check('Commander has Administrator (a page saved from the live wiki, tools/wiki-extra/)', (cread('commander.json').a || []).some(a => a[0] === 'Administrator'));
 check('Sphere Wizard is in wizard.json, a class file with no base features', (() => { const W = cread('wizard.json'); return W.pz === 1 && !W.f.length && W.a.some(a => a[0] === 'Sphere Wizard'); })());
 const pzList = JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', 'public', 'index.html'), 'utf8').match(/var CW_PZ=(\[[^\]]*\])/)[1].replace(/'/g, '"'));
 check('the sheet’s CW_PZ list is the Paizo classes with a conversion file', pzList.slice().sort().join(' '), cslugs.filter(s => CI.classes[s].pz).sort().join(' '));
 const csize = fs.readdirSync(CDIR).reduce((a, f) => a + fs.statSync(path.join(CDIR, f)).size, 0);
-check('all class files together under 4 MB', csize < 4 * 1048576, (csize / 1048576).toFixed(1) + ' MB');
+check('all class files together under 6 MB', csize < 6 * 1048576, (csize / 1048576).toFixed(1) + ' MB');
 
 console.log(`\n${pass} passed, ${fail} failed (${slugs.length} spheres, ${total} talents, ${D.d.length} drawbacks and boons; ${cslugs.length} classes, ${nfeat} class features, ${narch} archetypes)`);
 process.exit(fail ? 1 : 0);
