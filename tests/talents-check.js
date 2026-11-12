@@ -85,8 +85,20 @@ check('Striker: Striker Art has its list (at least 30 arts, Adrenaline Rush amon
 check('Striker level 2 names Striker Art and Tension Boost', cread('striker.json').lv['2'].map(e => cread('striker.json').f[e[1]][0]).join(', '), 'Striker Art (Ex), Tension Boost (Ex)');
 check('Troubadour: Actor Training lists Gossip', (cfeat('troubadour', 'Actor Training') || [0, 0, []])[2].some(o => norm(o[0]) === 'gossip'));
 check('Incanter has a Specializations feature with its text', !!cfeat('incanter', 'Incanter Specializations') && cfeat('incanter', 'Incanter Specializations')[1].length > 100);
+/* archetypes (2026-11-12): replaced features point at real base features; the sheet's list of Paizo classes with conversions matches */
+const abad = [];
+let narch = 0;
+for (const s of cslugs) { const F = cread(s + '.json'); (F.a || []).forEach(a => { narch++; a[2].forEach(x => (x[3] || []).forEach(r => { if (!(r[0] >= 0 && r[0] < F.f.length && r[1] >= 0 && r[1] <= 20 && /^[rm]$/.test(r[2]))) abad.push(F.n + ' / ' + a[0] + ' / ' + x[0]); })); }); }
+check('at least 150 archetypes', narch >= 150, narch);
+check('every replaced or changed feature points at a base feature of that class', !abad.length, abad.slice(0, 10).join('; '));
+const bpb = (cread('striker.json').a || []).find(a => a[0] === 'Black Powder Brawler'), gg = bpb && bpb[2].find(x => /^Gun Genius/.test(x[0]));
+check('Black Powder Brawler: Gun Genius at 2nd replaces Tension Boost at 2nd and Uncanny Dodge', gg ? [gg[2]].concat(gg[3].map(r => cread('striker.json').f[r[0]][0] + '@' + r[1] + r[2])).join(', ') : 'missing', '2, Tension Boost (Ex)@2r, Uncanny Dodge (Ex)@0r, Improved Uncanny Dodge (Ex)@0r');
+check('Black Powder Brawler: Firearm Fighter changes (not replaces) the Striker Art at 2nd', JSON.stringify((bpb[2].find(x => /^Firearm Fighter/.test(x[0])) || [])[3]), '[[5,2,"m"]]');
+check('Sphere Wizard is in wizard.json, a class file with no base features', (() => { const W = cread('wizard.json'); return W.pz === 1 && !W.f.length && W.a.some(a => a[0] === 'Sphere Wizard'); })());
+const pzList = JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', 'public', 'index.html'), 'utf8').match(/var CW_PZ=(\[[^\]]*\])/)[1].replace(/'/g, '"'));
+check('the sheet’s CW_PZ list is the Paizo classes with a conversion file', pzList.slice().sort().join(' '), cslugs.filter(s => CI.classes[s].pz).sort().join(' '));
 const csize = fs.readdirSync(CDIR).reduce((a, f) => a + fs.statSync(path.join(CDIR, f)).size, 0);
 check('all class files together under 4 MB', csize < 4 * 1048576, (csize / 1048576).toFixed(1) + ' MB');
 
-console.log(`\n${pass} passed, ${fail} failed (${slugs.length} spheres, ${total} talents, ${D.d.length} drawbacks and boons; ${cslugs.length} classes, ${nfeat} class features)`);
+console.log(`\n${pass} passed, ${fail} failed (${slugs.length} spheres, ${total} talents, ${D.d.length} drawbacks and boons; ${cslugs.length} classes, ${nfeat} class features, ${narch} archetypes)`);
 process.exit(fail ? 1 : 0);

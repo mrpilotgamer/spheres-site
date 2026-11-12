@@ -1566,6 +1566,30 @@ function check(what, got, want) {
     check('a choice without notes says it has wiki text', /Adrenaline Rush · wiki text/.test((await sub.locator('summary').innerText()).replace(/\s+/g, ' ')), true);
     await sub.locator('summary').click(); await idle();
     check('…and shows it', /From the wiki \(Striker\):.*spend an additional point of tension/.test((await sub.innerText()).replace(/\s+/g, ' ')), true);
+    /* archetypes (2026-11-12): ticked on the Build tab, they change what level up fills in and what the tab says */
+    await mkS({}, [{ cls: 'c1', hp: 10, picks: [{ kind: 'feature', name: 'Bare Knuckles (Ex)' }] }]); await page.reload(); await idle();
+    await go('Character', 'Build'); await until('the Striker archetypes', () => [...document.querySelectorAll('#main summary')].some(e => /^Archetypes \(7 on the wiki\)/.test(e.textContent.trim())));
+    const arD = page.locator('details', { has: page.locator('summary', { hasText: /^Archetypes/ }) }).first();
+    await arD.locator('summary').click();
+    check('the Build tab lists the class’s archetypes with what they replace and change', /Black Powder Brawler Wiki ↗ Replaces Bare Knuckles, Tension Boost at 2, .*; changes Combat Training, Tension, Striker Art at 2/.test((await arD.innerText()).replace(/\s+/g, ' ')), true);
+    await arD.locator('label', { hasText: 'Black Powder Brawler' }).locator('input').check(); await idle();
+    await page.locator('details', { has: page.locator('summary', { hasText: /^Archetypes/ }) }).first().locator('label', { hasText: 'Voidrusher' }).locator('input').check(); await idle();
+    check('ticking saves it; two that replace the same feature are flagged', [JSON.stringify((await stored()).classes.c1.arch), /Black Powder Brawler and Voidrusher both replace .*can’t replace the same feature/.test(await page.locator('#main').innerText())].join(' '), '["Black Powder Brawler","Voidrusher"] true');
+    await page.locator('details', { has: page.locator('summary', { hasText: /^Archetypes/ }) }).first().locator('label', { hasText: 'Voidrusher' }).locator('input').uncheck(); await idle();
+    await page.locator('[data-a="levelUp"]').first().click(); await idle(); await next(); await next();
+    const luT = (await dlg().innerText()).replace(/\s+/g, ' ');
+    check('level up: a replaced feature is left out, a changed one says so', [/tension boost \(replaced by Black Powder Brawler: Gun Genius \(Ex\)\)/.test(luT), /Striker art \(changed by Black Powder Brawler: Firearm Fighter \(Ex\)\)/.test(luT)].join(' '), 'true true');
+    check('…and the archetype’s own level-2 features are rows', await rowsNow(), '>Striker Art (Ex), Striker Art (Ex)>, >Firearm Fighter (Ex), >Gun Genius (Ex)');
+    check('…with their wiki text', /Wiki text: Gun Genius \(Ex\) \(Black Powder Brawler\)/.test(await dlg().locator('.xr-item').nth(3).locator('.lu-wk').innerText()), true);
+    await cancelOrEsc(dlg().locator('button', { hasText: 'Cancel' }).first()); await settle();
+    await go('Character', 'Feats & features'); await item('Bare Knuckles').locator('summary').first().click(); await idle();
+    await until('the replaced note', () => /Replaced by your archetype/.test(document.querySelector('#main').textContent));
+    check('the tab says when your archetype replaces a feature you have', /Replaced by your archetype Black Powder Brawler: Firearm Proficiency/.test(await item('Bare Knuckles').locator('.wk').innerText()), true);
+    /* a Paizo class: its sphere conversion fills in its features */
+    await mkS({ name: 'Wizard', hd: 6, bab: '1/2', good: ['will'], skills: 2, cast: 'high', martial: 'none', arch: ['Sphere Wizard'] }, []); await page.reload(); await idle();
+    await page.locator('[data-a="levelUp"]').first().click(); await idle(); await next(); await next();
+    check('a Wizard with Sphere Wizard: level 1 fills in the conversion’s features', [/From Sphere Wizard at class level 1/.test(await dlg().innerText()), await rowsNow()].join(' | '), 'true | >Casting, >Spell Points, >Magic Talents, >Arcane Bond (Ex), >Sphere Specialization');
+    await cancelOrEsc(dlg().locator('button', { hasText: 'Cancel' }).first()); await settle();
   }
 
   /* ---------- armor check penalty with the encumbrance house rule; an action that throws ---------- */

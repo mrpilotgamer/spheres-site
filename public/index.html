@@ -828,7 +828,7 @@ function libPreview(e){ if(!e) return '<span class="note">Type to search: name o
 function libInput(name,cur){ return '<input type="text" name="'+name+'" list="classLibList" aria-label="Search the class list" placeholder="Search the class list…" autocomplete="off" style="width:100%" value="'+(cur?esc(libLabel(cur)):'')+'"><datalist id="classLibList">'+CLASSLIB.slice().sort(function(a,b){ return a.n.localeCompare(b.n); }).map(function(e){ return '<option value="'+esc(libLabel(e))+'">'; }).join('')+'</datalist><p class="lib-prev" style="margin:6px 0 0">'+libPreview(cur||null)+'</p>'; }
 function libWire(root,name){ var i=root.querySelector('[name='+name+']'), pv=root.querySelector('.lib-prev'); i.addEventListener('input',function(){ pv.innerHTML=libPreview(libFind(i.value)); }); }
 function applyLibSideEffects(c,k){ if(/^undead$/i.test(k.name)&&c.hpAb!=='cha'){ c.hpAb='cha'; return 'Hit points and Fortitude now use Charisma (undead).'; } if(/^construct$/i.test(k.name)&&c.hpAb==='con'){ c.hpAb='none'; return 'Hit points now use no ability (construct). Constructs also get bonus hp by size: add it as a modifier.'; } return ''; }
-function blankClass(name){ return {name:name||'New class',hd:8,bab:'3/4',good:['will'],skills:4,classSkills:[],cast:'none',martial:'none',skill:'none',util:false,utilx:'',prestige:false,talents:'auto',bonusTalents:0,talx:'',features:'',wiki:''}; }
+function blankClass(name){ return {name:name||'New class',hd:8,bab:'3/4',good:['will'],skills:4,classSkills:[],cast:'none',martial:'none',skill:'none',util:false,utilx:'',prestige:false,talents:'auto',bonusTalents:0,talx:'',features:'',wiki:'',arch:[]}; }
 
 /* ---------- temporary talents ----------
    Core rules, "Temporary Talents": talents held for less than 24 hours (implements don't count). Effects made with one end when it's
@@ -1620,7 +1620,7 @@ function sanitizeChar(o){
   /* class ids end up inside attributes and formulas (lvl.<id>): an imported one that isn't plain letters, digits, - or _ gets a new id */
   var cRe={}; Object.keys(b.classes).forEach(function(id){ if(/^[A-Za-z0-9_-]{1,60}$/.test(id)) return; var nid='c'+uidG().slice(1); while(own(b.classes,nid)) nid+='x'; b.classes[nid]=b.classes[id]; delete b.classes[id]; cRe[id]=nid; });
   Object.keys(b.classes).forEach(function(id){ var k=b.classes[id]=Object.assign(blankClass(),b.classes[id]&&typeof b.classes[id]==='object'&&!Array.isArray(b.classes[id])?b.classes[id]:{}); k.talents=own(TALP_OLD,k.talents)?TALP_OLD[k.talents]:own(TALP,k.talents)?k.talents:'auto';
-    if(!Array.isArray(k.classSkills)) k.classSkills=[]; k.classSkills=k.classSkills.filter(function(x){ return typeof x==='string'; }); if(!Array.isArray(k.good)) k.good=[]; k.name=String(k.name==null?'':k.name); if(!own(TALX,k.talx)) k.talx=''; k.wiki=typeof k.wiki==='string'&&/^(-|[a-z0-9-]{1,80})?$/.test(k.wiki)?k.wiki:''; });
+    if(!Array.isArray(k.classSkills)) k.classSkills=[]; k.classSkills=k.classSkills.filter(function(x){ return typeof x==='string'; }); if(!Array.isArray(k.good)) k.good=[]; k.name=String(k.name==null?'':k.name); if(!own(TALX,k.talx)) k.talx=''; k.wiki=typeof k.wiki==='string'&&/^(-|[a-z0-9-]{1,80})?$/.test(k.wiki)?k.wiki:''; k.arch=(Array.isArray(k.arch)?k.arch:[]).filter(function(x){ return typeof x==='string'&&x.trim(); }).map(function(x){ return x.slice(0,120); }).slice(0,6); });
   Object.keys(b.conds).forEach(function(k){ if(!own(CONDM,k)||!b.conds[k]) delete b.conds[k]; });
   if(!own(SIZES,b.size)) b.size='M';
   var t0=o.traditions&&typeof o.traditions==='object'?o.traditions:{}; b.traditions=Object.assign(blankTrads(),t0);
@@ -3032,6 +3032,19 @@ function rBuild(){
       (function(){ var auto=k.wiki?'':clsWiki(k), en=CLASSLIB.filter(function(e){ return e.c==='Spheres'; }).map(function(e){ return [clsSlug(e.n),e.n]; }).sort(function(a2,b2){ return a2[1].localeCompare(b2[1]); });
         return '<div class="fields">'+fS(p+'wiki','Class features from the wiki',[['',auto?'By its name ('+(en.filter(function(x){ return x[0]===auto; })[0]||['',auto])[1]+')':'By its name (no match)'],['-','None']].concat(en))+'</div>'+
           '<p class="note" style="margin:0 0 6px">Level up fills in this class’s features from the wiki class table, with their text. An archetype renamed from a class keeps it; set it here if the name doesn’t match.</p>'; })()+
+      /* archetypes from the wiki (2026-11-12): ticked ones change what level up fills in */
+      (function(){ var sl=clsWiki(k); if(!sl) return ''; var st=cwState(sl);
+        if(st==='none'||st==='loading') return '<p class="note" data-cwneed="'+esc(sl)+'" style="margin:0 0 6px">Loading the archetypes…</p>';
+        var d=cwOf(k); if(!d||!(d.a||[]).length) return '';
+        var on=(k.arch||[]).map(wkNorm), mine=cwArchs(d,k), seen={}, clash=[];
+        mine.forEach(function(a){ a[2].forEach(function(x){ (x[3]||[]).forEach(function(r){ if(r[2]!=='r') return; var key=r[0]+':'+r[1]; if(seen[key]&&seen[key]!==a[0]) clash.push(seen[key]+' and '+a[0]+' both replace '+cwName(d.f[r[0]][0])); else seen[key]=a[0]; }); }); });
+        var sum=function(a){ var R={}, M={}; a[2].forEach(function(x){ (x[3]||[]).forEach(function(r){ var nm=cwName(d.f[r[0]][0]).replace(/\s*\((Ex|Su|Sp)\)$/,'')+(r[1]?' at '+r[1]:''); (r[2]==='r'?R:M)[nm]=1; }); });
+          var b=[]; if(Object.keys(R).length) b.push('Replaces '+Object.keys(R).join(', ')); if(Object.keys(M).length) b.push('changes '+Object.keys(M).join(', '));
+          return b.length?b.join('; '):a[2].map(function(x){ return cwName(x[0]); }).slice(0,6).join(', ')+(a[2].length>6?'…':''); };
+        return '<details data-keep="ar-'+esc(id)+'"><summary>Archetypes'+(mine.length?': '+esc(mine.map(function(a){ return a[0]; }).join(', ')):' ('+d.a.length+' on the wiki)')+'</summary>'+
+          '<p class="note" style="margin:4px 0">Ticked archetypes change what level up fills in: replaced features are left out, changed ones say so, and the archetype’s own features come at their levels.</p>'+
+          d.a.map(function(a){ return '<label class="ck" style="display:flex;align-items:flex-start;gap:8px;margin:6px 0"><input type="checkbox" data-in="'+p+'arch" data-v="'+esc(a[0])+'"'+(on.indexOf(wkNorm(a[0]))>=0?' checked':'')+'><span><b>'+esc(a[0])+'</b> <a class="note" href="'+esc(WK_WIKI+a[1])+'" target="_blank" rel="noopener">Wiki ↗</a><br><span class="note">'+esc(sum(a))+'</span></span></label>'; }).join('')+
+          (clash.length?'<p class="note warn" style="margin:4px 0">'+esc(clash.join('. '))+': two archetypes can’t replace the same feature.</p>':'')+'</details>'; })()+
       '<div class="row"><span class="note">'+(D.cc[id]?plural(D.cc[id],'level'):'No levels yet')+'</span><span class="spacer"></span>'+(D.cc[id]?'':'<button class="mini danger" data-a="delClass" data-id="'+esc(id)+'">Remove</button>')+'</div></div>';
   });
   h+='</section>';
@@ -3903,7 +3916,16 @@ function wkGet(file,cb){ var st=wkState(file); if(st==='ok'||st==='err'){ if(cb)
    A class links to its file by k.wiki: '' = by its name (a renamed archetype "Striker (Brawler)" still finds Striker), '-' = none. */
 var CW_SITE='https://spheres-character-sheet.web.app/classes/', CW={f:{},cb:{}};
 function clsSlug(n){ return String(n||'').toLowerCase().replace(/\[[^\]]*\]|\([^)]*\)/g,' ').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,''); }
-function clsWiki(k){ if(!k||k.wiki==='-') return ''; if(k.wiki) return k.wiki; var s=clsSlug(k.name); return CLASSLIB.some(function(e){ return e.c==='Spheres'&&clsSlug(e.n)===s; })?s:''; }
+/* classes that aren't Spheres classes but have a file for their "Sphere X" conversion archetypes (tools/build-classes.py, "pz"; tests/talents-check.js keeps this list in step) */
+var CW_PZ=['alchemist','antipaladin','arcanist','bard','bloodrager','cleric','demoniac','diabolist','druid','exalted','hunter','inquisitor','investigator','magus','medium','mesmerist','mystery-cultist','oracle','paladin','psion','ranger','shaman','skald','sorcerer','summoner','warpriest','wilder','witch','wizard'];
+function clsWiki(k){ if(!k||k.wiki==='-') return ''; if(k.wiki) return k.wiki; var s=clsSlug(k.name); return CW_PZ.indexOf(s)>=0||CLASSLIB.some(function(e){ return e.c==='Spheres'&&clsSlug(e.n)===s; })?s:''; }
+/* the archetypes chosen for class k that its file has: [[name, page, features]...] */
+function cwArchs(d,k){ var on=((k&&k.arch)||[]).map(wkNorm); return d&&d.a?d.a.filter(function(a){ return on.indexOf(wkNorm(a[0]))>=0; }):[]; }
+/* an archetype feature by name (chosen archetypes first, then any of the file's): {a: archetype, x: feature} */
+function cwArchFind(d,k,name){ if(!d||!d.a) return null; var n=wkNorm(name), pick=function(list){ for(var i=0;i<list.length;i++){ for(var j=0;j<list[i][2].length;j++){ if(wkNorm(list[i][2][j][0])===n) return {a:list[i],x:list[i][2][j]}; } } return null; };
+  return pick(cwArchs(d,k))||pick(d.a); }
+/* what the chosen archetypes do to base feature fi at class level n (n 0 = at any level): {how: 'r'|'m', by: archetype, x: its feature} */
+function cwArchHit(d,k,fi,n){ var out=null; cwArchs(d,k).forEach(function(a){ a[2].forEach(function(x){ (x[3]||[]).forEach(function(r){ if(r[0]===fi&&(!r[1]||!n||r[1]===n)&&(!out||r[2]==='r')) out={how:r[2],by:a,x:x}; }); }); }); return out; }
 function cwState(sl){ var v=CW.f[sl]; return v===undefined?'none':v==='loading'||v==='err'?v:'ok'; }
 function cwGet(sl,cb){ var st=cwState(sl); if(st==='ok'||st==='err'){ if(cb) cb(st); return; } if(cb) (CW.cb[sl]=CW.cb[sl]||[]).push(cb); if(st==='loading') return; CW.f[sl]='loading';
   var done=function(v){ CW.f[sl]=v; var cs=CW.cb[sl]||[]; delete CW.cb[sl]; cs.forEach(function(f){ try{ f(cwState(sl)); }catch(e){} }); };
@@ -3924,13 +3946,16 @@ function cwClassesFor(lvl){ var L0=lvl>0?ch.levels[lvl-1]:null, ids=L0?[L0.cls]:
 /* a feature (or a choice under one) in those files: {d, f, o} once they're loaded; {need: [slugs]} while some are loading */
 function cwLookup(lvl,name,under){ var ks=cwClassesFor(lvl), need=[];
   for(var i=0;i<ks.length;i++){ var sl=clsWiki(ks[i]), st=cwState(sl); if(st==='none'||st==='loading'){ need.push(sl); continue; } if(st!=='ok') continue;
-    var h=cwFind(CW.f[sl],name,under); if(h&&(!under||h.o>=0)) return {d:CW.f[sl],f:h.f,o:h.o}; }
+    var h=cwFind(CW.f[sl],name,under); if(h&&(!under||h.o>=0)) return {d:CW.f[sl],f:h.f,o:h.o,k:ks[i]};
+    if(!under){ var ah=cwArchFind(CW.f[sl],ks[i],name); if(ah) return {d:CW.f[sl],ax:ah,k:ks[i]}; } }
   return need.length?{need:need}:null; }
 /* the wiki text of a class feature pick, in the same box as a talent's (Feats & features tab) */
 function cwBox(p,lvl,path){ if(!String(p.name||'').trim()) return ''; var R=cwLookup(lvl,p.name);
   if(!R) return ''; if(R.need) return '<div class="wk" data-cwneed="'+esc(R.need.join(' '))+'"><p class="note">Loading the wiki text…</p></div>';
-  var f=R.d.f[R.f], md=f[1]||'', key='cw-'+path, more=!!(UI.wkMore||{})[key], long=md.length>900, nopt=(f[2]||[]).length;
-  var h='<div class="wk"><div class="wkh"><b>'+esc(cwName(f[0]))+'</b><span class="spacer"></span><a class="note" href="'+esc(WK_WIKI+R.d.p)+'" target="_blank" rel="noopener">Wiki ↗</a></div><div class="note" style="margin:0 0 4px">'+esc(R.d.n)+' class feature'+(nopt?' · '+plural(nopt,'choice')+' in its list':'')+'</div>';
+  var AX=R.ax, f=AX?[AX.x[0],AX.x[1],[]]:R.d.f[R.f], md=f[1]||'', key='cw-'+path, more=!!(UI.wkMore||{})[key], long=md.length>900, nopt=(f[2]||[]).length, hit=AX?null:cwArchHit(R.d,R.k,R.f,lvl>0?ch.levels.slice(0,lvl).filter(function(l){ return l.cls===ch.levels[lvl-1].cls; }).length:0);
+  var h='<div class="wk"><div class="wkh"><b>'+esc(cwName(f[0]))+'</b><span class="spacer"></span><a class="note" href="'+esc(WK_WIKI+(AX?AX.a[1]:R.d.p))+'" target="_blank" rel="noopener">Wiki ↗</a></div><div class="note" style="margin:0 0 4px">'+
+    (AX?esc(AX.a[0])+' ('+esc(R.d.n)+' archetype)'+(AX.x[4]?' · '+esc(AX.x[4]):''):esc(R.d.n)+' class feature'+(nopt?' · '+plural(nopt,'choice')+' in its list':''))+'</div>'+
+    (hit?'<p class="note warn" style="margin:0 0 6px">'+(hit.how==='r'?'Replaced':'Changed')+' by your archetype '+esc(hit.by[0])+': '+esc(hit.x[0])+(hit.how==='r'?'. You may not have this feature any more.':'.')+'</p>':'');
   if(md) h+='<div class="wkt'+(long&&!more?' clip':'')+'">'+mdLite(md)+'</div>'+(long?'<button class="link" data-a="wkMore" data-k="'+esc(key)+'">'+(more?'Show less':'Show all')+'</button>':'');
   else h+='<p class="note" style="margin:0">The wiki lists its choices; add the ones you take below.</p>';
   return h+'</div>'; }
@@ -5396,16 +5421,23 @@ function levelUpFlow(opts){
   function step4(){ return cwLoad(K()).then(step4b); }
   /* features from the class table at this class level, as rows: new features, a choice row for a feature with a list,
      an empty Bonus feat row; features you have already only "improve" (listed, no row) */
-  function cwPrefill(d,n,have){ var out={xr:[],fr:[],info:[]}, hv=have.map(wkNorm), cap=function(t){ return t.charAt(0).toUpperCase()+t.slice(1); };
+  function cwPrefill(d,n,have,k){ var out={xr:[],fr:[],info:[]}, hv=have.map(wkNorm), cap=function(t){ return t.charAt(0).toUpperCase()+t.slice(1); };
     var had=function(nm){ return hv.indexOf(wkNorm(nm))>=0||out.xr.some(function(r){ return !r.under&&wkNorm(r.name)===wkNorm(nm); }); };
-    ((d.lv||{})[String(n)]||[]).forEach(function(e){ var t=String(e[0]||''), f=e[1]>=0?d.f[e[1]]:null, nm=f?cwName(f[0]):'';
+    ((d.lv||{})[String(n)]||[]).forEach(function(e){ var t=String(e[0]||''), f=e[1]>=0?d.f[e[1]]:null, nm=f?cwName(f[0]):'', ah=f?cwArchHit(d,k,e[1],n):null;
+      /* your archetype replaces it: no row; changes it: the row stays, the note says so */
+      if(ah&&ah.how==='r'){ out.info.push([t,'replaced by '+ah.by[0]+': '+cwName(ah.x[0])]); return; }
+      if(ah) out.info.push([t,'changed by '+ah.by[0]+': '+cwName(ah.x[0])]);
       if(/^bonus\s+(\w+\s+)?talents?\b/i.test(t)){ out.info.push([t,'counted with your talents']); return; }
       if(/^bonus\s+(\w+\s+)?feats?\b/i.test(t)){ out.fr.push({name:'',kind:'bonus',notes:'',mods:[],ph:cap(t)+' ('+d.n+')'}); out.info.push([t,'a Bonus feat row']); return; }
       if(!f){ if(!had(t)) out.xr.push({name:cap(t),under:'',notes:'',mods:[],auto:1}); out.info.push([t,'not on the wiki page as its own feature']); return; }
-      if(e.length>2&&f[2][e[2]]){ if(!had(nm)) out.xr.push({name:nm,under:'',notes:'',mods:[],auto:1}); out.xr.push({name:cwName(f[2][e[2]][0]),under:nm,notes:'',mods:[],auto:1}); out.info.push([t,'']); return; }
-      if((f[2]||[]).length){ if(!had(nm)) out.xr.push({name:nm,under:'',notes:'',mods:[],auto:1}); out.xr.push({name:'',under:nm,notes:'',mods:[],auto:1}); out.info.push([t,'pick one from its list']); return; }
-      if(had(nm)){ out.info.push([t,'you have it: it improves']); return; }
-      out.xr.push({name:nm,under:'',notes:'',mods:[],auto:1}); out.info.push([t,'']); });
+      var note=function(x){ if(!ah) out.info.push([t,x]); };
+      if(e.length>2&&f[2][e[2]]){ if(!had(nm)) out.xr.push({name:nm,under:'',notes:'',mods:[],auto:1}); out.xr.push({name:cwName(f[2][e[2]][0]),under:nm,notes:'',mods:[],auto:1}); note(''); return; }
+      if((f[2]||[]).length){ if(!had(nm)) out.xr.push({name:nm,under:'',notes:'',mods:[],auto:1}); out.xr.push({name:'',under:nm,notes:'',mods:[],auto:1}); note('pick one from its list'); return; }
+      if(had(nm)){ note('you have it: it improves'); return; }
+      out.xr.push({name:nm,under:'',notes:'',mods:[],auto:1}); note(''); });
+    /* the archetypes' own features at this class level */
+    cwArchs(d,k).forEach(function(a){ a[2].forEach(function(x){ if(x[2]!==n) return; var nm=cwName(x[0]);
+      if(!had(nm)) out.xr.push({name:nm,under:'',notes:'',mods:[],auto:1}); out.info.push([nm,'from '+a[0]]); }); });
     return out; }
   function step4b(){
     var k=K(), n=nIn(), feat=(L+1)%2===1, tsN=classTalentSplit(k,n), tsP=classTalentSplit(k,n-1), utl=tsN.util-tsP.util, tal=tsN.any-tsP.any+(k.cast!=='none'&&!D.castLv&&!D.trad.bonus2&&ch.traditions.mode!=='unified'?2:0);
@@ -5413,14 +5445,15 @@ function levelUpFlow(opts){
     if(CD&&!W.cwSkip&&W.cwKey!==key){
       /* a different class or level than last time: drop the rows filled in for it that nobody changed */
       if(W.cwKey){ W.xr=(W.xr||[]).filter(function(r){ return !r.auto||r.notes||(r.mods||[]).length; }); W.fr=(W.fr||[]).filter(function(r){ return r.name; }); }
-      W.cwKey=key; var pf=cwPrefill(CD,n,HAVE); W.xr=(W.xr||[]).concat(pf.xr); W.fr=(W.fr||[]).concat(pf.fr); W.cwInfo=pf.info; }
-    if(CD) CI=(W.cwKey===key&&W.cwInfo)||cwPrefill(CD,n,HAVE).info;
+      W.cwKey=key; var pf=cwPrefill(CD,n,HAVE,k); W.xr=(W.xr||[]).concat(pf.xr); W.fr=(W.fr||[]).concat(pf.fr); W.cwInfo=pf.info; }
+    if(CD) CI=(W.cwKey===key&&W.cwInfo)||cwPrefill(CD,n,HAVE,k).info;
     var html=stepsBar(2)+'<p>'+(feat?'<b>A feat</b> this level (odd character level). ':'No feat this level. ')+(tal||utl?'<b>'+[tal?plural(tal,'talent'):'',utl?plural(utl,'[utility] talent'):''].filter(Boolean).join(' and ')+'</b> from '+esc(k.name)+' (as the sheet reads its progression; follow your class table if it differs).':'No talents from the class progression this level (check your class table).')+'</p>'+
       '<div class="opt" style="display:block"><span>Talents</span><div id="talRows"></div><button type="button" class="mini" id="talMore">Add another talent</button></div>'+
       '<datalist id="luSph">'+luSpheres().map(function(n){ return '<option value="'+esc(n)+'">'; }).join('')+'</datalist>'+
       '<div class="opt" style="display:block"><span>Feats</span><p class="note" id="ftleft" style="margin:2px 0"></p><div id="ftRows"></div><button type="button" class="mini" id="ftMore">Add a feat</button></div>'+
       '<div class="opt" style="display:block"><span>Class features</span><p class="note" style="margin:2px 0">A new feature, or a choice under one you have (an arsenal trick, a knack, a bonus feat pick…).</p>'+
-        (CD?'<p class="note" style="margin:2px 0">From the '+esc(CD.n)+' table at class level '+n+(CI.length?': '+CI.map(function(x){ return esc(x[0])+(x[1]?' <i>('+esc(x[1])+')</i>':''); }).join(', '):': nothing listed')+'. Rows are filled in; change or remove them as your class and archetype say. <a href="'+esc(WK_WIKI+CD.p)+'" target="_blank" rel="noopener">Wiki page</a></p>'+
+        (CD&&CD.pz&&!cwArchs(CD,k).length?'<p class="note" style="margin:2px 0">The wiki has '+plural(CD.a.length,'sphere conversion')+' for '+esc(CD.n)+' ('+esc(CD.a.map(function(a){ return a[0]; }).join(', '))+'): tick one under the class on the Build tab and level up fills in its features.</p>':'')+
+        (CD&&!(CD.pz&&!cwArchs(CD,k).length)?'<p class="note" style="margin:2px 0">From '+(CD.pz?esc(cwArchs(CD,k).map(function(a){ return a[0]; }).join(' and ')):'the '+esc(CD.n)+' table'+(cwArchs(CD,k).length?' with '+esc(cwArchs(CD,k).map(function(a){ return a[0]; }).join(' and ')):''))+' at class level '+n+(CI.length?': '+CI.map(function(x){ return esc(x[0])+(x[1]?' <i>('+esc(x[1])+')</i>':''); }).join(', '):': nothing listed')+'. Rows are filled in; change or remove them as your class and archetype say. <a href="'+esc(WK_WIKI+(CD.p||(cwArchs(CD,k)[0]||[0,''])[1]))+'" target="_blank" rel="noopener">Wiki page</a></p>'+
           CD.f.map(function(f,i){ return (f[2]||[]).length?'<datalist id="cwo'+i+'">'+f[2].map(function(o){ return '<option value="'+esc(cwName(o[0]))+'">'; }).join('')+'</datalist>':''; }).join(''):
           (clsWiki(k)?'<p class="note" style="margin:2px 0">The wiki class features for '+esc(k.name)+' couldn’t be loaded (offline?). Type them in.</p>':''))+
         (kn?'<details class="lu-kn"><summary class="note">Your notes on '+esc(k.name)+' (Build tab)</summary><p class="note" style="white-space:pre-wrap;margin:4px 0">'+esc(kn)+'</p></details>':'')+
@@ -5463,8 +5496,10 @@ function levelUpFlow(opts){
           wkRow(it); }); }
         /* the wiki text of a row's feature or choice, folded under it */
         function wkRow(it){ var box=it.querySelector('.lu-wk'); if(!box) return; var nm=it.querySelector('.lu-nm').value.trim(), u=it.querySelector('.xr-under').value, hit=nm?cwFind(CD,nm,u):null;
-          if(hit&&u&&hit.o<0) hit=null; var tx=hit?(hit.o>=0?CD.f[hit.f][2][hit.o][1]:CD.f[hit.f][1]):'', k2=hit?hit.f+':'+hit.o:'';
-          if(box.dataset.k===k2) return; box.dataset.k=k2; box.innerHTML=tx?'<details><summary class="note">Wiki text: '+esc(cwName(hit.o>=0?CD.f[hit.f][2][hit.o][0]:CD.f[hit.f][0]))+'</summary><div style="font-size:14px;line-height:1.5">'+mdLite(tx)+'</div></details>':''; }
+          if(hit&&u&&hit.o<0) hit=null; var ax=!hit&&!u&&nm?cwArchFind(CD,k,nm):null;
+          var tx=hit?(hit.o>=0?CD.f[hit.f][2][hit.o][1]:CD.f[hit.f][1]):ax?ax.x[1]+(ax.x[4]&&ax.x[1].indexOf(ax.x[4])<0?'\n\n'+ax.x[4]:''):'', k2=hit?hit.f+':'+hit.o:ax?'a:'+ax.a[0]+':'+ax.x[0]:'';
+          var tn=hit?cwName(hit.o>=0?CD.f[hit.f][2][hit.o][0]:CD.f[hit.f][0]):ax?cwName(ax.x[0])+' ('+ax.a[0]+')':'';
+          if(box.dataset.k===k2) return; box.dataset.k=k2; box.innerHTML=tx?'<details><summary class="note">Wiki text: '+esc(tn)+'</summary><div style="font-size:14px;line-height:1.5">'+mdLite(tx)+'</div></details>':''; }
         (W.fr||[]).forEach(function(r){ fb.insertAdjacentHTML('beforeend',ftHtml(r)); }); if(!(W.fr||[]).length&&feat) fb.insertAdjacentHTML('beforeend',ftHtml());
         (W.xr||[]).forEach(function(r){ xb.insertAdjacentHTML('beforeend',xrHtml(r)); }); if(!(W.xr||[]).length) xb.insertAdjacentHTML('beforeend',xrHtml());
         ftCount(); unders(); root.querySelectorAll('.lu-notes').forEach(grow);
