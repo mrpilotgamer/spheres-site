@@ -281,6 +281,17 @@ const T0 = Date.now();
     check('class archetypes: a list of names, anything else dropped', await page.evaluate(() => { const E = window.SheetEngine, c = E.sanitize({ app: 'spheres-sheet', v: 1, id: 'w2', name: 'W',
       classes: { a: { name: 'A', arch: ['Black Powder Brawler', 5, '', null, 'Voidrusher'] }, b: { name: 'B', arch: 'x' }, c: { name: 'C' } } }).classes;
       return ['a', 'b', 'c'].map(k => JSON.stringify(c[k].arch)).join(' '); }), '["Black Powder Brawler","Voidrusher"] [] []');
+    /* class presets (2026-11-13): "uses class level as caster level with the X sphere", stacking with other casting */
+    const pre = await page.evaluate(() => { const E = window.SheetEngine, mk = (cls, n, extra) => E.sanitize(Object.assign({ app: 'spheres-sheet', v: 1, id: 'pr', name: 'P', castAbil: 'cha', abil: { cha: 16 }, classes: { c1: cls }, levels: Array.from({ length: n }, () => ({ cls: 'c1', hp: 6, picks: [] })) }, extra || {}));
+      const el = mk({ name: 'Elementalist', hd: 8, bab: '3/4', good: ['will'], skills: 2, cast: 'mid' }, 8), wr = mk({ name: 'Wraith', hd: 8, bab: '3/4', good: ['will'], skills: 4, cast: 'mid', scl: 'Nature' }, 1);
+      const mc = mk({ name: 'Elementalist', hd: 8, bab: '3/4', good: ['will'], skills: 2, cast: 'mid' }, 4, { classes: { c1: { name: 'Elementalist', cast: 'mid' }, c2: { name: 'Incanter', cast: 'high' } }, levels: [1, 2, 3, 4].map(() => ({ cls: 'c1', hp: 6, picks: [] })).concat([1, 2].map(() => ({ cls: 'c2', hp: 4, picks: [] }))) });
+      const off = mk({ name: 'Elementalist', hd: 8, bab: '3/4', good: ['will'], skills: 2, cast: 'mid', scl: '' }, 8);
+      return [E.derive(el).cl, E.sphereStats(el, 'Destruction').cl, E.sphereStats(el, 'Nature').cl, E.sphereStats(wr, 'Nature').cl, E.derive(mc).cl, E.sphereStats(mc, 'Destruction').cl, E.sphereStats(off, 'Destruction').cl].join(' '); });
+    check('class presets: Elementalist 8 (mid, CL 6) has Destruction CL 8, other spheres 6; a Wraith 1’s path sphere is CL 1; with Incanter 2 it stacks (CL 5, Destruction 6); a cleared field turns it off', pre, '6 8 6 1 5 6 6');
+    check('class presets and paths: fields kept when sound, cleaned when not', await page.evaluate(() => { const E = window.SheetEngine, c = E.sanitize({ app: 'spheres-sheet', v: 1, id: 'pz', name: 'P',
+      classes: { a: { name: 'A', scl: 'Mind', bs: 5, paths: ['Academia', 7, '', 'Astrology'], pathSph: { 'Path of the Anima': 'Weather', x: 3 }, pathAdd: { cs: ['kgeo', 1], scl0: null, bs0: 'Light', pk: ['p1'] } }, b: { name: 'B', pathAdd: 'x', pathSph: [] } } }).classes;
+      return JSON.stringify([c.a.scl, c.a.bs, c.a.rs, c.a.paths, c.a.pathSph, c.a.pathAdd, 'pathAdd' in c.b, c.b.pathSph]); }),
+      '["Mind",null,null,["Academia","Astrology"],{"Path of the Anima":"Weather"},{"cs":["kgeo"],"scl0":null,"bs0":"Light","pk":["p1"]},false,{}]');
     check('a class’s values from before its archetypes: kept when sound, dropped when not', await page.evaluate(() => { const E = window.SheetEngine, c = E.sanitize({ app: 'spheres-sheet', v: 1, id: 'w3', name: 'W',
       classes: { a: { name: 'A', archBase: { good: ['ref', 'x'], bab: 'full', hd: 30, skills: 6, classSkills: ['acro', 5] } }, b: { name: 'B', archBase: { good: [], bab: 'lots', hd: 8, skills: 2, classSkills: [] } }, c: { name: 'C', archBase: 'x' } } }).classes;
       return [JSON.stringify(c.a.archBase), 'archBase' in c.b, 'archBase' in c.c].join(' '); }), '{"good":["ref"],"bab":"full","hd":12,"skills":6,"classSkills":["acro"]} false false');
