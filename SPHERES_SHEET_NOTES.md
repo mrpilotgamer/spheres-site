@@ -107,7 +107,7 @@ Last full run: 2026-11-12, `engine-check.js` 325, `check.js` 447 (about 95 secon
 `rules-check.js` 90 (not rerun since 2026-11-10; the rules are unchanged), `party-check.js` 38, `save-check.js` 12: all passed.
 After the level-up feat and feature rows (2026-11-12, later): `engine-check.js` 329, `check.js` 459, `fuzz-check.js` 27, `talents-check.js` 31,
 `config-check.js` 12 passed; `csp-check.js` and the emulator checks were not run in that session (the database code is unchanged).
-After class features from the wiki (2026-11-12, latest): `engine-check.js` 334, `check.js` 505 (with the Feats tab text, archetypes, mass level-up, retraining, class numbers, presets and paths), `fuzz-check.js` 27, `talents-check.js` 61
+After class features from the wiki (2026-11-12, latest): `engine-check.js` 336, `check.js` 513 (with the Feats tab text, archetypes, mass level-up, retraining, class numbers, presets, paths and the card deck), `fuzz-check.js` 27, `talents-check.js` 61
 (with the class files, archetypes and paths), `config-check.js` 12 passed; `csp-check.js` and the emulator checks were not run in that session.
 
 **Rollback:** Firebase console → Hosting → release history → roll back. With GitHub: also revert the commit (the
@@ -742,6 +742,27 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
       Feats tab's choice text all use it.
     - Not automatic: path benefits and powers other than spheres and class skills (their text is shown); Wraith's path
       possession options.
+  - **Card deck tab (2026-11-13, owner: "Card Casting is complicated as heck").** Owner's call: no combat automation, a rules
+    explanation plus draw / shuffle / reset tools that work for any variant (also Wildcard, Cartomancer, homebrew decks).
+    Optional tab under Play (`deck`, `rDeck`), on automatically with a "Card Casting" general drawback on an active casting
+    tradition (`cardCaster`) or any cards in the deck. The hand is NOT hidden in share links or parties (owner: honor system).
+    - **Data** `ch.deck` (cleaned by `deckClean`): `cards [{id, name, cost, color, notes, n copies, mana, act}]`, `piles {deck,
+      hand, table, discard, stun, wounds, death, <custom>: ["cardid.k"]}`, `custom [{id, name}]`, `opt` (Cooldown, Mana Pool,
+      Mana Graveyard, the 10 modifications, Bleeding Hand 0-2, Colored Mana 0/3/5, Loaded Hand count), `draw`. `deckSync`
+      keeps every copy in exactly one pile (new copies join the bottom of the deck).
+    - **Tools:** Draw N (the box defaults to the starting hand, 1 + casting modifier, minimum 2; Tight Hand stops at its limit;
+      with Mana Pool a drawn Mana Point card goes to the table), Draw 1, Shuffle, Reset (everything back, shuffled; mulligan =
+      Reset and draw one fewer), per card Play (hand → table), Done (table → discard with Cooldown, else shuffled into the
+      deck) and Move to… any pile or the top of the deck, "shuffle this pile into the deck", extra named piles. Shuffles use
+      `crypto.getRandomValues`.
+    - **Card list:** typed or "From an action…" (its evaluated cost and text). Warnings, never blocks (`deckWarn`): fewer than
+      20 cards, copy spread over the casting modifier, Singleton, Colored Mana colors and shares, Mana Point cards without
+      Mana Pool, options missing their prerequisite, Stagnant Pool + Mana Graveyard, Tight Hand over the limit.
+    - **Rules panel:** the options and modifications as checkboxes; a short summary of the base rules and each one taken
+      (`DECK_SUM`), the Lifebound value, and the full wiki text (from `talents/drawbacks.json`). `deckWeight` (1, +1 each,
+      Bleeding Hand twice = 2, five colors = 2) is written to the drawback's `weight` (`deckWeightSync`), so boons follow.
+    - Not automatic (by design): spending spell points, checking mana before casting, damage-triggered moves (Lifebound,
+      Exposed Grip, Strikable Assets), deck feats. The rules panel says what applies.
   - **To keep an eye on (owner, 2026-11-12): how strict the archetype clash rule should be.** Two open questions, to settle
     against the rules as written before changing anything:
     1. **Same number, same value.** Two archetypes that both set a number now clash even when they agree (both make the hit
