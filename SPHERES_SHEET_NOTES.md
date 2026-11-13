@@ -107,8 +107,8 @@ Last full run: 2026-11-12, `engine-check.js` 325, `check.js` 447 (about 95 secon
 `rules-check.js` 90 (not rerun since 2026-11-10; the rules are unchanged), `party-check.js` 38, `save-check.js` 12: all passed.
 After the level-up feat and feature rows (2026-11-12, later): `engine-check.js` 329, `check.js` 459, `fuzz-check.js` 27, `talents-check.js` 31,
 `config-check.js` 12 passed; `csp-check.js` and the emulator checks were not run in that session (the database code is unchanged).
-After class features from the wiki (2026-11-12, latest): `engine-check.js` 332, `check.js` 497 (with the Feats tab text, archetypes, mass level-up, retraining and class numbers), `fuzz-check.js` 27, `talents-check.js` 58
-(with the class files and archetypes), `config-check.js` 12 passed; `csp-check.js` and the emulator checks were not run in that session.
+After class features from the wiki (2026-11-12, latest): `engine-check.js` 334, `check.js` 505 (with the Feats tab text, archetypes, mass level-up, retraining, class numbers, presets and paths), `fuzz-check.js` 27, `talents-check.js` 61
+(with the class files, archetypes and paths), `config-check.js` 12 passed; `csp-check.js` and the emulator checks were not run in that session.
 
 **Rollback:** Firebase console → Hosting → release history → roll back. With GitHub: also revert the commit (the
 commit's page → "Revert"), or the next push puts the broken version back.
@@ -709,6 +709,39 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
     set: Artistry, Craft, Lore, Perception, Perform, Profession), and a class note that it counts as a Thaumaturge for feats and
     options. `build-classes.py` gives it a class file (8 features); `verify-classes.py` has its two expected differences in
     `KNOWN`/`KNOWN2` (the cumulative "Any Talents" column, and "Class Skills: See Trade Tradition") and passes for all 133.
+  - **Class presets (2026-11-13, owner).** Class-list entries can carry `scl` (spheres the class uses its class level as caster
+    level for: Elementalist Destruction, Eliciter Mind, Mountebank Illusion, Necros Death, Shifter Alteration), `bs` (spheres
+    it gets free at 1st level as a base sphere: also Commander Warleader, Conduit Spellhacking, Crimson Dancer Blood, Dragoon
+    Berserker, Fey Adept / Wunderkind Illusion, Reaper Duelist, Sentinel / Warden Guardian, Technician Trap, Theorist Study)
+    and `rs` (Necros must take Death as its 1st-level talent). `libClass` copies them to the class; classes made before have
+    `null` and use the class list's by name (`clsPre`); '' = none. Build tab: three fields under each class.
+    - **Caster level:** `presetMods` adds an always-on `cl.sphere.<slug>` modifier: the class level minus the class's usual
+      share (`clFor`), so it stacks with other classes' caster levels (Elementalist 4 / Incanter 2: CL 5, Destruction 6). A
+      raw caster level of 0 counts as 1 (`clEff`); the class level stacks on the 0, not the 1 (Wraith 1: path sphere CL 1).
+      `shapeCL` no longer adds Shifter levels itself (the preset does).
+    - **Level up:** at a class's 1st level the free spheres become talent rows saved as "Base sphere (free, from a class
+      feature)" (`basefree`), the required one as a normal base sphere; the dialog says so ("From Elementalist at 1st level:
+      …"). A sphere you already have isn't added (the note says the class may give a talent from it instead). Mass level-up
+      does the same for a class's first level.
+  - **Paths (2026-11-13, owner): Hedgewitch (2 of 21 paths) and Wraith (1 of 15 haunt paths).** `build-classes.py`
+    (`class_paths`) reads "## List of (Haunt) Paths": each `###` path's text, class skills ("Class Skills:" / "Path Skill:"),
+    path sphere options ("Path Sphere: Nature or Weather"), bonus spheres from "Path Benefit: … gains the Light sphere as a
+    bonus magic talent", and its secret and grand secret lists; plus the feature they're chosen under and how many ("chooses
+    two paths"). Stored as `paths: {f, n, p}` in the class file.
+    - **Choosing:** at the path feature's level, level up has one "Choice under" row per path (the paths as suggestions, their
+      text shown); the chosen ones apply when the level is built (`applyPaths` in `build()`), filed as choices under the
+      feature. Once chosen, later levels only mention them. The Build tab has a picker (up to n; a sphere choice where a path
+      offers two) to change them later.
+    - **Effects (`applyPaths`, `pathEff`):** the path's class skills are added; Wraith's path sphere becomes a preset
+      (`scl` + `bs`: class level as its caster level, free base sphere); Hedgewitch path spheres (Astrology: Light) are free
+      base spheres added at the class's first level. `k.pathAdd` remembers what was added (class skills, the preset fields'
+      values before, pick ids) so changing paths takes it back. `k.paths`, `k.pathSph` (Anima: Weather) are cleaned in
+      `sanitizeChar`.
+    - **Secrets:** `cwOpts` is a feature's choice list (the wiki's, plus the paths under the path feature, plus the chosen
+      paths' secrets / grand secrets under "Secret" / "Grand Secrets"); level up's suggestions, a row's wiki text and the
+      Feats tab's choice text all use it.
+    - Not automatic: path benefits and powers other than spheres and class skills (their text is shown); Wraith's path
+      possession options.
   - **To keep an eye on (owner, 2026-11-12): how strict the archetype clash rule should be.** Two open questions, to settle
     against the rules as written before changing anything:
     1. **Same number, same value.** Two archetypes that both set a number now clash even when they agree (both make the hit

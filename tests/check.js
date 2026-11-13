@@ -1641,6 +1641,38 @@ function check(what, got, want) {
     await page.locator('details', { has: page.locator('summary', { hasText: /^Archetypes/ }) }).first().locator('summary').click();
     const dbm = page.locator('#main label', { has: page.locator('input[data-v="Dragonblooded Mortal"]') });
     check('two archetypes that both rewrite saving throws clash', [await dbm.locator('input').isDisabled(), /Can’t combine with Iron Mage: both change saving throws/.test(await dbm.innerText())].join(' '), 'true true');
+    /* class presets and paths (2026-11-13) */
+    const freshP = async () => { await mkS({ name: 'X', hd: 8 }, [], { classes: {}, levels: [], castAbil: 'cha', abil: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 16 } }); await page.reload(); await idle(); };
+    const fromList = async n => { await page.locator('[data-a="levelUp"]').first().click(); await idle(); await dlg().locator('select[name="cls"]').selectOption('__lib'); await dlg().locator('input[name="lib"]').fill(n); await next(); await next(); };
+    await freshP(); await fromList('Elementalist');
+    check('Elementalist 1: the dialog says Destruction comes free, and fills it in as a base sphere', [/From Elementalist at 1st level: Destruction sphere, free/.test(await dlg().innerText()), await dlg().locator('.talrow').first().locator('.tr-sph').inputValue(), await dlg().locator('.talrow').first().locator('.tr-base').isChecked()].join(' '), 'true Destruction true');
+    await next(); await next(); await dlg().locator('button', { hasText: /^Level up$/ }).click(); await idle();
+    c = await stored();
+    check('…saved as a free base sphere, and the class keeps its presets', [JSON.stringify(c.levels[0].picks.filter(p => p.kind === 'talent').map(p => [p.name, p.role])), c.classes[Object.keys(c.classes)[0]].scl].join(' '), '[["Destruction sphere","basefree"]] Destruction');
+    await freshP(); await fromList('Wraith');
+    const hp = dlg().locator('.xr-item').filter({ has: page.locator('.xr-under option:checked', { hasText: 'Haunt Path' }) }).first();
+    await hp.locator('.lu-nm').fill('Path of the Anima'); await idle();
+    check('Wraith 1: a haunt path row lists the paths, with the path’s text', [!!(await hp.locator('.lu-nm').getAttribute('list')), /Wiki text: Path of the Anima/.test(await hp.locator('.lu-wk').innerText())].join(' '), 'true true');
+    await next(); await next(); await dlg().locator('button', { hasText: /^Level up$/ }).click(); await idle();
+    c = await stored(); let kc = c.classes[Object.keys(c.classes)[0]];
+    check('…the path applies: Knowledge (nature), Nature free with the class level as its caster level', [JSON.stringify(kc.paths), kc.classSkills.includes('knat'), kc.scl, JSON.stringify(c.levels[0].picks.filter(p => p.kind === 'talent').map(p => [p.name, p.role]))].join(' '), '["Path of the Anima"] true Nature [["Nature sphere","basefree"]]');
+    await go('Character', 'Build'); await until('the haunt path picker', () => !!document.querySelector('#main select[data-pthsph="Path of the Anima"]'));
+    await page.locator('details', { has: page.locator('summary', { hasText: /^Haunt Path/ }) }).first().locator('summary').first().click();
+    await page.locator('#main select[data-pthsph="Path of the Anima"]').selectOption('Weather'); await idle();
+    c = await stored(); kc = c.classes[Object.keys(c.classes)[0]];
+    check('the Build tab switches the path’s sphere: Weather instead of Nature, and its free sphere with it', [kc.scl, kc.bs, JSON.stringify(c.levels[0].picks.filter(p => p.kind === 'talent').map(p => p.name))].join(' '), 'Weather Weather ["Weather sphere"]');
+    await freshP(); await fromList('Hedgewitch');
+    const hps = dlg().locator('.xr-item').filter({ has: page.locator('.xr-under option:checked', { hasText: 'Paths' }) });
+    check('Hedgewitch 1: two path rows', await hps.count(), 2);
+    await hps.nth(0).locator('.lu-nm').fill('Academia'); await hps.nth(1).locator('.lu-nm').fill('Astrology');
+    await next(); await next(); await dlg().locator('button', { hasText: /^Level up$/ }).click(); await idle();
+    c = await stored(); kc = c.classes[Object.keys(c.classes)[0]];
+    check('…both apply: four class skills, Light (Astrology) free, the paths filed under Paths', [JSON.stringify(kc.paths), JSON.stringify(kc.pathAdd.cs), JSON.stringify(c.levels[0].picks.filter(p => p.kind === 'talent').map(p => p.name)), JSON.stringify((c.levels[0].picks.find(p => p.name === 'Paths') || {}).subs.map(x => x.name))].join(' '),
+      '["Academia","Astrology"] ["kgeo","knat","kpla","perc"] ["Light sphere"] ["Academia","Astrology"]');
+    await page.locator('[data-a="levelUp"]').first().click(); await idle(); await next(); await next();
+    const sr = dlg().locator('.xr-item').filter({ has: page.locator('.xr-under option:checked', { hasText: /^Choice under Secret/ }) }).first();
+    check('Hedgewitch 2: no repeated path rows; the Secret list has the paths’ secrets, with their text', [await dlg().locator('.xr-item').filter({ has: page.locator('.xr-under option:checked', { hasText: 'Paths' }) }).count(), await dlg().locator('datalist#' + await sr.locator('.lu-nm').getAttribute('list') + ' option[value="Academic Training"]').count(), await (async () => { await sr.locator('.lu-nm').fill('Academic Training'); await idle(); return /Wiki text: Academic Training/.test(await sr.locator('.lu-wk').innerText()); })()].join(' '), '0 1 true');
+    await cancelOrEsc(dlg().locator('button', { hasText: 'Cancel' }).first()); await settle();
     /* a Paizo class: its sphere conversion fills in its features */
     await mkS({ name: 'Wizard', hd: 6, bab: '1/2', good: ['will'], skills: 2, cast: 'high', martial: 'none', arch: ['Sphere Wizard'] }, []); await page.reload(); await idle();
     await page.locator('[data-a="levelUp"]').first().click(); await idle(); await next(); await next();

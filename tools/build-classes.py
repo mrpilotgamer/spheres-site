@@ -28,7 +28,8 @@ File layout (short keys keep the files small):
    "lv": {"1": [[table entry, index into f or -1, (index of the choice it names)], ...], ...},
    "a": [[archetype, page, [[feature, text, level, [[base feature index, level or 0 = all, "r" replaced / "m" modified], ...],
           "This replaces ..." text], ...]], ...],
-   "pz": 1 on a file for a class that isn't a Spheres class (only its "Sphere X" conversion archetypes, no features)}
+   "pz": 1 on a file for a class that isn't a Spheres class (only its "Sphere X" conversion archetypes, no features),
+   "paths": {f, n, p: [{n, t, cs, sph, bs, sec, gsec}]} for a class that chooses paths (Hedgewitch, Wraith)}
 
 Archetypes (2026-11-12): the 06- bundle files. Kept: archetypes of a Spheres class that has a file (the class named in the
 title "(X Archetype)", or, untitled, the class whose features its "This replaces ..." lines name), and the sphere conversions
@@ -386,6 +387,33 @@ def arch_stats(feats, L, base=None):
     return st
 
 
+def class_paths(sec, F):
+    """A class's path list (Hedgewitch "List of Paths", Wraith "List of Haunt Paths"), 2026-11-12: {f: index of the feature
+    the paths are chosen under, n: how many to choose, p: [{n, t: text, cs: class skills, sph: path sphere options, bs: bonus
+    spheres, sec / gsec: [[name, text]] extra secrets / grand secrets}]}, or None."""
+    m = re.search(r'\n## (List of (?:\w+ )?Paths)\s*\n(.*?)(?=\n# |\n## |\Z)', sec, re.S)
+    if not m:
+        return None
+    out = []
+    for pm in re.finditer(r'\n### (.+?)\n(.*?)(?=\n### |\Z)', '\n' + m.group(2), re.S):
+        name, body = cname(pm.group(1)), pm.group(2)
+        fld = lambda lab: (re.search(r'\*\*' + lab + r':\*\*\s*([^\n]*)', body) or [None, ''])[1]
+        lst = lambda lab: [[cname(a), b.strip()] for a, b in re.findall(r'^- \*\*([^*]+?):?\*\*:?\s*(.*)$', (re.search(r'\*\*' + lab + r':\*\*[^\n]*\n((?:\s*- [^\n]*\n?)+)', body) or [None, ''])[1], re.M)]
+        sk = fld('Class Skills') or fld('Path Skills?')
+        sph = [x.strip() for x in re.split(r'\s+or\s+|,\s*', re.sub(r'\s*\([^)]*\)|\.$', '', fld('Path Sphere'))) if x.strip()]
+        bs = [b for b in re.findall(r'gains? the ([A-Z][\w ]{2,25}?) sphere as a bonus (?:magic )?(?:talent|sphere)', fld('Path Benefit'))]
+        out.append({'n': name, 't': clean_md(body), 'cs': skill_ids(sk) if sk else [], 'sph': sph, 'bs': bs,
+                    'sec': lst('Path Secrets'), 'gsec': lst('Path Grand Secrets')})
+    if not out:
+        return None
+    # the feature the choice is made under ("Paths", "Haunt Path"), and how many: "chooses two paths"
+    fi = next((i for i, f in enumerate(F) if re.match(r'(haunt )?paths?$', cname(f[0]), re.I)), -1)
+    txt = F[fi][1] if fi >= 0 else ''
+    nm = re.search(r'chooses? (two|three|one|a) (?:\w+ )?paths?', txt, re.I)
+    n = {'two': 2, 'three': 3}.get(nm.group(1).lower(), 1) if nm else 1
+    return {'f': fi, 'n': n, 'p': out}
+
+
 def first_level(d, fi):
     """The first class level whose table entry names base feature fi (0 if the table never does)."""
     for k in sorted(d.get('lv', {}), key=int):
@@ -602,6 +630,9 @@ def build(bundle, outdir):
         if miss:
             report.append('unmatched table entries, %s: %s' % (e['n'], ', '.join(sorted(set(miss)))))
         files[slug(e['n'])] = {'v': V, 'n': e['n'], 'p': ps, 'f': F, 'lv': lv, 'a': []}
+        pa = class_paths(sec, F)
+        if pa:
+            files[slug(e['n'])]['paths'] = pa
 
     archetypes(pages, L, files, report)
     for sl, data in files.items():
