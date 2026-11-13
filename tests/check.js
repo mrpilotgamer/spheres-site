@@ -1673,6 +1673,35 @@ function check(what, got, want) {
     const sr = dlg().locator('.xr-item').filter({ has: page.locator('.xr-under option:checked', { hasText: /^Choice under Secret/ }) }).first();
     check('Hedgewitch 2: no repeated path rows; the Secret list has the paths’ secrets, with their text', [await dlg().locator('.xr-item').filter({ has: page.locator('.xr-under option:checked', { hasText: 'Paths' }) }).count(), await dlg().locator('datalist#' + await sr.locator('.lu-nm').getAttribute('list') + ' option[value="Academic Training"]').count(), await (async () => { await sr.locator('.lu-nm').fill('Academic Training'); await idle(); return /Wiki text: Academic Training/.test(await sr.locator('.lu-wk').innerText()); })()].join(' '), '0 1 true');
     await cancelOrEsc(dlg().locator('button', { hasText: 'Cancel' }).first()); await settle();
+    /* the card deck (2026-11-13): a tab under Play with the Card Casting drawback; piles, draw, play, rules */
+    await mkS({ name: 'Incanter', hd: 6, bab: '1/2', good: ['will'], skills: 2, cast: 'high', martial: 'none' }, [{ cls: 'c1', hp: 6, picks: [] }], { castAbil: 'cha', abil: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 16 },
+      traditions: { casting: { on: true, name: 'Gambler', drawbacks: [{ id: 'd1', name: 'Card Casting', kind: 'general' }] } }, actions: [{ id: 'a1', name: 'Fire Blast', act: 'standard', res: '', cost: '1', text: 'A blast.' }] });
+    await page.reload(); await idle(); await go('Play', 'Sheet');
+    check('the Card deck tab turns on with the Card Casting drawback', await page.locator('#tabbar [data-tab="deck"]').count(), 1);
+    await page.locator('#tabbar [data-tab="deck"]').click(); await idle();
+    await page.locator('select[data-dadd]').selectOption('a1'); await idle();
+    await page.locator('[data-a="deckAdd"]').first().click(); await idle();
+    await page.locator('[data-f="deck.cards.1.name"]').fill('Haste <img src=x onerror="window.__deckx=1">'); await page.locator('[data-f="deck.cards.1.name"]').press('Tab'); await idle();
+    check('cards: from an action (its cost and text) or typed; a short deck and a wide copy spread are warned about', [JSON.stringify((await stored()).deck.cards.map(x => [x.name.slice(0, 5), x.cost, x.n])), /needs at least 20/.test(await page.locator('#main').innerText())].join(' '), '[["Fire ","1",1],["Haste","",1]] true');
+    await page.locator('[data-f="deck.cards.0.n"]').fill('11'); await page.locator('[data-f="deck.cards.0.n"]').press('Tab'); await page.locator('[data-f="deck.cards.1.n"]').fill('9'); await page.locator('[data-f="deck.cards.1.n"]').press('Tab'); await idle();
+    check('…20 cards within the spread: no warning; copies go into the deck', [await page.locator('#main .warn').count(), (await stored()).deck.piles.deck.length].join(' '), '0 20');
+    await page.locator('[data-a="deckDraw"]').first().click(); await idle();
+    c = await stored();
+    check('Draw: the starting hand, 1 + casting modifier (Cha 16: 4)', [c.deck.piles.hand.length, c.deck.piles.deck.length].join(' '), '4 16');
+    await page.locator('#main [data-a="deckMove"][data-to="table"]').first().click(); await idle();
+    await page.locator('[data-f="deck.opt.cooldown"]').check(); await idle();
+    await page.locator('#main [data-a="deckMove"][data-to="discard"]').first().click(); await idle();
+    c = await stored();
+    check('Play puts a card on the table; with Cooldown, Done sends it to the discard pile; the drawback counts as 2', [c.deck.piles.hand.length, c.deck.piles.table.length, c.deck.piles.discard.length, c.traditions.casting.drawbacks[0].weight].join(' '), '3 0 1 2');
+    await page.locator('[data-f="deck.opt.mana"]').check(); await page.locator('[data-f="deck.opt.tight"]').check(); await page.locator('[data-f="deck.opt.lifebound"]').check(); await idle();
+    await page.locator('#main [data-a="deckAdd"][data-mana="1"]').click(); await idle();
+    await page.locator('[data-a="deckReset"]').click(); await idle(); await dlg().locator('button', { hasText: /^Reset$/ }).click(); await idle();
+    await page.locator('[data-a="deckDraw"]').first().click(); await idle();
+    c = await stored();
+    const handMana = c.deck.piles.hand.filter(x => x.startsWith(c.deck.cards[2].id + '.')).length, tableNonMana = c.deck.piles.table.filter(x => !x.startsWith(c.deck.cards[2].id + '.')).length;
+    check('with Mana Pool a drawn Mana Point card goes to the table; Tight Hand stops at 3; the counts follow (5 drawbacks)', [handMana, tableNonMana, c.deck.piles.hand.length <= 3, c.traditions.casting.drawbacks[0].weight].join(' '), '0 0 true 5');
+    check('Lifebound Deck shows its Stun, Wounds and Death piles and its value', [/STUN/i.test(await page.locator('#main .tiles').first().innerText()), /Lifebound value: \d+/.test(await page.locator('#main').innerText())].join(' '), 'true true');
+    check('a card name with markup stays text', await page.evaluate(() => !!window.__deckx), false);
     /* a Paizo class: its sphere conversion fills in its features */
     await mkS({ name: 'Wizard', hd: 6, bab: '1/2', good: ['will'], skills: 2, cast: 'high', martial: 'none', arch: ['Sphere Wizard'] }, []); await page.reload(); await idle();
     await page.locator('[data-a="levelUp"]').first().click(); await idle(); await next(); await next();

@@ -292,6 +292,15 @@ const T0 = Date.now();
       classes: { a: { name: 'A', scl: 'Mind', bs: 5, paths: ['Academia', 7, '', 'Astrology'], pathSph: { 'Path of the Anima': 'Weather', x: 3 }, pathAdd: { cs: ['kgeo', 1], scl0: null, bs0: 'Light', pk: ['p1'] } }, b: { name: 'B', pathAdd: 'x', pathSph: [] } } }).classes;
       return JSON.stringify([c.a.scl, c.a.bs, c.a.rs, c.a.paths, c.a.pathSph, c.a.pathAdd, 'pathAdd' in c.b, c.b.pathSph]); }),
       '["Mind",null,null,["Academia","Astrology"],{"Path of the Anima":"Weather"},{"cs":["kgeo"],"scl0":null,"bs0":"Light","pk":["p1"]},false,{}]');
+    /* the card deck (2026-11-13): every copy in exactly one pile; bad data cleaned */
+    check('card deck: copies fill the piles once each, unknown and doubled ids dropped, options cleaned', await page.evaluate(() => { const E = window.SheetEngine, c = E.sanitize({ app: 'spheres-sheet', v: 1, id: 'dk', name: 'D',
+      deck: { cards: [{ id: 'a', name: 'Haste', n: 3, cost: 2 }, { id: 'b', name: 'Mana', n: 2, mana: true }, 'x', { id: 'bad id!', name: 'Odd', n: 1 }], piles: { hand: ['a.0', 'a.0', 'zz.1'], table: ['b.1'], deck: 5 }, opt: { colored: 4, bleeding: 9, cooldown: 'yes', handPlus: -2 }, custom: [{ id: 'p1', name: '' }, { id: '!' }] } }).deck;
+      const all = Object.keys(c.piles).reduce((a, k) => a.concat(c.piles[k]), []).sort();
+      return [c.cards.length, c.cards[2].id !== 'bad id!', JSON.stringify(c.piles.hand), JSON.stringify(c.piles.table), all.length, new Set(all).size, c.opt.colored, c.opt.bleeding, c.opt.cooldown, c.opt.handPlus, JSON.stringify(c.custom)].join(' '); }),
+      '3 true ["a.0"] ["b.1"] 6 6 0 2 true 0 [{"id":"p1","name":"Pile"}]');
+    check('the Card Casting drawback’s weight counts toward boons (2 drawbacks per boon)', await page.evaluate(() => { const E = window.SheetEngine, mk = w => E.derive(E.sanitize({ app: 'spheres-sheet', v: 1, id: 'dw', name: 'D', classes: { c1: { name: 'Incanter', cast: 'high' } }, levels: [{ cls: 'c1', hp: 6, picks: [] }],
+      traditions: { casting: { on: true, drawbacks: [{ id: 'd1', name: 'Card Casting', kind: 'general', weight: w }], boons: [{ id: 'b1', name: 'Easy Focus' }] } } })).trad;
+      return [mk(1).short, mk(2).short, mk(3).left].join(' '); }), '1 0 1');
     check('a class’s values from before its archetypes: kept when sound, dropped when not', await page.evaluate(() => { const E = window.SheetEngine, c = E.sanitize({ app: 'spheres-sheet', v: 1, id: 'w3', name: 'W',
       classes: { a: { name: 'A', archBase: { good: ['ref', 'x'], bab: 'full', hd: 30, skills: 6, classSkills: ['acro', 5] } }, b: { name: 'B', archBase: { good: [], bab: 'lots', hd: 8, skills: 2, classSkills: [] } }, c: { name: 'C', archBase: 'x' } } }).classes;
       return [JSON.stringify(c.a.archBase), 'archBase' in c.b, 'archBase' in c.c].join(' '); }), '{"good":["ref"],"bab":"full","hd":12,"skills":6,"classSkills":["acro"]} false false');
