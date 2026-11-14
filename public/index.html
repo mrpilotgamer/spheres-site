@@ -1643,14 +1643,14 @@ function sanitizeChar(o){
   b.log=(Array.isArray(b.log)?b.log.slice(0,200):[]).filter(function(x){ return x&&typeof x==='object'; }).map(function(x){ return {t:str(x.t),at:n0(x.at)}; });
   b.companions.forEach(function(c){ var bc=blankComp(c.kind||'conj'); c.abil=Object.assign({},bc.abil,c.abil&&typeof c.abil==='object'?c.abil:{}); c.inc=Object.assign({},bc.inc,c.inc&&typeof c.inc==='object'?c.inc:{});
     ['attacks','mods','traits'].forEach(function(f){ c[f]=rows(c[f]); }); if(!Array.isArray(c.good)) c.good=[];
-    if(['auto','yes','no'].indexOf(c.talents)<0) delete c.talents; if(typeof c.pack!=='string'||!/^p\d{1,3}$/.test(c.pack)) delete c.pack;
+    if(['auto','yes','no'].indexOf(c.talents)<0) delete c.talents; if(c.free!=null) c.free=!!c.free; if(c.freeWhy!=null) c.freeWhy=str(c.freeWhy).slice(0,120); if(typeof c.pack!=='string'||!/^p\d{1,3}$/.test(c.pack)) delete c.pack;
     if(c.coh!=null){ if(typeof c.coh!=='object'||Array.isArray(c.coh)) delete c.coh; else c.coh={prof:own(COH_P,c.coh.prof)?c.coh.prof:'',troop:!!c.coh.troop}; }
     if(c.rean!=null){ if(typeof c.rean!=='object'||Array.isArray(c.rean)) delete c.rean; else { var R=Object.assign(reanBlank(),c.rean), num=function(v,d){ v=Number(v); return isFinite(v)?v:d; };
       R.tmpl=R.tmpl==='skeleton'||R.tmpl==='none'?R.tmpl:'zombie'; R.vars=(Array.isArray(R.vars)?R.vars:[]).filter(function(v){ return typeof v==='string'&&RN_VARS[R.tmpl==='none'?'zombie':R.tmpl].concat(R.tmpl==='none'?RN_VARS.skeleton:[]).some(function(x){ return x[0]===v; }); }); R.v2=!!c.rean.v2;
       var L0=c.rean; if(!L0.v3){ if(R.tmpl!=='none'&&(L0.hd!=null||L0.str!=null||L0.dex!=null||L0.spd!=null)){ c.hd=String(Math.max(1,Math.floor(num(L0.hd,1)))); c.abil.str=num(L0.str,10); c.abil.dex=num(L0.dex,10);
           var fl=num(L0.fly,0); c.speed=Math.max(0,num(L0.spd,30))+' ft.'+(String(L0.other||'').trim()?', '+String(L0.other).trim():'')+(fl>0?', fly '+fl+' ft.':''); } R.v3=true; }
       ['hd','str','dex','spd','fly','other'].forEach(function(k){ delete R[k]; }); ['what','ex'].forEach(function(k){ R[k]=str(R[k]); });
-      R.flysrc=R.flysrc==='magic'?'magic':'wings'; R.energy=own(RN_EN,R.energy)?R.energy:'acid'; R.hands=!!R.hands; R.dur=['timed','conc','perm'].indexOf(R.dur)>=0?R.dur:'timed';
+      R.housed=!!R.housed; R.int=str(R.int).slice(0,40); R.flysrc=R.flysrc==='magic'?'magic':'wings'; R.energy=own(RN_EN,R.energy)?R.energy:'acid'; R.hands=!!R.hands; R.dur=['timed','conc','perm'].indexOf(R.dur)>=0?R.dur:'timed';
       R.left=R.left==null?null:Math.max(0,num(R.left,0)); R.total=R.total==null?null:Math.max(0,num(R.total,0)); c.rean=R; if(!R.v2&&R.tmpl!=='none') reanClean(c); else R.v2=true; } } });
   b.tempSrc=(Array.isArray(b.tempSrc)?b.tempSrc:[]).filter(function(x){ return x&&typeof x==='object'&&!Array.isArray(x); });
   b.tempSrc.forEach(function(x){ x.id=str(x.id)||'t'+uidG().slice(1); ['name','slots','excl','notes','act','uses'].forEach(function(k){ x[k]=str(x[k]); }); x.used=Math.max(0,Math.floor(Number(x.used))||0); x.on=x.on!==false; x.rest=x.rest==='off'?'off':'keep'; });
@@ -3033,14 +3033,15 @@ function cohortRow(r){ return r<1?null:COHORT_T[Math.min(r,21)-1]; }
 function cohortCost(c){ var o=compStats(c); if(c.adv){ var cr=crVal(c); return Math.max(0,Math.round(cr*2))+n0(c.advHd); } return o.hd; }
 function crVal(c){ var t=String(c.cr==null?'':c.cr).trim(), m=/^(\d+)\s*\/\s*(\d+)$/.exec(t); if(m) return +m[1]/+m[2]; var v=parseFloat(t); return isNaN(v)?Math.max(0,compStats(c).hd-2):v; }
 function leadPool(){ var r=leadRanks(), lt=leadTal(), L=(ch.companions||[]).filter(function(c){ return c.kind==='cohort'; });
-  return {used:L.reduce(function(a,c){ return a+cohortCost(c); },0),cap:r*(1+lt.greater),ranks:r,lt:lt,n:L.length}; }
+  var F=L.filter(compFree); L=L.filter(function(c){ return !compFree(c); });
+  return {used:L.reduce(function(a,c){ return a+cohortCost(c); },0),cap:r*(1+lt.greater),ranks:r,lt:lt,n:L.length,freeN:F.length,free:F.reduce(function(a,c){ return a+compStats(c).hd; },0)}; }
 /* the line on a cohort's card: what it counts, the table's maximum, the recruit DC */
 function cohortStrip(c,i){ if(!leadOn()) return ''; var r=leadRanks(), row=cohortRow(r), lt=leadTal(), o=compStats(c), cost=cohortCost(c), w=[];
   if(c.adv){ var cr=crVal(c); if(cr>Math.floor(r/2)) w.push('An advanced cohort’s CR can be at most '+Math.floor(r/2)+' (½ your Diplomacy ranks).'); }
   else if(row&&o.hd>row[1]) w.push('More Hit Dice than Table: Cohort allows at '+r+' Diplomacy ranks (max '+row[1]+').');
   if(!row) w.push('You need at least 1 rank in Diplomacy to recruit.');
   var CP=(c.coh&&c.coh.prof)||'', prof='<div class="row" style="margin:4px 0 6px"><label class="fld" style="margin:0"><span>Profession</span><select data-cohprof="'+i+'" aria-label="Profession"><option value=""'+(CP?'':' selected')+'>Manual (type its stats)</option>'+Object.keys(COH_P).filter(function(k){ return !COH_P[k].cast||lt.magic||CP===k; }).map(function(k){ return '<option value="'+k+'"'+(CP===k?' selected':'')+'>'+esc(COH_P[k].n)+'</option>'; }).join('')+'</select></label>'+(lt.squad||(c.coh&&c.coh.troop)?fC('companions.'+i+'.coh.troop','Troop (Squad talent)'):'')+'</div>';
-  return '<div style="border:1px solid var(--soft);border-radius:var(--r);padding:8px 10px;margin:6px 0">'+prof+'<span class="note">Recruited cohort · counts <b>'+cost+'</b> HD of your '+leadPool().cap+(c.adv?' (CR × 2)':'')+(row&&!c.adv?' · up to '+row[1]+' HD at your ranks':'')+' · recruit DC '+(10+o.hd)+' + settlement</span>'+
+  return '<div style="border:1px solid var(--soft);border-radius:var(--r);padding:8px 10px;margin:6px 0">'+prof+'<span class="note">Recruited cohort · '+(compFree(c)?'<b>doesn’t count</b> ('+esc(String(c.freeWhy||'').trim()||'marked')+'), would be '+cost+' HD':'counts <b>'+cost+'</b> HD')+' of your '+leadPool().cap+(c.adv?' (CR × 2)':'')+(row&&!c.adv?' · up to '+row[1]+' HD at your ranks':'')+' · recruit DC '+(10+o.hd)+' + settlement</span>'+
     (lt.advanced?'<div class="row" style="margin:4px 0 0">'+fC('companions.'+i+'.adv','Advanced cohort (counts CR × 2)')+(c.adv?fT('companions.'+i+'.cr','CR',' style="width:5rem" placeholder="'+Math.max(0,o.hd-2)+'"')+fN('companions.'+i+'.advHd','Cohort Hit Dice added',' min="0" style="width:5rem"'):'')+'</div>':'')+
     (w.length?'<p class="warn" style="margin:4px 0 0;font-size:13.5px">'+w.map(esc).join(' ')+'</p>':'')+'</div>'; }
 function leadCard(){ var P=leadPool(), lt=P.lt, a=lt.auto, row=cohortRow(P.ranks), on=LEAD_TAL.filter(function(t){ return lt[t[0]]; }).map(function(t){ return t[1]; });
@@ -3642,7 +3643,7 @@ function compStats(c,V0,opt){
   o.incs=conj?Math.floor(o.hd/4):0; o.incUsed=AB.reduce(function(s2,a){ return s2+Math.max(0,n0((c.inc||{})[a])); },0);
   if(cs){ o.form=cs.info; o.view=cs.c; }
   if(c._coh){ o.coh=cohInfo(c,o); o.special=o.coh.special; }
-  if(c._rean){ o.rean=reanInfo(c,o); o.special=o.rean.special; o.feats=1; if(!o.view) o.view=c; } /* zombies and skeletons get one template feat, no more as Hit Dice rise */
+  if(c._rean){ o.rean=reanInfo(c,o); o.special=o.rean.special; o.feats=c._rean.intel?2+Math.floor((o.hd-1)/2):1; if(!o.view) o.view=c; } /* zombies and skeletons get one template feat, no more as Hit Dice rise; an intelligent one also gets feats for its Hit Dice */
   return o;
 }
 /* ---------- reanimated undead (Death sphere Reanimate, with the Bestiary skeleton and zombie templates) ----------
@@ -3670,7 +3671,25 @@ var RN_PRESETS=[['Human commoner','M',1,[10,10,10,10,10,10],'30 ft.',true,[]],['
   ['Horse','L',2,[16,14,17,2,13,7],'50 ft.',false,[['Hoof','secondary','1d4'],['Hoof','secondary','1d4']]],['Ogre','L',4,[21,8,15,6,10,7],'40 ft.',true,[]],
   ['Owlbear','L',5,[19,12,18,2,12,10],'30 ft.',false,[['Claw','primary','1d6'],['Claw','primary','1d6'],['Bite','primary','1d6']]],
   ['Griffon','L',5,[16,15,16,5,13,8],'30 ft., fly 80 ft. (average)',false,[['Bite','primary','1d6'],['Talon','primary','1d6'],['Talon','primary','1d6']]],['Hill giant','L',10,[25,8,19,6,10,7],'40 ft.',true,[]]];
-function reanBlank(){ return {v2:true,v3:true,tmpl:'zombie',vars:[],what:'',flysrc:'wings',hands:true,ex:'',dur:'timed',left:null,total:null}; }
+function reanBlank(){ return {v2:true,v3:true,tmpl:'zombie',vars:[],what:'',flysrc:'wings',hands:true,ex:'',dur:'timed',left:null,total:null,housed:false,int:''}; }
+/* ---------- companions that don't count (2026-11-14, owner) ----------
+   c.free: an undead, cohort or tamed animal that doesn't count against its Hit Dice cap (c.freeWhy says why: hired, a possessed
+   body, a yellow musk zombie…); it still counts as an active companion under the house rule. A housed soul (c.rean.housed:
+   Guide of the Dead, or Shepherd of the Lost with soul weaver level as incanter level) never counts: it is permanent, has Hit Dice
+   equal to that level (before the template), Intelligence 6 + ½ that level, and only one can be up. c.rean.int gives any
+   templated undead an Intelligence (a number or formula; blank = mindless): it then gets feats for its Hit Dice. */
+var CAP_KINDS={undead:'undead',cohort:'cohort',tamed:'tamed animal'};
+function housedOn(c){ return !!(c&&c.kind==='undead'&&c.rean&&c.rean.housed&&reanOn(c)); }
+function compFree(c){ return !!c&&!!CAP_KINDS[c.kind]&&(!!c.free||housedOn(c)); }
+/* the level a housed soul uses: soul weaver level with Shepherd of the Lost, else incanter level with Guide of the Dead (0: neither) */
+function housedSrc(){ if(!ch) return null; var lv=function(id){ return (ch.levels||[]).filter(function(l){ return l.cls===id; }).length; }, best=null;
+  clsList().forEach(function(x){ if((x[1].arch||[]).some(function(a){ return /shepherd of the lost/i.test(String(a)); })){ var n=lv(x[0]); if(!best||n>best.n) best={n:n,by:'Shepherd of the Lost',cls:x[1].name||'soul weaver'}; } });
+  if(!best&&allPicks(ch).some(function(p){ return /guide (of|to) the (dead|lost)/i.test(String(p.name||'')); })){ var inc=clsList().filter(function(x){ return /incanter/i.test(x[1].name||''); }), n=inc.length?Math.max.apply(null,inc.map(function(x){ return lv(x[0]); })):(ch.levels||[]).length; best={n:n,by:'Guide of the Dead',cls:inc.length?'incanter':'character'}; }
+  return best; }
+function housedLvl(){ var h=housedSrc(); return h?Math.max(1,h.n):1; }
+/* a templated undead's Intelligence: rean.int when filled in, else 6 + ½ level for a housed soul, else null (mindless) */
+function reanInt(c){ var t=String((c.rean||{}).int||'').trim(); if(t){ var v=evalF(t,D&&D.V||{}); if(!isNaN(v)) return Math.max(1,Math.floor(v)); }
+  return housedOn(c)?6+Math.floor(housedLvl()/2):null; }
 function reanOn(c){ return !!(c&&c.kind==='undead'&&c.rean&&typeof c.rean==='object'&&c.rean.tmpl!=='none'); }
 /* the sheet's first version copied template results into a companion's own rows ("Stop using the template"); switching back then
    counted them twice. Remove those copies once (rean.v2 marks it done); the template never stores rows itself. */
@@ -3703,7 +3722,7 @@ function crTxtN(c){ return c===1/3?'1/3':c===1/4?'1/4':c===1/2?'1/2':c===1/6?'1/
 function reanView(c){
   var R=c.rean, T=R.tmpl==='skeleton'?'skeleton':'zombie', skel=T==='skeleton', zi=Math.max(0,SIZEK.indexOf(SIZES[c.size]?c.size:'M')), dt=deathTal(), v=reanVars(c), dcl=deathCL();
   /* the base creature is this companion's own stat block: its Hit Dice (racial; class levels count as 1), ability scores, size, speed and attacks */
-  var h0=evalF(String(c.hd==null||c.hd===''?'1':c.hd),D&&D.V||{}), rhd=Math.max(1,Math.floor(isNaN(h0)?1:h0)), hd=rhd+(skel?0:RN_ZHD[zi]), A=c.abil||{};
+  var hs=housedOn(c), iv=reanInt(c), h0=hs?housedLvl():evalF(String(c.hd==null||c.hd===''?'1':c.hd),D&&D.V||{}), rhd=Math.max(1,Math.floor(isNaN(h0)?1:h0)), hd=rhd+(skel?0:RN_ZHD[zi]), A=c.abil||{};
   var en=RN_EN[R.energy]||'acid', str=n0(A.str,10)+(skel?0:2), dex=n0(A.dex,10)+(skel?(v.mudra?4:2):(v.fast?2:-2)), wis=10, cha=v.bloody?14:v.burning||v.energy?12:10;
   if(v.brutal){ wis+=2; cha+=2; }
   var mods=[];
@@ -3723,8 +3742,8 @@ function reanView(c){
   if(fly>0){ if(skel){ if(R.flysrc==='magic') spd.push('fly '+fly+' ft.'+(ps.man?' ('+ps.man+')':'')); else flyNote='Its wings no longer let it fly (a skeleton flies only if the creature flew by magic).'; }
     else spd.push('fly '+fly+' ft. ('+(R.flysrc==='magic'?ps.man||'average':'clumsy')+')'); }
   var x=Object.assign({},c,{hd:String(hd),die:8,bab:'3/4',good:['will'],hpAb:'cha',hpF:'',na:String(RN_NA[T][zi]+(dt.fortified?2:0)),
-    abil:{str:str,dex:dex,con:10,int:10,wis:wis,cha:cha},noAb:{con:true,int:true},mods:mods.concat(c.mods||[]),attacks:att,speed:spd.join(', ').replace(/\s+$/,'')});
-  x._rean={en:en,T:T,skel:skel,v:v,dt:dt,dcl:dcl,rhd:rhd,hd:hd,zi:zi,flyNote:flyNote};
+    abil:{str:str,dex:dex,con:10,int:iv==null?10:iv,wis:wis,cha:cha},noAb:iv==null?{con:true,int:true}:{con:true},mods:mods.concat(c.mods||[]),attacks:att,speed:spd.join(', ').replace(/\s+$/,'')});
+  x._rean={en:en,T:T,skel:skel,v:v,dt:dt,dcl:dcl,rhd:rhd,hd:hd,zi:zi,flyNote:flyNote,housed:hs,intel:iv!=null};
   return x; }
 /* after compStats: CR, the casting check, specials (they need the final Cha modifier) */
 function reanInfo(x,o){ var I=x._rean, R=x.rean, v=I.v, dt=I.dt, hd=I.hd, skel=I.skel, dcl=I.dcl, nV=Object.keys(v).length;
@@ -3752,20 +3771,29 @@ function reanInfo(x,o){ var I=x._rean, R=x.rean, v=I.v, dt=I.dt, hd=I.hd, skel=I
   var wt=String((ch.deathOpt||{}).wtxt||'').trim(); if(dt.warriors) sp.push('Reanimated Warriors (in your dominion range): '+(wt||plural(dt.warriors,'combat talent or feat')+' of yours'));
   if(String(R.ex||'').trim()) sp.push(String(R.ex).trim());
   if(I.flyNote) sp.push(I.flyNote);
+  var HS=I.housed?housedSrc():null;
+  if(I.intel) sp.push('Not mindless: Int '+o.score.int+'; it gets skill ranks and feats for its Hit Dice');
+  if(I.housed){ sp.push('Housed soul: follows your commands without being controlled; speaks and understands one language you know; Hit Dice = your '+(HS?HS.cls.toLowerCase():'incanter')+' level ('+I.rhd+'), whatever the corpse');
+    sp.push('Weakness: effects that protect from possession (such as Hallow) can expel it, destroying the body (the caster needs a magic skill check against your MSD)','Of pure body: your own effects can’t destroy or sacrifice it (Dark Sacrifice), and corpse-merging effects (Corpse Manipulation, Corpse Forge) can’t target it');
+    if(HS&&HS.by==='Shepherd of the Lost') sp.push('Shepherd of the Lost: your positive energy abilities and sphere effects can heal it'); }
   var cr=reanCR(I.T,hd), add=vn.reduce(function(s,z){ return s+z[3]; },0); if(add) cr=cr<1?add:cr+add;
   var mult=[2,4,5][dt.greater], castHD=hd*(1+nV), maxCast=2*dcl, counts=R.dur==='conc'?Math.max(1,Math.ceil(hd/2)):hd;
-  var spc=(R.dur==='conc'?0:1)+(R.dur==='perm'?2:0), dur=R.dur==='perm'?'Permanent (instantaneous)':R.dur==='conc'?'Concentration (your sustained undead)':plural(dcl,dt.sustained?'hour':'minute');
+  var spc=I.housed?0:(R.dur==='conc'?0:1)+(R.dur==='perm'?2:0), dur=I.housed?'Permanent (housed soul: an 8-hour ritual'+(HS&&HS.n>=8?'; 1 hour, or 1 minute for 1 spell point':'')+')':R.dur==='perm'?'Permanent (instantaneous)':R.dur==='conc'?'Concentration (your sustained undead)':plural(dcl,dt.sustained?'hour':'minute');
   var warn=[]; if(nV&&!dt.expanded) warn.push('Variants need the Expanded Necromancy talent.');
   RN_EXCL.forEach(function(e){ if(v[e[0]]) e[1].forEach(function(o){ if(v[o]) warn.push(RN_VARS[I.T].filter(function(z){ return z[0]===e[0]; })[0][1]+' and '+((RN_VARS[I.T].filter(function(z){ return z[0]===o; })[0]||[0,o])[1]).toLowerCase()+' can’t be combined.'); }); });
   if(R.dur==='conc'&&!dt.sustained) warn.push('A sustained undead needs Sustained Necromancy.');
-  if(R.dur==='perm'&&!dt.permanent) warn.push('Permanent undead need the Permanent Undead talent.');
+  if(R.dur==='perm'&&!dt.permanent&&!I.housed) warn.push('Permanent undead need the Permanent Undead talent.');
+  if(I.housed){ if(!HS) warn.push('A housed soul needs Guide of the Dead (Death sub-specialization) or the Shepherd of the Lost archetype.'); else if(HS.n<3) warn.push('House Soul comes at 3rd level ('+HS.by+': level '+HS.n+').');
+    if(nV&&HS&&HS.n<8) warn.push('A housed soul can’t have a template (variant) until 8th level.'); else if(nV>1) warn.push('A housed soul can have only a single template (variant).');
+    var nH=(ch.companions||[]).filter(function(z){ return housedOn(z)&&z.on!==false; }).length; if(nH>1) warn.push('Only one housed soul can be raised at a time ('+nH+' are up).'); }
   if(castHD>maxCast) warn.push('Too many Hit Dice to raise: it counts as '+castHD+' when casting, over your '+maxCast+' maximum (2 × caster level '+dcl+').');
   return {title:(R.what?String(R.what).trim()+' ':'')+(vn.length?vn.map(function(z){ return z[1].toLowerCase(); }).join(' ')+' ':'')+I.T,cr:cr,crTxt:crTxtN(cr),hd:hd,rhd:I.rhd,castHD:castHD,maxCast:maxCast,counts:counts,pool:mult*dcl,mult:mult,
     sp:spc,dur:dur,range:['Touch','Close','Medium','Long'][dt.ranged],dc:dc,special:sp,warn:warn,dcl:dcl,mass:dt.mass}; }
 /* what your raised undead use of the Hit Dice pool: reanimated ones by the rules (a sustained undead counts half), others by their Hit Dice */
-function reanPool(skip){ var act=(ch.companions||[]).filter(function(c){ return c.kind==='undead'&&c.on!==false&&c.id!==skip; }), used=0, sust=0;
-  act.forEach(function(c){ var o=compStats(c); if(o.rean){ used+=o.rean.counts; if(c.rean.dur==='conc') sust++; } else used+=o.hd; });
-  var dt=deathTal(), dcl=deathCL(); return {used:used,pool:[2,4,5][dt.greater]*dcl,sust:sust,n:act.length}; }
+function reanPool(skip){ var act=(ch.companions||[]).filter(function(c){ return c.kind==='undead'&&c.on!==false&&c.id!==skip; }), used=0, sust=0, free=0, freeN=0;
+  act.forEach(function(c){ var o=compStats(c), n=o.rean?o.rean.counts:o.hd; if(compFree(c)){ free+=o.hd; freeN++; return; } used+=n; if(o.rean&&c.rean.dur==='conc') sust++; });
+  var dt=deathTal(), dcl=deathCL(); return {used:used,pool:[2,4,5][dt.greater]*dcl,sust:sust,n:act.length,free:free,freeN:freeN}; }
+function freeNote(n,hd){ return n?' (+'+plural(n,'companion')+', '+hd+' HD, that don’t count)':''; }
 /* ---------- mounts ----------
    ch.mount = {id: a companion's id, on: riding it now, frenzy: Frenzy Rider in use this round}.
    Ride talents with numbers (Beastmastery sphere): Armored Mount (the mount: competence to AC and CMD = ½ your Ride ranks,
@@ -3811,29 +3839,31 @@ function compLimits(){ if(!ch||!ch.rules||!ch.rules.compLimit) return null; var 
 function compLimitWarn(){ var R=compLimits(); if(!R||!R.over) return ''; return 'Over the companion limits: '+[R.active>R.cap?R.active+' active of '+R.cap:'',R.tal>R.talCap?R.tal+' that gain talents of '+R.talCap:'',R.packs.length>R.packCap?R.packs.length+' packs of '+R.packCap:''].filter(Boolean).join(', ')+'.'; }
 function compCaps(){
   var out=[], und=(ch.companions||[]).filter(function(c){ return c.kind==='undead'; });
-  if(und.length){ var P=reanPool(); out.push(['Raised undead (Hit Dice in use, cap = '+[2,4,5][deathTal().greater]+' × Death caster level '+deathCL()+')'+(P.sust>1?': only one sustained undead is allowed':''),P.used,P.pool,P.sust>1]); }
+  if(und.length){ var P=reanPool(); out.push(['Raised undead (Hit Dice in use, cap = '+[2,4,5][deathTal().greater]+' × Death caster level '+deathCL()+')'+freeNote(P.freeN,P.free)+(P.sust>1?': only one sustained undead is allowed':''),P.used,P.pool,P.sust>1]); }
   /* Leadership sphere, Recruit: "their total Hit Dice cannot exceed your ranks in Diplomacy" */
-  var coh=(ch.companions||[]).filter(function(c){ return c.kind==='cohort'; }); if(coh.length&&leadOn()){ var LP=leadPool(); out.push(['Recruited cohorts (Hit Dice, cap = Diplomacy ranks'+(LP.lt.greater?' × '+(1+LP.lt.greater)+' with Greater Recruitment':'')+')',LP.used,LP.cap]); }
-  var tam=(ch.companions||[]).filter(function(c){ return c.kind==='tamed'; }); if(tam.length) out.push(['Tamed animals (Hit Dice, cap = Handle Animal ranks)',tam.reduce(function(s2,c){ return s2+compStats(c).hd; },0),(D.skills.handle||{}).ranks||0]);
+  var coh=(ch.companions||[]).filter(function(c){ return c.kind==='cohort'; }); if(coh.length&&leadOn()){ var LP=leadPool(); out.push(['Recruited cohorts (Hit Dice, cap = Diplomacy ranks'+(LP.lt.greater?' × '+(1+LP.lt.greater)+' with Greater Recruitment':'')+')'+freeNote(LP.freeN,LP.free),LP.used,LP.cap]); }
+  var tam=(ch.companions||[]).filter(function(c){ return c.kind==='tamed'; }), tamF=tam.filter(compFree); if(tam.length) out.push(['Tamed animals (Hit Dice, cap = Handle Animal ranks)'+freeNote(tamF.length,tamF.reduce(function(s2,c){ return s2+compStats(c).hd; },0)),tam.filter(function(c){ return !compFree(c); }).reduce(function(s2,c){ return s2+compStats(c).hd; },0),(D.skills.handle||{}).ranks||0]);
   var R=compLimits(); if(R){ out.push(['Active companions (2 + 1 per 3 levels; a pack counts as 1'+(ch.mount&&ch.mount.on?'; a ridden mount only if it gains talents':'')+')',R.active,R.cap]);
     out.push(['Active companions that gain talents (1 + 1 per 4 levels)',R.tal,R.talCap]); if(packIds().length||R.packs.length) out.push(['Packs active (1; 2 from 10th level)',R.packs.length,R.packCap]);
     packIds().forEach(function(pid){ var pr=packProblems(pid); if(pr.length) out.push([packName(pid)+': '+pr.join('; '),packMembers(pid).length,4,true]); }); }
   return out;
 }
 /* the reanimation strip on an undead card: what it is, the casting check, its time left, and Raise / Collapse */
-function reanStrip(c,i,o){ var I=o.rean, R=c.rean, cur=o.hpMax-n0(c.dmg), dead=cur<=0&&!reanVars(c).bloody, P=reanPool(c.id), after=P.used+I.counts, up=c.on!==false;
+function reanStrip(c,i,o){ var I=o.rean, R=c.rean, cur=o.hpMax-n0(c.dmg), dead=cur<=0&&!reanVars(c).bloody, P=reanPool(c.id), fr=compFree(c), after=P.used+(fr?0:I.counts), up=c.on!==false;
   var st=I.castHD>I.maxCast?'bad':after>P.pool?'warn':'';
   var h='<div style="border:1px solid var(--soft);border-radius:var(--r);padding:8px 10px;margin:6px 0">'+
     '<div class="row" style="margin:0;justify-content:space-between"><span><b>'+esc(I.title.charAt(0).toUpperCase()+I.title.slice(1))+'</b> <span class="tag">CR '+esc(I.crTxt)+'</span> '+(dead?'<span class="tag bad">destroyed</span>':up?(R.left!=null?'<span class="tag gold">'+esc(shapeLeft(R))+' left</span>':R.dur==='perm'?'<span class="tag gold">permanent</span>':R.dur==='conc'?'<span class="tag gold">concentrating</span>':'<span class="tag gold">raised</span>'):'<span class="tag">collapsed</span>')+'</span>'+
     '<span class="row" style="margin:0">'+(up&&R.left!=null?'<button class="mini" data-a="reanTick" data-i="'+i+'" data-n="1">−1 rd</button><button class="mini" data-a="reanTick" data-i="'+i+'" data-n="10">−1 min</button>'+(n0(R.total)>=600?'<button class="mini" data-a="reanTick" data-i="'+i+'" data-n="600">−1 h</button>':''):'')+
       (dead?'':'<button class="mini'+(up?'':' primary')+'" data-a="reanRaise" data-i="'+i+'">'+(up?'Raise again':'Reanimate')+(I.sp?' (−'+plural(I.sp,'spell point')+')':'')+'</button>')+(up?'<button class="mini" data-a="reanEnd" data-i="'+i+'">Collapse</button>':'')+'</span></div>'+
-    '<p class="note" style="margin:4px 0 0">Counts as <b>'+I.castHD+'</b> HD when casting (max '+I.maxCast+') · <b>'+I.counts+'</b> HD of your pool once controlled ('+(up?P.used+I.counts:after)+' of '+P.pool+(up?' in use':' if you raise it')+') · '+I.range+' · '+esc(I.dur)+(I.mass?' · Mass Death Magic: +1 spell point to raise several at once':'')+'</p>';
-  var w=I.warn.slice(); if(!up&&after>P.pool&&!dead) w.push('Raising it puts you at '+after+' of '+P.pool+' Hit Dice: collapse or release '+(after-P.pool)+' HD of undead first.');
+    '<p class="note" style="margin:4px 0 0">Counts as <b>'+I.castHD+'</b> HD when casting (max '+I.maxCast+') · '+(fr?'<b>doesn’t count</b> against your undead Hit Dice ('+esc(housedOn(c)?'housed soul':String(c.freeWhy||'').trim()||'marked')+')':'<b>'+I.counts+'</b> HD of your pool once controlled ('+(up?P.used+I.counts:after)+' of '+P.pool+(up?' in use':' if you raise it')+')')+' · '+I.range+' · '+esc(I.dur)+(I.mass?' · Mass Death Magic: +1 spell point to raise several at once':'')+'</p>';
+  var w=I.warn.slice(); if(!up&&!fr&&after>P.pool&&!dead) w.push('Raising it puts you at '+after+' of '+P.pool+' Hit Dice: collapse or release '+(after-P.pool)+' HD of undead first.');
   if(dead) w.push('It was destroyed at 0 hit points, so it can’t be reanimated again.');
   if(w.length) h+='<p class="'+(dead||st==='bad'?'bad':'warn')+'" style="margin:4px 0 0;font-size:13.5px">'+w.map(esc).join(' ')+'</p>';
   return h+'</div>'; }
 function reanEditor(c,i,p){ var R=c.rean, r=p+'rean.', T=R.tmpl==='skeleton'?'skeleton':'zombie', dt=deathTal(), vs=R.vars||[];
-  return '<div class="fields">'+fS(p+'kind','Kind',CKINDS)+reanPresetSel(i)+fS(r+'tmpl','Template',RN_TMPLS)+fS(r+'dur','Raised as',[['timed','Normal ('+(dt.sustained?'1 hour':'1 minute')+' per caster level, 1 spell point)'],['conc','Your sustained undead (concentration, 0 spell points, counts half)'],['perm','Permanent undead (+2 spell points)']])+'</div>'+
+  return '<div class="fields">'+fS(p+'kind','Kind',CKINDS)+reanPresetSel(i)+fS(r+'tmpl','Template',RN_TMPLS)+fS(r+'dur','Raised as',[['timed','Normal ('+(dt.sustained?'1 hour':'1 minute')+' per caster level, 1 spell point)'],['conc','Your sustained undead (concentration, 0 spell points, counts half)'],['perm','Permanent undead (+2 spell points)']])+
+    fT(r+'int','Intelligence',' style="width:7rem" placeholder="'+(R.housed?String(6+Math.floor(housedLvl()/2))+' (housed)':'mindless')+'" title="A number or formula; blank = mindless'+(R.housed?' (a housed soul: 6 + ½ level)':'')+'"')+'</div>'+
+    (R.housed||housedSrc()?'<div class="row" style="margin:4px 0">'+fC(r+'housed','Housed soul'+(housedSrc()?' ('+esc(housedSrc().by)+', level '+housedSrc().n+')':''))+'<span class="note">Permanent, Hit Dice = that level, Int 6 + ½ level, doesn’t count against your undead Hit Dice; one at a time.</span></div>':'')+
     '<div style="margin:6px 0"><span class="note">Variants'+(dt.expanded?'':' (need Expanded Necromancy)')+':</span>'+RN_VARS[T].map(function(v){ return (v[4]==='p'&&!(RN_VARS[T][RN_VARS[T].indexOf(v)-1]||[])[4]?'<div class="note" style="margin-top:6px">Faces of Death (Paizo, Classic Horrors Revisited; check with your GM):</div>':'')+'<div><label class="ck"><input type="checkbox" data-in="'+r+'vars" data-v="'+v[0]+'"'+(vs.indexOf(v[0])>=0?' checked':'')+'> <span><b>'+v[1]+'</b> <span class="note">'+esc(v[2])+'</span></span></label>'+(v[0]==='energy'&&vs.indexOf('energy')>=0?' '+selF(r+'energy','Energy',Object.keys(RN_EN).map(function(k){ return [k,RN_EN[k]]; }),R.energy||'acid'):'')+'</div>'; }).join('')+'</div>'+
     '<p class="note" style="margin:8px 0 2px"><b>The creature before the template.</b> Pick one above or type in your GM’s creature (all its ability scores too); the template is applied on top, and setting Template to None shows these numbers as they are. Class levels count as 1 racial Hit Die.</p>'+
     '<div class="fields">'+fT(r+'what','Creature')+fS(p+'size','Size',Object.keys(SIZES).map(function(z){ return [z,SIZES[z][0]]; }))+fF(p+'hd','Racial Hit Dice')+fT(p+'speed','Speed',' placeholder="30 ft., fly 60 ft. (average)"',' wide')+
@@ -3843,7 +3873,7 @@ function reanEditor(c,i,p){ var R=c.rean, r=p+'rean.', T=R.tmpl==='skeleton'?'sk
     '<p class="note">For a creature your GM made that you don’t raise with a template, set Template to None.</p>'; }
 function reanPresetSel(i){ return '<label class="fld"><span>Start from</span><select data-rnpreset="'+i+'" aria-label="Start from a creature"><option value="">Pick a creature…</option>'+RN_PRESETS.map(function(x,j){ return '<option value="'+j+'">'+esc(x[0])+' ('+SIZES[x[1]][0]+', '+x[2]+' HD)</option>'; }).join('')+'</select></label>'; }
 function reanAbil(c,p,o){ var R=c.rean, T=R.tmpl==='skeleton'?'skeleton':'zombie', v=reanVars(c), cha=v.bloody?14:v.burning||v.energy?12:10;
-  var how={str:T==='zombie'?'+2 (zombie)':'',dex:T==='skeleton'?(v.mudra?'+4 (mudra skeleton)':'+2 (skeleton)'):v.fast?'+2 (fast zombie)':'−2 (zombie)',con:'none (undead)',int:'none (mindless)',wis:'becomes 10'+(v.brutal?', +2 brutal':''),cha:'becomes '+cha+(v.brutal?', +2 brutal':'')};
+  var how={str:T==='zombie'?'+2 (zombie)':'',dex:T==='skeleton'?(v.mudra?'+4 (mudra skeleton)':'+2 (skeleton)'):v.fast?'+2 (fast zombie)':'−2 (zombie)',con:'none (undead)',int:o.score.int==='—'?'none (mindless)':'becomes '+o.score.int+(housedOn(c)&&!String(R.int||'').trim()?' (housed soul)':' (intelligent)'),wis:'becomes 10'+(v.brutal?', +2 brutal':''),cha:'becomes '+cha+(v.brutal?', +2 brutal':'')};
   return '<div class="table-wrap"><table><tr><th>Ability</th><th class="num">Base</th><th>Template</th><th class="num">Bonus</th><th class="num">Score</th><th class="num">Mod</th></tr>'+
     AB.map(function(a){ var no=o.score[a]==='—'; return '<tr><td>'+ABN[a]+'</td><td class="num"><input type="number" data-f="'+p+'abil.'+a+'" data-num="1" value="'+n0((c.abil||{})[a],10)+'" aria-label="'+ABN[a]+' (base creature)"></td><td class="note">'+esc(how[a])+'</td><td class="num"><input type="number" data-f="'+p+'inc.'+a+'" data-num="1" value="'+n0((c.inc||{})[a])+'" aria-label="'+ABN[a]+' bonus"'+(no?' disabled':'')+'></td><td class="num big">'+o.score[a]+'</td><td class="num">'+(no?'—':sgn(o.mod[a]))+'</td></tr>'; }).join('')+'</table></div>'+
     '<p class="note">Base: the creature’s own scores (kept if you set Template to None). Bonus: anything on top, after the template.</p>'; }
@@ -3913,6 +3943,7 @@ function compCard(c,i){
   var h='<section class="card" id="cmp-'+esc(c.id)+'"><div class="cardhead"><span class="row" style="margin:0;flex:1 1 300px"><input type="text" data-f="'+p+'name" value="'+esc(c.name)+'" placeholder="Name" aria-label="Companion name" style="font-family:var(--f-display);font-size:20px;font-weight:700;flex:1 1 180px"><span class="tag">'+esc(CKN[c.kind]||'Creature')+'</span></span>'+
     '<span class="row" style="margin:0">'+(ch.possess&&ch.possess.host===c.id?'<span class="tag gold">Possessed</span>':tabOn('poss')&&(!ch.possess||ch.possessCollective)?'<button class="mini" data-a="possStart" data-i="'+i+'">Possess</button>':'')+(c.kind!=='host'?'<button class="mini" data-a="cMount" data-i="'+i+'" aria-pressed="'+!!(ch.mount&&ch.mount.id===c.id)+'" title="Make it the creature you ride (one at a time)">'+(ch.mount&&ch.mount.id===c.id?'Your mount':'Use as mount')+'</button>':'')+'<button class="mini" data-a="cOn" data-i="'+i+'" aria-pressed="'+(c.on!==false)+'"'+(ch.rules.compLimit?' title="Active: taking part in this encounter (counts toward Companion limits)"':'')+'>'+(c.on!==false?(ch.rules.compLimit?'Active':'Present'):(ch.rules.compLimit?'Not active':'Not present'))+'</button><button class="mini danger" data-a="cDel" data-i="'+i+'">Remove</button></span></div>';
   if(ch.rules.compLimit&&c.kind!=='host') h+=compLimitRow(c,i,p);
+  if(CAP_KINDS[c.kind]) h+=housedOn(c)?'':'<div class="row" style="margin:4px 0 2px;flex-wrap:wrap;gap:6px">'+fC(p+'free','Doesn’t count against the '+CAP_KINDS[c.kind]+' Hit Dice cap')+(c.free?fT(p+'freeWhy','Why',' placeholder="Hired, a possessed body, a yellow musk zombie…"',' wide'):'')+'</div>';
   if(o.form) h+='<div class="li" style="border:1px solid var(--gold);border-radius:var(--r);padding:8px 10px;margin:6px 0;flex-wrap:wrap;gap:6px 10px;display:flex"><span style="flex:1 1 220px"><b>In form: '+esc(o.form.name)+'</b> <span class="tag gold">'+esc(o.form.tf)+'</span><br><span class="note">'+esc(o.form.notes.join(' · '))+'</span></span>'+shapeTimerBtns(c.shape,c.id)+'<button class="mini" data-a="shapeEnd" data-id="'+esc(c.id)+'">Dismiss</button></div>';
   if(o.rean) h+=reanStrip(c,i,o);
   if(c.kind==='cohort') h+=cohortStrip(c,i);
@@ -6083,6 +6114,7 @@ document.addEventListener('change',function(e){
     }
     if(/^possess\.(lengthen|willing)$/.test(t.dataset.f)&&ch.possess) possRetime(plUsed);
     if(t.dataset.f==='possessOpt.timer'&&v&&ch.possess&&ch.possess.left==null) possTimerStart();
+    var hm=/^companions\.(\d+)\.rean\.housed$/.exec(t.dataset.f); if(hm&&v){ var hc=ch.companions[+hm[1]]; if(hc&&hc.rean) hc.rean.dur='perm'; }
     if(/^deck\.opt\./.test(t.dataset.f)){ ch.deck.opt.colored=+ch.deck.opt.colored||0; ch.deck.opt.bleeding=+ch.deck.opt.bleeding||0; deckWeightSync(); }
     if(/^deck\.cards\.\d+\.n$/.test(t.dataset.f)) deckSync(ch.deck);
     if(/^deck\.man\.\d+\.c$/.test(t.dataset.f)) (ch.deck.man||[]).forEach(function(x){ x.c=Math.max(1,Math.min(10,Math.floor(n0(x.c,1)))); }); }

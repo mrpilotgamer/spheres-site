@@ -111,6 +111,7 @@ After class features from the wiki (2026-11-12, latest): `engine-check.js` 336, 
 (with the class files, archetypes and paths), `config-check.js` 12 passed; `csp-check.js` and the emulator checks were not run in that session.
 After deck feats (2026-11-14): `engine-check.js` 337, `check.js` 526, `fuzz-check.js` 27, `talents-check.js` 66, `config-check.js` 12
 passed; `csp-check.js` needs the firebase package (CI only) and the emulator checks were not run in that session.
+After companions that don't count (2026-11-14, later): `engine-check.js` 337, `check.js` 530, `fuzz-check.js` 27, `talents-check.js` 66 passed.
 
 **Rollback:** Firebase console → Hosting → release history → roll back. With GitHub: also revert the commit (the
 commit's page → "Revert"), or the next push puts the broken version back.
@@ -765,6 +766,21 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
       Bleeding Hand twice = 2, five colors = 2) is written to the drawback's `weight` (`deckWeightSync`), so boons follow.
     - Not automatic (by design): spending spell points, checking mana before casting, moving cards on damage. The rules
       panel says what applies; Damage and Heal give a reminder (below).
+  - **Companions that don't count, housed souls, intelligent undead (2026-11-14, owner).** Spotted with Soul Weaver Shepherd of
+    the Lost, whose housed soul couldn't be added without using up undead Hit Dice. Owner's calls: a general option plus a
+    housed soul preset; both still count as active companions under the house rule; any templated undead can have an Int.
+    - **"Doesn't count against the … Hit Dice cap"** (`c.free`, `c.freeWhy`) on undead, cohorts and tamed animals
+      (`CAP_KINDS`, `compFree`): left out of `reanPool`, `leadPool` and the tamed total; the cap lines add "(+N companions,
+      X HD, that don't count)" and the card says why. Covers the wiki's other exceptions by hand: Wraith possessed bodies,
+      Stitcher yellow musk zombie, Leadership hirelings, Battlemind mind-linked cohorts, Dreadlord undead.
+    - **Housed soul** (`c.rean.housed`; offered when `housedSrc` finds the Shepherd of the Lost archetype, using soul weaver
+      level, or a "Guide of the Dead" pick, using incanter level): never counts, permanent (ticking it sets the duration; no
+      spell points), racial Hit Dice = that level whatever the corpse, Int 6 + ½ level, its rules listed (commands,
+      language, possession weakness, of pure body; Shepherd: your positive energy heals it). Warnings: under 3rd level, a
+      template (variant) before 8th or more than one after, more than one housed soul up.
+    - **Intelligence for templated undead** (`c.rean.int`, a number or formula; blank = mindless, `reanInt`): the template
+      keeps the score instead of "—", says "Not mindless", and feats become 1 template feat + 1 + 1 per 2 Hit Dice past the
+      first. Undead with Template None already set their own scores.
   - **Deck feats and manipulations (2026-11-14, owner: "All three parts, skip the Ante feats").**
     - **Data:** `build-classes.py` `deck_data` reads the wiki's "Card and Deck Feats" page into `classes/_cards.json`
       (`{feats: [[name, text, prerequisites]], man: [[name, text, requires]]}`): every feat under "Deck Feats" (49, with
