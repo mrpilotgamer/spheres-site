@@ -298,6 +298,9 @@ const T0 = Date.now();
       const all = Object.keys(c.piles).reduce((a, k) => a.concat(c.piles[k]), []).sort();
       return [c.cards.length, c.cards[2].id !== 'bad id!', JSON.stringify(c.piles.hand), JSON.stringify(c.piles.table), all.length, new Set(all).size, c.opt.colored, c.opt.bleeding, c.opt.cooldown, c.opt.handPlus, JSON.stringify(c.custom)].join(' '); }),
       '3 true ["a.0"] ["b.1"] 6 6 0 2 true 0 [{"id":"p1","name":"Pile"}]');
+    check('deck manipulations: kept when sound (doubles merged away, counts 1–10), an old Loaded Hand count moved in', await page.evaluate(() => { const E = window.SheetEngine, c = E.sanitize({ app: 'spheres-sheet', v: 1, id: 'dm', name: 'D',
+      deck: { opt: { handPlus: 2 }, man: [{ n: 'Mulligan', c: 0 }, { n: 'Mulligan', c: 3 }, 'x', { n: '' }, { n: 'Sideboard', c: 40 }] } }).deck;
+      return JSON.stringify([c.man, c.opt.handPlus, 'extra' in c.piles, 'side' in c.piles]); }), '[[{"n":"Mulligan","c":1},{"n":"Sideboard","c":10},{"n":"Loaded Hand","c":2}],0,true,true]');
     check('the Card Casting drawback’s weight counts toward boons (2 drawbacks per boon)', await page.evaluate(() => { const E = window.SheetEngine, mk = w => E.derive(E.sanitize({ app: 'spheres-sheet', v: 1, id: 'dw', name: 'D', classes: { c1: { name: 'Incanter', cast: 'high' } }, levels: [{ cls: 'c1', hp: 6, picks: [] }],
       traditions: { casting: { on: true, drawbacks: [{ id: 'd1', name: 'Card Casting', kind: 'general', weight: w }], boons: [{ id: 'b1', name: 'Easy Focus' }] } } })).trad;
       return [mk(1).short, mk(2).short, mk(3).left].join(' '); }), '1 0 1');

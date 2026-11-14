@@ -78,7 +78,7 @@ for (const s of cslugs) {
 check('every class in the index has its file, with the feature count and name it says', !cmiss.length && !cbad.length, cmiss.concat(cbad).join(', '));
 check('every class level entry points at a feature (or none) and a choice that exist', !cidx.length, cidx.slice(0, 10).join('; '));
 check('no feature without a name or without text and choices', !cempty.length, cempty.slice(0, 10).join('; '));
-const corph = fs.readdirSync(CDIR).filter(f => f.endsWith('.json') && f !== 'index.json' && !CI.classes[f.slice(0, -5)]);
+const corph = fs.readdirSync(CDIR).filter(f => f.endsWith('.json') && f !== 'index.json' && f !== '_cards.json' && !CI.classes[f.slice(0, -5)]);
 check('no leftover class files from an older build', !corph.length, corph.join(', '));
 const cfeat = (c, n) => (cread(c + '.json').f.find(f => norm(f[0]) === norm(n)) || null);
 check('Striker: Striker Art has its list (at least 30 arts, Adrenaline Rush among them)', (cfeat('striker', 'Striker Art') || [0, 0, []])[2].length >= 30 && cfeat('striker', 'Striker Art')[2].some(o => norm(o[0]) === 'adrenalinerush'));

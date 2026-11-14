@@ -109,6 +109,8 @@ After the level-up feat and feature rows (2026-11-12, later): `engine-check.js` 
 `config-check.js` 12 passed; `csp-check.js` and the emulator checks were not run in that session (the database code is unchanged).
 After class features from the wiki (2026-11-12, latest): `engine-check.js` 336, `check.js` 520 (with the Feats tab text, archetypes, mass level-up, retraining, class numbers, presets, paths and the card deck), `fuzz-check.js` 27, `talents-check.js` 66
 (with the class files, archetypes and paths), `config-check.js` 12 passed; `csp-check.js` and the emulator checks were not run in that session.
+After deck feats (2026-11-14): `engine-check.js` 337, `check.js` 526, `fuzz-check.js` 27, `talents-check.js` 66, `config-check.js` 12
+passed; `csp-check.js` needs the firebase package (CI only) and the emulator checks were not run in that session.
 
 **Rollback:** Firebase console → Hosting → release history → roll back. With GitHub: also revert the commit (the
 commit's page → "Revert"), or the next push puts the broken version back.
@@ -761,8 +763,29 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
     - **Rules panel:** the options and modifications as checkboxes; a short summary of the base rules and each one taken
       (`DECK_SUM`), the Lifebound value, and the full wiki text (from `talents/drawbacks.json`). `deckWeight` (1, +1 each,
       Bleeding Hand twice = 2, five colors = 2) is written to the drawback's `weight` (`deckWeightSync`), so boons follow.
-    - Not automatic (by design): spending spell points, checking mana before casting, damage-triggered moves (Lifebound,
-      Exposed Grip, Strikable Assets), deck feats. The rules panel says what applies.
+    - Not automatic (by design): spending spell points, checking mana before casting, moving cards on damage. The rules
+      panel says what applies; Damage and Heal give a reminder (below).
+  - **Deck feats and manipulations (2026-11-14, owner: "All three parts, skip the Ante feats").**
+    - **Data:** `build-classes.py` `deck_data` reads the wiki's "Card and Deck Feats" page into `classes/_cards.json`
+      (`{feats: [[name, text, prerequisites]], man: [[name, text, requires]]}`): every feat under "Deck Feats" (49, with
+      the ones that count as deck feats, such as Spell Kicker) and the 22 deck manipulations (Addendum and Source lines join
+      the one above). Ante and Saga feats are left out. Loaded with `cwGet('_cards')`; `talents-check.js` skips it in the
+      orphan check, and the `check.js` file route allows the underscore.
+    - **Rules panel** (`deckFeatsCard`): the deck feats you have (Feat or Bonus feat rows matched by `wkNorm` name, with
+      copies) with their text and what their prerequisites name that you lack (`deckNeed`: Card Casting and its options,
+      Bleeding Hand twice, deck feats, manipulations, "X sphere" talents, the Charged Spells drawback; text with "or" skips the
+      Card Casting, sphere and Charged Spells checks); the manipulations picked (`ch.deck.man [{n, c 1-10}]`) with their
+      text, requirements and a Times box, "N of M" (one per deck feat, plus one per Card Shark; over is warned, never
+      blocked), an "Add a manipulation…" list; and all deck feats to browse. The old `opt.handPlus` count moves into Loaded
+      Hand when a sheet is cleaned.
+    - **Automated:** Loaded Hand (+2 to the starting draw each, +1 to Tight Hand's limit each), Mulligan (the rules line
+      says the first redraw draws the same number), Extra Deck and Sideboard piles (`extra`, `side`, shown when taken or not
+      empty), a Fresh Hand button (hand shuffled in, draw the starting hand), Read the Cards (Peek at the top: a toast only,
+      nothing saved; Top card to the bottom). The rest stay text.
+    - **Damage / Heal reminders** (`deckHpNote`, in `hpDo`, with the deck tab's conditions): Lifebound "N damage = k ×
+      value: move k cards (Wounds→Death first…)" on the damage past temp hp, and "move k cards back" on the hp actually
+      healed; Exposed Grip "if an attack hit you, discard a card"; Strikable Assets "reveal a card at random". Failed-save
+      triggers stay in the rules panel.
   - **More of what archetypes replace is matched (2026-11-14, owner).** Of 2,246 replaced names, 758 didn't match; now 227.
     `build-classes.py`: feature names match without a leading "The" (`fnn`: The Pressing Void); `rep_parts` drops a leftover
     verb ("… and alters tailored advice") and parts that are only a level or sentence words ("every 2 levels thereafter",

@@ -62,7 +62,7 @@ function check(what, got, want) {
   /* class feature files (2026-11-12) come from the local folder for the whole run, never the live site */
   const CLS = path.resolve(__dirname, '..', 'public', 'classes'), CSITE = 'https://spheres-character-sheet.web.app/classes/', clsReq = [];
   await page.route(CSITE + '**', route => { const f = decodeURIComponent(route.request().url().slice(CSITE.length)); clsReq.push(f);
-    if (!/^[a-z0-9-]+\.json$/.test(f) || !require('fs').existsSync(path.join(CLS, f))) return route.abort();
+    if (!/^[a-z0-9_-]+\.json$/.test(f) || !require('fs').existsSync(path.join(CLS, f))) return route.abort();
     route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: require('fs').readFileSync(path.join(CLS, f)) }); });
   await page.goto(FILE); await settle();
 
@@ -1703,6 +1703,28 @@ function check(what, got, want) {
     check('with Mana Pool a drawn Mana Point card goes to the table; Tight Hand stops at 3; the counts follow (5 drawbacks)', [handMana, tableNonMana, c.deck.piles.hand.length <= 3, c.traditions.casting.drawbacks[0].weight].join(' '), '0 0 true 5');
     check('Lifebound Deck shows its Stun, Wounds and Death piles and its value', [/STUN/i.test(await page.locator('#main .tiles').first().innerText()), /Lifebound value: \d+/.test(await page.locator('#main').innerText())].join(' '), 'true true');
     check('a card name with markup stays text', await page.evaluate(() => !!window.__deckx), false);
+    /* deck feats and manipulations (2026-11-14): matched by name, counted, what's missing warned; Loaded Hand, Extra Deck, Fresh Hand, Read the Cards; Damage reminders */
+    await mkS({ name: 'Incanter', hd: 6, bab: '1/2', good: ['will'], skills: 2, cast: 'high', martial: 'none' }, [{ cls: 'c1', hp: 6, picks: [{ id: 'f1', kind: 'feat', name: 'Card Shark' }, { id: 'f2', kind: 'bonus', name: 'Burn the Deck (Deck)' }] }], { castAbil: 'cha', abil: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 16 },
+      traditions: { casting: { on: true, name: 'Gambler', drawbacks: [{ id: 'd1', name: 'Card Casting', kind: 'general' }] } },
+      deck: { cards: [{ id: 'a', name: 'Bolt', n: 20, cost: '1' }], opt: { lifebound: true, exposed: true, handPlus: 1 }, man: [{ n: 'Read the Cards', c: 1 }, { n: 'Extra Deck', c: 1 }] } });
+    await page.reload(); await idle(); await page.locator('#tabbar [data-tab="deck"]').click(); await idle();
+    await page.waitForFunction(() => !document.querySelector('[data-cwneed="_cards"]'), null, { timeout: 15000 }).catch(() => {});
+    let mt = await page.locator('#main').innerText();
+    check('deck feats: Card Shark and a bonus Burn the Deck matched (2 deck feats, 3 manipulations allowed); the old Loaded Hand count moved over; Burn the Deck needs Cooldown',
+      [/Your deck feats \(2\)/i.test(mt), /3 of 3/.test(mt), /plus 1 from Card Shark/.test(mt), /Needs: Cooldown/.test(mt), JSON.stringify((await stored()).deck.man.map(x => x.n))].join(' '), 'true true true true ["Read the Cards","Extra Deck","Loaded Hand"]');
+    await page.locator('select[data-dman]').selectOption('Fresh Hand'); await idle(); mt = await page.locator('#main').innerText();
+    check('…a fourth manipulation is over the count (warned); Extra Deck adds its pile; the browse list has all the deck feats', [/4 manipulations picked, your deck feats give 3/.test(mt), /EXTRA DECK/i.test(await page.locator('#main .tiles').first().innerText()), /All deck feats \(4\d\)/.test(mt)].join(' '), 'true true true');
+    await page.locator('[data-a="deckDraw"]').first().click(); await idle(); c = await stored();
+    check('Loaded Hand: the starting draw is 2 more (Cha 16: 4 + 2)', c.deck.piles.hand.length, 6);
+    await page.locator('[data-a="deckMove"][data-to="table"]').first().click(); await idle();
+    await page.locator('[data-a="deckFresh"]').click(); await idle(); c = await stored();
+    check('Fresh Hand: the hand shuffles in and a new starting hand is drawn', [c.deck.piles.hand.length, c.deck.piles.table.length, c.deck.piles.deck.length].join(' '), '6 1 13');
+    const top0 = c.deck.piles.deck[0];
+    await page.locator('[data-a="deckPeek"]').click(); await idle();
+    check('Read the Cards: Peek names the top card; Top card to the bottom moves it', [/Top of the deck: Bolt/.test(await page.locator('#toast').innerText().catch(() => '')), await (async () => { await page.locator('[data-a="deckBottom"]').click(); await idle(); const d = (await stored()).deck.piles.deck; return d[d.length - 1] === top0; })()].join(' '), 'true true');
+    await go('Play', 'Sheet'); await page.locator('#amt').fill('9'); await page.locator('[data-a="hpDo"][data-k="dmg"]').click(); await idle();
+    const dmgT = await page.locator('#toast').innerText().catch(() => '');
+    check('Damage with Lifebound and Exposed Grip: the toast says how many cards move and to discard', [/Lifebound: 9 damage = \d+ × \d+: move \d+ cards?/.test(dmgT) || /Lifebound: under your value/.test(dmgT), /Exposed Grip: if an attack hit you, discard a card/.test(dmgT)].join(' '), 'true true');
     /* 2026-11-14: a choice an archetype replaces drops out of the suggestions; a part two archetypes both replace clashes */
     const bravoLv = n => Array.from({ length: n }, () => ({ cls: 'c1', hp: 6, picks: [] }));
     for (const [arch, want] of [[[], 1], [['Daredevil'], 0]]) {
