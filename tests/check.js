@@ -1667,8 +1667,9 @@ function check(what, got, want) {
     await hps.nth(0).locator('.lu-nm').fill('Academia'); await hps.nth(1).locator('.lu-nm').fill('Astrology');
     await next(); await next(); await dlg().locator('button', { hasText: /^Level up$/ }).click(); await idle();
     c = await stored(); kc = c.classes[Object.keys(c.classes)[0]];
-    check('…both apply: four class skills, Light (Astrology) free, the paths filed under Paths', [JSON.stringify(kc.paths), JSON.stringify(kc.pathAdd.cs), JSON.stringify(c.levels[0].picks.filter(p => p.kind === 'talent').map(p => p.name)), JSON.stringify((c.levels[0].picks.find(p => p.name === 'Paths') || {}).subs.map(x => x.name))].join(' '),
-      '["Academia","Astrology"] ["kgeo","knat","kpla","perc"] ["Light sphere"] ["Academia","Astrology"]');
+    check('…both apply: four class skills, Light (Astrology) free; each path is its own class feature with its 1st-level parts under it', [JSON.stringify(kc.paths), JSON.stringify(kc.pathAdd.cs), JSON.stringify(c.levels[0].picks.filter(p => p.kind === 'talent').map(p => p.name)),
+      c.levels[0].picks.filter(p => p.kind === 'feature').map(p => p.name + ((p.subs || []).length ? '{' + p.subs.map(x => x.name).join(',') + '}' : '')).join('+')].join(' '),
+      '["Academia","Astrology"] ["kgeo","knat","kpla","perc"] ["Light sphere"] Casting+Paths+Spell Pool+Academia{Path Benefit,Path Power}+Astrology{Path Benefit,Path Power}');
     await page.locator('[data-a="levelUp"]').first().click(); await idle(); await next(); await next();
     const sr = dlg().locator('.xr-item').filter({ has: page.locator('.xr-under option:checked', { hasText: /^Choice under Secret/ }) }).first();
     check('Hedgewitch 2: no repeated path rows; the Secret list has the paths’ secrets, with their text', [await dlg().locator('.xr-item').filter({ has: page.locator('.xr-under option:checked', { hasText: 'Paths' }) }).count(), await dlg().locator('datalist#' + await sr.locator('.lu-nm').getAttribute('list') + ' option[value="Academic Training"]').count(), await (async () => { await sr.locator('.lu-nm').fill('Academic Training'); await idle(); return /Wiki text: Academic Training/.test(await sr.locator('.lu-wk').innerText()); })()].join(' '), '0 1 true');
@@ -1702,6 +1703,39 @@ function check(what, got, want) {
     check('with Mana Pool a drawn Mana Point card goes to the table; Tight Hand stops at 3; the counts follow (5 drawbacks)', [handMana, tableNonMana, c.deck.piles.hand.length <= 3, c.traditions.casting.drawbacks[0].weight].join(' '), '0 0 true 5');
     check('Lifebound Deck shows its Stun, Wounds and Death piles and its value', [/STUN/i.test(await page.locator('#main .tiles').first().innerText()), /Lifebound value: \d+/.test(await page.locator('#main').innerText())].join(' '), 'true true');
     check('a card name with markup stays text', await page.evaluate(() => !!window.__deckx), false);
+    /* 2026-11-14: a choice an archetype replaces drops out of the suggestions; a part two archetypes both replace clashes */
+    const bravoLv = n => Array.from({ length: n }, () => ({ cls: 'c1', hp: 6, picks: [] }));
+    for (const [arch, want] of [[[], 1], [['Daredevil'], 0]]) {
+      await mkS({ name: 'Bravo', hd: 10, bab: 'full', good: ['ref'], skills: 6, martial: 'expert', cast: 'none', arch }, bravoLv(9)); await page.reload(); await idle();
+      await page.locator('[data-a="levelUp"]').first().click(); await idle(); await next(); await next();
+      const sr = dlg().locator('.xr-item').filter({ has: page.locator('.xr-under option:checked', { hasText: /Incredible Stunt/ }) }).first();
+      const lid = await sr.locator('.lu-nm').getAttribute('list');
+      check('Bravo 10 ' + (arch.length ? 'with Daredevil: its Alternate Stunt replaces Addling Assault, so it isn’t suggested' : 'without an archetype: Addling Assault is suggested'), lid ? await dlg().locator('datalist#' + lid + ' option[value="Addling Assault"]').count() : 0, want);
+      await cancelOrEsc(dlg().locator('button', { hasText: 'Cancel' }).first()); await settle();
+    }
+    await mkS({ name: 'Striker', hd: 10, bab: 'full', good: ['fort', 'ref'], skills: 4, martial: 'expert', arch: ['Strong Style Grappler'] }, []); await page.reload(); await idle(); await go('Character', 'Build');
+    await until('the Striker archetypes', () => !!document.querySelector('#main input[data-v="Chaos Shifter"]'));
+    await page.locator('details', { has: page.locator('summary', { hasText: /^Archetypes/ }) }).first().locator('summary').click();
+    const csh = page.locator('#main label', { has: page.locator('input[data-v="Chaos Shifter"]') });
+    check('the archetype summary names the parts of a feature it changes (critical knuckle, part of Tension Techniques)', [await csh.locator('input').isDisabled(),
+      /critical knuckle \(part of Tension Techniques\)/i.test(await page.locator('#main label', { has: page.locator('input[data-v="Strong Style Grappler"]') }).innerText())].join(' '), 'true true');
+    for (const [cls, have, other, why] of [['Fey Adept', 'Regisseur', 'Skulk', /both change create reality \(Shadowmark\)|both change create reality/], ['Soul Weaver', 'Banshee', 'Ghost Sovereign', /both change /]]) {
+      await mkS({ name: cls, hd: 6, bab: '1/2', good: ['will'], skills: 2, cast: 'high', martial: 'none', arch: [have] }, []); await page.reload(); await idle(); await go('Character', 'Build');
+      await until('the archetypes', o => !!document.querySelector('#main input[data-v="' + o + '"]'), other);
+      await page.locator('details', { has: page.locator('summary', { hasText: /^Archetypes/ }) }).first().locator('summary').click();
+      const ol = page.locator('#main label', { has: page.locator('input[data-v="' + other + '"]') });
+      check(cls + ': ' + have + ' and ' + other + ' share no whole feature but both replace the same ' + (cls === 'Soul Weaver' ? 'choice' : 'part') + ': they clash', [await ol.locator('input').isDisabled(), why.test(await ol.innerText())].join(' '), 'true true');
+    }
+    /* each chosen path is its own class feature with its parts under it, at their levels */
+    await freshP(); await fromList('Wraith');
+    await dlg().locator('.xr-item').filter({ has: page.locator('.xr-under option:checked', { hasText: 'Haunt Path' }) }).first().locator('.lu-nm').fill('Path of the Anima');
+    await next(); await next(); await dlg().locator('button', { hasText: /^Level up$/ }).click(); await idle();
+    await page.locator('[data-a="levelUp"]').first().click(); await idle(); await next(); await next();
+    const pp = dlg().locator('.xr-item').filter({ has: page.locator('.xr-under option:checked', { hasText: 'Path of the Anima' }) }).first();
+    check('Wraith 2: Path Possession comes as a choice under the path, with its text', [await pp.locator('.lu-nm').inputValue(), /Wiki text: Path Possession \(Path of the Anima\)/.test(await pp.locator('.lu-wk').innerText())].join(' '), 'Path Possession true');
+    await next(); await next(); await dlg().locator('button', { hasText: /^Level up$/ }).click(); await idle();
+    c = await stored();
+    check('…the path is a class feature at 1st with Path Sphere (1) and Path Possession (2) under it; Haunt Path holds no choices', [JSON.stringify((c.levels[0].picks.find(p => p.name === 'Path of the Anima') || {}).subs.map(x => x.name + '@' + x.lvl)), ((c.levels[0].picks.find(p => p.name === 'Haunt Path') || {}).subs || []).length].join(' '), '["Path Sphere@1","Path Possession@2"] 0');
     /* a Paizo class: its sphere conversion fills in its features */
     await mkS({ name: 'Wizard', hd: 6, bab: '1/2', good: ['will'], skills: 2, cast: 'high', martial: 'none', arch: ['Sphere Wizard'] }, []); await page.reload(); await idle();
     await page.locator('[data-a="levelUp"]').first().click(); await idle(); await next(); await next();

@@ -291,7 +291,7 @@ const T0 = Date.now();
     check('class presets and paths: fields kept when sound, cleaned when not', await page.evaluate(() => { const E = window.SheetEngine, c = E.sanitize({ app: 'spheres-sheet', v: 1, id: 'pz', name: 'P',
       classes: { a: { name: 'A', scl: 'Mind', bs: 5, paths: ['Academia', 7, '', 'Astrology'], pathSph: { 'Path of the Anima': 'Weather', x: 3 }, pathAdd: { cs: ['kgeo', 1], scl0: null, bs0: 'Light', pk: ['p1'] } }, b: { name: 'B', pathAdd: 'x', pathSph: [] } } }).classes;
       return JSON.stringify([c.a.scl, c.a.bs, c.a.rs, c.a.paths, c.a.pathSph, c.a.pathAdd, 'pathAdd' in c.b, c.b.pathSph]); }),
-      '["Mind",null,null,["Academia","Astrology"],{"Path of the Anima":"Weather"},{"cs":["kgeo"],"scl0":null,"bs0":"Light","pk":["p1"]},false,{}]');
+      '["Mind",null,null,["Academia","Astrology"],{"Path of the Anima":"Weather"},{"cs":["kgeo"],"scl0":null,"bs0":"Light","pk":["p1"],"fk":[]},false,{}]');
     /* the card deck (2026-11-13): every copy in exactly one pile; bad data cleaned */
     check('card deck: copies fill the piles once each, unknown and doubled ids dropped, options cleaned', await page.evaluate(() => { const E = window.SheetEngine, c = E.sanitize({ app: 'spheres-sheet', v: 1, id: 'dk', name: 'D',
       deck: { cards: [{ id: 'a', name: 'Haste', n: 3, cost: 2 }, { id: 'b', name: 'Mana', n: 2, mana: true }, 'x', { id: 'bad id!', name: 'Odd', n: 1 }], piles: { hand: ['a.0', 'a.0', 'zz.1'], table: ['b.1'], deck: 5 }, opt: { colored: 4, bleeding: 9, cooldown: 'yes', handPlus: -2 }, custom: [{ id: 'p1', name: '' }, { id: '!' }] } }).deck;
