@@ -27,7 +27,8 @@ File layout (short keys keep the files small):
    "f": [[feature name, text, [[choice name, text, group], ...]], ...],
    "lv": {"1": [[table entry, index into f or -1, (index of the choice it names)], ...], ...},
    "a": [[archetype, page, [[feature, text, level, [[base feature index, level or 0 = all, "r" replaced / "m" modified], ...],
-          "This replaces ..." text], ...]], ...],
+          "This replaces ..." text, [[feature, choice index, r/m]] one choice from a feature's list,
+          [names not matched], [[feature, words, r/m]] a part named inside a feature's text], ...], stats], ...],
    "pz": 1 on a file for a class that isn't a Spheres class (only its "Sphere X" conversion archetypes, no features),
    "paths": {f, n, p: [{n, t, cs, sph, bs, sec, gsec}]} for a class that chooses paths (Hedgewitch, Wraith)}
 
@@ -211,19 +212,33 @@ LVL = re.compile(r'\b(?:At|Starting at|Beginning at|Upon reaching|at)\s+(\d+)(?:
 
 
 def rep_parts(obj):
-    """'drill knuckle, uncanny dodge, and the bonus feat gained at 8th level' -> [(norm name, level or 0), ...]"""
+    """'drill knuckle, uncanny dodge, and the bonus feat gained at 8th level' -> [(norm name, level or 0, the words), ...].
+    2026-11-14: a verb left on a part ("... and alters tailored advice") is dropped, and parts that are only a level or
+    sentence words ("is instantaneous", "every 2 levels thereafter") are skipped."""
     obj = obj.split('\n')[0]
     out = []
     for p in re.split(r',\s*(?:and\s+|or\s+)?|\s+and\s+|\s+or\s+', obj):
+        p = re.sub(r'^\s*(?:this\s+(?:ability\s+)?)?(?:replaces?|alters?|modif(?:y|ies)|changes?)\s+', '', p, flags=re.I)
         m = re.search(r'(?:gained |granted )?at (\d+)\w* level', p, re.I) or re.match(r'\s*(?:the\s+)?(\d+)(?:st|nd|rd|th)[- ]level\s+', p, re.I)
         lv = int(m.group(1)) if m else 0
         p = re.sub(r'^\s*(?:the\s+)?\d+(?:st|nd|rd|th)[- ]level\s+', '', p, flags=re.I)
         p = re.sub(r'\s+(?:gained |granted )?at \d+\w* level.*', '', p.strip(), flags=re.I)
         p = re.sub(r"^(?:the\s+)?(?:standard\s+|casting\s+|martial\s+)?(?:[\w-]+(?:'s|’s)\s+)?", '', p, flags=re.I)
-        k = re.sub(r'(classfeatures?|abilit(?:y|ies)|features?|improvements?)$', '', norm(p))
-        if len(k) >= 3:
-            out.append((k, lv))
+        k = re.sub(r'^the', '', re.sub(r'(classfeatures?|abilit(?:y|ies)|features?|improvements?)$', '', norm(p)))
+        if len(k) < 3 or len(k) > 40 or re.fullmatch(r'\d+(st|nd|rd|th)?(level|levels)?|levels?', k) or \
+           re.match(r'(is|are|has|have|lasts|every|unless|when|if|but|otherwise|which|instead|so|normally|any|other|all|its|their|his|her)(?=[a-z0-9])', k) and len(p.split()) > 3:
+            continue
+        out.append((k, lv, p.strip()))
     return out
+
+
+GENERIC = re.compile(r'(bonusfeats?|casting|magictalents?|combattalents?|skilltalents?|spellpool|combattraining|proficienc|weapon|armor|classskills?|trainedtalents?|blendedtraining)', re.I)
+STATW = re.compile(r'proficien|classskill|savingthrow|^saves?$|save(s|bonus)|baseattack|hitdi|skillrank|^skills?$|^bab$', re.I)
+
+
+def fnn(name):
+    """A feature name for matching: no "The" in front ("The Pressing Void")."""
+    return re.sub(r'^the', '', norm(name))
 
 
 def feat_index(k, fnorm):
@@ -387,7 +402,7 @@ def arch_stats(feats, L, base=None):
     return st
 
 
-def class_paths(sec, F):
+def class_paths(sec, F, lv=None):
     """A class's path list (Hedgewitch "List of Paths", Wraith "List of Haunt Paths"), 2026-11-12: {f: index of the feature
     the paths are chosen under, n: how many to choose, p: [{n, t: text, cs: class skills, sph: path sphere options, bs: bonus
     spheres, sec / gsec: [[name, text]] extra secrets / grand secrets}]}, or None."""
@@ -402,8 +417,22 @@ def class_paths(sec, F):
         sk = fld('Class Skills') or fld('Path Skills?')
         sph = [x.strip() for x in re.split(r'\s+or\s+|,\s*', re.sub(r'\s*\([^)]*\)|\.$', '', fld('Path Sphere'))) if x.strip()]
         bs = [b for b in re.findall(r'gains? the ([A-Z][\w ]{2,25}?) sphere as a bonus (?:magic )?(?:talent|sphere)', fld('Path Benefit'))]
+        # the path's parts, each at the class level its table entry names ("Haunt path (improved path possession)" at 8th,
+        # "Path mastery" at 20th): [[label, text, level]] (2026-11-14, owner: each path its own class feature, its parts under it)
+        parts = []
+        for pm2 in re.finditer(r'^\*\*([^*\n]{3,40}?):\*\*\s*(.*?)(?=^\*\*[^*\n]{3,40}?:\*\*|\Z)', body, re.M | re.S):
+            lab = pm2.group(1).strip()
+            if re.match(r'(class skills?|path (grand )?secrets?|sources?|notes?)$', lab, re.I):
+                continue
+            key, lev = norm(lab), 0
+            for k2 in sorted((lv or {}), key=int):
+                if any(key in re.sub(r'[^a-z0-9]', '', e[0].lower()) for e in lv[k2]):   # the bracketed part counts here ("Haunt path (path possession)")
+                    lev = int(k2); break
+            if not lev:
+                m2 = LVL.search(pm2.group(2)); lev = int(m2.group(1)) if m2 else 1
+            parts.append([lab, clean_md(pm2.group(2)), lev])
         out.append({'n': name, 't': clean_md(body), 'cs': skill_ids(sk) if sk else [], 'sph': sph, 'bs': bs,
-                    'sec': lst('Path Secrets'), 'gsec': lst('Path Grand Secrets')})
+                    'sec': lst('Path Secrets'), 'gsec': lst('Path Grand Secrets'), 'parts': parts})
     if not out:
         return None
     # the feature the choice is made under ("Paths", "Haunt Path"), and how many: "chooses two paths"
@@ -436,7 +465,7 @@ def archetypes(pages, L, files, report):
     whose "This replaces ..." lines name that class's features. Genius and Wunderkind are archetypes the wiki presents as
     whole classes (class pages with their own table), so they are not read as archetypes here."""
     byname = {norm(e['n']): e for e in L}
-    fnorms = {sl: [norm(f[0]) for f in d['f']] for sl, d in files.items()}
+    fnorms = {sl: [fnn(f[0]) for f in d['f']] for sl, d in files.items()}
     sph = {norm(d['n'].replace(' (Spheres)', '')): sl for sl, d in files.items()}
     titles = {}
     for ps, t in pages.items():
@@ -444,7 +473,7 @@ def archetypes(pages, L, files, report):
         if tm:
             tt = re.sub(r'\s*\([^()]*Archetype\)\s*$', '', cname(tm.group(1)), flags=re.I)
             titles.setdefault(norm(tt), []).append(ps)
-    seen, listed = set(), set()
+    seen, listed, claimed = set(), set(), set()
 
     def add(sl, title, ps, body):
         if (sl, norm(title)) in seen:
@@ -454,21 +483,41 @@ def archetypes(pages, L, files, report):
             return False
         seen.add((sl, norm(title)))
         fn, out = fnorms[sl], []
+        F0 = files[sl]['f']
+        onorm = [[norm(o[0]) for o in f0[2]] for f0 in F0]
+        tnorm = [norm(re.sub(r'\[[^\]]*\]', '', f0[1])) for f0 in F0]
         for f in fs:
-            reps = []
+            reps, creps, preps, unm = [], [], [], []
             for r in REP.finditer(f[3] or ''):
                 how = 'r' if r.group(1).lower().startswith('replac') else 'm'
-                for k, lv in rep_parts(r.group(2)):
+                for k, lv, raw in rep_parts(r.group(2)):
                     i = feat_index(k, fn)
-                    if i >= 0 and not any(x[0] == i and x[1] == lv for x in reps):
-                        reps.append([i, lv, how])
+                    if i >= 0:
+                        if not any(x[0] == i and x[1] == lv for x in reps):
+                            reps.append([i, lv, how])
+                        continue
+                    if STATW.search(k):
+                        continue                       # proficiencies, class skills, saves...: not class features (arch_stats reads the numbers)
+                    # one choice from a feature's list ("aid the dead" from the Soul Weaver's list): [feature, choice, r/m]
+                    hit = next(([fi, oi] for fi, os_ in enumerate(onorm) for oi, o in enumerate(os_) if o == k or (len(k) >= 6 and len(o) >= 6 and (o.startswith(k) or k.startswith(o)))), None)
+                    if hit:
+                        if not any(x[0] == hit[0] and x[1] == hit[1] for x in creps):
+                            creps.append([hit[0], hit[1], how])
+                        continue
+                    # part of a feature: named inside its text ("the pressing void and weight of the void class features"): [feature, words, r/m]
+                    if len(k) >= 7:
+                        fi = max(range(len(tnorm)), key=lambda j: tnorm[j].count(k)) if tnorm else -1
+                        if fi >= 0 and tnorm[fi].count(k):
+                            preps.append([fi, raw, how])
+                            continue
+                    unm.append(raw)
             lvl = f[2]
             if not lvl:
                 # no "at Nth level": the level of what it replaces or alters (its first level in the class table), else 1
                 firsts = [r[1] or first_level(files[sl], r[0]) for r in reps]
                 firsts = [x for x in firsts if x]
                 lvl = min(firsts) if firsts else 1
-            out.append([f[0], f[1], lvl, reps, f[3]])
+            out.append([f[0], f[1], lvl, reps, f[3], creps, unm, preps])
         files[sl]['a'].append([title, ps, out, arch_stats(fs, L, byname.get(norm(files[sl]['n'])) or byname.get(norm(files[sl]['n'] + ' (Spheres)')))])
         return True
 
@@ -495,6 +544,8 @@ def archetypes(pages, L, files, report):
             cands.sort(key=lambda c: (not re.search(r'\b' + re.escape(d['n'].replace(' (Spheres)', '').lower()), pages[c].lower()), not WHERE.get(c, '').startswith('06-')))
             if not cands or not add(sl, nm, cands[0], body_of(pages[cands[0]])):
                 report.append('archetype listed but its page not found: %s / %s' % (d['n'], nm))
+            elif cands:
+                claimed.add(cands[0])
 
     # 2. archetype pages with the class in the title, and the sphere conversions; 3. untitled ones by what they replace
     for ps, t in pages.items():
@@ -503,6 +554,7 @@ def archetypes(pages, L, files, report):
         tm = re.match(r'\s*# (.+)', t)
         title = cname(tm.group(1)) if tm else ps
         body = body_of(t)
+        votable = ps not in claimed       # a page a class's own list claims is not handed to another class by name (Genius)
         bases = []
         m = re.search(r'\(([^()]+?)\s+Archetype\)\s*$', title, re.I)
         cm = re.match(r'Spheres? (.+?)(?:\s*\(.*)?$', title)
@@ -523,7 +575,7 @@ def archetypes(pages, L, files, report):
                 fs = arch_features(body)
                 if fs and (sl, norm(title)) not in seen:
                     seen.add((sl, norm(title)))
-                    files[sl]['a'].append([title, ps, [[f[0], f[1], f[2] or 1, [], f[3]] for f in fs], arch_stats(fs, L, e)])
+                    files[sl]['a'].append([title, ps, [[f[0], f[1], f[2] or 1, [], f[3], [], [], []] for f in fs], arch_stats(fs, L, e)])
             continue
         cands = [sph[norm(b)] for b in bases if norm(b) in sph]
         if not bases:
@@ -531,11 +583,13 @@ def archetypes(pages, L, files, report):
             votes = {}
             for f in fs:
                 for r in REP.finditer(f[3] or ''):
-                    for k, lv in rep_parts(r.group(2)):
+                    for k, lv, raw in rep_parts(r.group(2)):
+                        if GENERIC.match(k):
+                            continue              # names every class has say nothing about which class it is (Precog is a Magus archetype)
                         for sl, fn in fnorms.items():
                             if sl not in listed and k in fn:
                                 votes[sl] = votes.get(sl, 0) + 1
-            if votes:
+            if votes and votable:
                 best = max(votes, key=votes.get)
                 if votes[best] >= 2 or re.search(r'\b' + re.escape(files[best]['n'].lower()), body.lower()):
                     cands = [best]
@@ -630,7 +684,7 @@ def build(bundle, outdir):
         if miss:
             report.append('unmatched table entries, %s: %s' % (e['n'], ', '.join(sorted(set(miss)))))
         files[slug(e['n'])] = {'v': V, 'n': e['n'], 'p': ps, 'f': F, 'lv': lv, 'a': []}
-        pa = class_paths(sec, F)
+        pa = class_paths(sec, F, lv)
         if pa:
             files[slug(e['n'])]['paths'] = pa
 

@@ -107,7 +107,7 @@ Last full run: 2026-11-12, `engine-check.js` 325, `check.js` 447 (about 95 secon
 `rules-check.js` 90 (not rerun since 2026-11-10; the rules are unchanged), `party-check.js` 38, `save-check.js` 12: all passed.
 After the level-up feat and feature rows (2026-11-12, later): `engine-check.js` 329, `check.js` 459, `fuzz-check.js` 27, `talents-check.js` 31,
 `config-check.js` 12 passed; `csp-check.js` and the emulator checks were not run in that session (the database code is unchanged).
-After class features from the wiki (2026-11-12, latest): `engine-check.js` 336, `check.js` 513 (with the Feats tab text, archetypes, mass level-up, retraining, class numbers, presets, paths and the card deck), `fuzz-check.js` 27, `talents-check.js` 61
+After class features from the wiki (2026-11-12, latest): `engine-check.js` 336, `check.js` 520 (with the Feats tab text, archetypes, mass level-up, retraining, class numbers, presets, paths and the card deck), `fuzz-check.js` 27, `talents-check.js` 66
 (with the class files, archetypes and paths), `config-check.js` 12 passed; `csp-check.js` and the emulator checks were not run in that session.
 
 **Rollback:** Firebase console → Hosting → release history → roll back. With GitHub: also revert the commit (the
@@ -763,6 +763,29 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
       Bleeding Hand twice = 2, five colors = 2) is written to the drawback's `weight` (`deckWeightSync`), so boons follow.
     - Not automatic (by design): spending spell points, checking mana before casting, damage-triggered moves (Lifebound,
       Exposed Grip, Strikable Assets), deck feats. The rules panel says what applies.
+  - **More of what archetypes replace is matched (2026-11-14, owner).** Of 2,246 replaced names, 758 didn't match; now 227.
+    `build-classes.py`: feature names match without a leading "The" (`fnn`: The Pressing Void); `rep_parts` drops a leftover
+    verb ("… and alters tailored advice") and parts that are only a level or sentence words ("every 2 levels thereafter",
+    "is instantaneous"); proficiency / class skill / saves / BAB / hit die / ranks lines (`STATW`) aren't counted (the class
+    numbers handle them). Two new kinds, stored on each archetype feature: `x[5]` one choice from a feature's list
+    (`[feature, choice, r/m]`: Soul Weaver Banshee replaces Bound Nexus's Aid the Dead) and `x[7]` a part named inside a
+    feature's text (`[feature, words, r/m]`: Strong Style Grappler replaces "critical knuckle" in Tension Techniques); `x[6]`
+    is what still didn't match. Bug fixed: a page a class's own list claims can't be handed to another class by the name
+    vote (`claimed`), and generic names (bonus feat, casting, proficiencies… `GENERIC`) don't vote (Genius had picked up
+    Martial Thaumaturge and Precog; 13 such duplicates gone).
+    - **Sheet:** a choice an archetype replaces drops out of that feature's suggestions (`cwOpts`); a part change is shown,
+      never swapped: the Build tab summary ("critical knuckle (part of Tension Techniques)"), level up ("part changed by …"),
+      the Feats tab box, and the retrain preview; "check by hand" lists only `x[6]`. Clashes: the same choice or the same
+      part replaced or changed by two archetypes (`cwArchClash`).
+  - **Paths as class features (2026-11-14, owner: "each path its own class feature, with the benefits under it").**
+    `class_paths` reads each path's parts (bold-lead "Path Benefit", "Path Power", "Path Mastery", Wraith's "Path Sphere",
+    "Path Possession", "Path Skill", "Improved / Greater Path Possession", Lamentation's own) with the level of the class
+    table entry naming them (Wraith 1/2/4/8/14; Hedgewitch mastery 20), as `parts [[label, text, level]]`. `applyPaths` makes
+    each chosen path a class feature at the class's first level with its parts up to the class's level as choices under it
+    (`pathAdd.fk` remembers them; changing paths swaps them); level up and mass level-up add the later parts under the path
+    (`cwPrefill`); table entries for path parts ("path benefit", "path secrets") are a note, not their own rows; the rows
+    that pick paths are no longer filed under Paths / Haunt Path. Wiki text for path features and parts (`cwPathText`) in
+    the dialog and on the Feats tab.
   - **To keep an eye on (owner, 2026-11-12): how strict the archetype clash rule should be.** Two open questions, to settle
     against the rules as written before changing anything:
     1. **Same number, same value.** Two archetypes that both set a number now clash even when they agree (both make the hit
@@ -896,8 +919,17 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
 - **Maybe later (pinned 2026-11-09, from the code review's feature list; not planned yet):**
   - **GM "what changed" highlight:** HP drops and new conditions since the GM last looked, highlighted on party cards.
   - **Several practitioner modifiers:** the wiki lets a creature with more than one use the highest; today it's one `pracAbil`.
-  - **Class presets for granted talents and caster level:** Hedgewitch and Shifter paths (bonus combat or skill talents);
-    Wraith, Elementalist and Eliciter (a class-level caster level for one sphere). Manual today.
+  - ~~Class presets for granted talents and caster level~~: done 2026-11-13 (class presets and path pickers).
+  - **Class-specific tabs (owner, 2026-11-14: maybe later):**
+    - **Veilweaving:** one tab for the 13 veilweaving classes (Guru, Daevic, Nexus, Radiant, Vizier, Sphereshaper, Rajah,
+      Stormbound, Conduit, Eclipse, Amplifier, Black Templar, Agent of Accrual): veils shaped each day, essence invested and
+      moved. The October bundle has only some veil lists ("Enhanced", "Lunar", "Other", "Trinity"); check the live wiki for
+      the core list first.
+    - **Spirit binding:** the 4 binder prestige classes (Undying Soul, Mascareri, Ravage Binder, Greensprout Rapscallion).
+    - **Smaller trackers:** Eliciter emotions (uses per day, power tiers), Legendary Kineticist burn.
+  - **Classes without wiki class data (owner, 2026-11-14: maybe later; none are played at the table):** Cyborg and the racial
+    classes with no "Class Features" section (Dahren, Faen, Garuda, Goushen, Hushen, Mandragoran, Nagaraja, Ruishishen,
+    Sanesaram, Shenxue, Verrik, Yueren), Divine Exorcist (no features read), Qahngol (no page).
   - **Warleader talents:** the Alternate Justicar's separate track (1 per level) isn't counted.
   - **Joins per invite code:** limit how many characters can join with one code (needs a server function).
 

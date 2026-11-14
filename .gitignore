@@ -4,3 +4,4 @@ release/
 .firebase/
 firebase-debug.log
 *-debug.log
+__pycache__/
