@@ -483,6 +483,19 @@ function check(what, got, want) {
   check('Faces of Death: four claws with +1d6 electricity', (w.match(/Claw \+\d+ 1d4\S* plus 1d6 electricity/g) || []).length, '4');
   check('Faces of Death: immune to electricity, not cold; mudra feats', [/Immune electricity, undead traits/.test(w), /Multiweapon Fighting and Weapon Finesse/.test(w)].join(' '), 'true true');
   check('Faces of Death: exploding and multiplying can’t be combined', /Exploding and multiplying can’t be combined/.test(w), 'true');
+  /* companions that don't count (2026-11-14): a housed soul (Guide of the Dead), a marked one, and an intelligent undead */
+  await patch(`c.extraPicks = (c.extraPicks || []).concat([{ id: 'g1', kind: 'feature', name: 'Death Sub-Specialization: Guide of the Dead' }]);
+    const z = (id, name, hd, rean, x) => Object.assign({ id, name, kind: 'undead', on: true, size: 'M', hd, abil: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 }, speed: '30 ft.', attacks: [], mods: [], traits: [],
+      rean: Object.assign({ v2: true, v3: true, tmpl: 'zombie', vars: [], what: 'Human', hands: true, dur: 'timed' }, rean) }, x || {});
+    c.companions = [z('h1', 'Lost Soul', '1', { housed: true, dur: 'perm' }), z('h2', 'Musk Zombie', '2', {}, { free: true, freeWhy: 'Yellow musk zombie' }), z('h3', 'Smart Bones', '2', { int: '12' }, { on: false })];`);
+  await go('Character', 'Companions');
+  const ilL = await page.evaluate(() => { const c = JSON.parse(localStorage.getItem('spheres-sheet-v1:' + JSON.parse(localStorage.getItem('spheres-sheet-v1:last')))), ids = Object.keys(c.classes).filter(k => /incanter/i.test(c.classes[k].name)); return c.levels.filter(l => ids.includes(l.cls)).length; });
+  w = await cardText('Lost Soul');
+  check('housed soul: doesn’t count; Hit Dice = incanter level (+1 for a Medium zombie); Int 6 + ½ level; its rules listed', [/doesn’t count against your undead Hit Dice \(housed soul\)/.test(w), new RegExp('Not mindless: Int ' + (6 + Math.floor(ilL / 2))).test(w), /Housed soul: follows your commands/.test(w), /Permanent \(housed soul/.test(w), new RegExp('Hit Dice = your incanter level \\(' + ilL + '\\)').test(w)].join(' '), 'true true true true true');
+  check('a marked undead says why it doesn’t count; the pool counts neither (0 used, 2 that don’t count)', [/doesn’t count against your undead Hit Dice \(Yellow musk zombie\)/.test(await cardText('Musk Zombie')), /\(\+2 companions, \d+ HD, that don’t count\)/.test((await page.locator('.li', { hasText: 'Raised undead' }).first().innerText()).replace(/\s+/g, ' ')), (await page.locator('.li', { hasText: 'Raised undead' }).first().innerText()).replace(/\s+/g, ' ').includes('0 / ')].join(' '), 'true true true');
+  check('an undead with an Intelligence isn’t mindless', /Not mindless: Int 12/.test(await cardText('Smart Bones')), true);
+  await page.locator('section.card', { has: page.locator('input[value="Musk Zombie"]') }).locator('input[data-f$=".free"]').click(); await settle();
+  check('…unticking it counts it again', /HD of your pool once controlled/.test(await cardText('Musk Zombie')), true);
 
   /* ---------- Cohorts (Tova: Leadership + Squad, 2 talents → 10 Diplomacy ranks) ----------
      A 5 HD Warrior troop: d10, Con 13 → 27 + 5 = 32 hp; BAB +5; Fort +5 (good), Ref +2 (bad), Will +4 (good);
