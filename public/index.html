@@ -2810,7 +2810,12 @@ function persCard(p,i,t){ var b='pers.list.'+i+'.', src='ps-'+p.id, tN=persTrope
    panel says what applies). ch.deck = {cards: [{id, name, cost, color, notes, n: copies, mana: Mana Point card, act: action id}],
    piles: {deck, hand, table, discard, stun, wounds, death, <custom id>: [copy ids "cardid.k"]}, custom: [{id, name}],
    opt: {cooldown, mana, graveyard, stagnant, ramp, colored 0/3/5, bleeding 0/1/2, deckout, exposed, lifebound, singleton,
-   strikable, tight, handPlus}, draw: the draw box's number (blank = 1 + casting modifier, minimum 2)}. The hand is not hidden. */
+   strikable, tight, handPlus (old Loaded Hand count, moved into man)}, draw: the draw box's number (blank = 1 + casting modifier,
+   minimum 2, +2 per Loaded Hand), man: the deck manipulations taken [{n: name, c: times}]}. The hand is not hidden.
+   Deck feats (2026-11-14, owner): classes/_cards.json holds the wiki's deck feats and deck manipulations (Ante and Saga feats
+   left out); the rules panel shows the deck feats you have (matched by name on the Feats tab), the manipulations you picked
+   (one per deck feat, plus one per Card Shark) and what they need. Loaded Hand, Extra Deck, Sideboard, Fresh Hand, Read the
+   Cards and Mulligan change the deck's buttons and piles; Lifebound, Exposed Grip and Strikable Assets add a reminder to Damage. */
 var DECK_OPT=[['cooldown','Cooldown',''],['mana','Mana Pool',''],['graveyard','Mana Graveyard','cooldown,mana'],['bleeding','Bleeding Hand',''],['colored','Colored Mana','mana'],['deckout','Deckout','cooldown'],
   ['exposed','Exposed Grip','cooldown'],['ramp','Gradual Ramp','mana'],['lifebound','Lifebound Deck',''],['singleton','Singleton','cooldown'],['stagnant','Stagnant Pool','mana'],['strikable','Strikable Assets',''],['tight','Tight Hand','']];
 var DECK_SUM={cooldown:'Played cards go to a discard pile, not the deck. A full-round action shuffles the discard pile back; when the deck runs out you may do it as a free action. End of combat: hand and discard pile go back into the deck.',
@@ -2832,19 +2837,65 @@ function deckClean(o){ o=o&&typeof o==='object'&&!Array.isArray(o)?o:{}; var str
   var custom=(Array.isArray(o.custom)?o.custom:[]).filter(function(x){ return x&&/^[a-z0-9]{1,30}$/i.test(x.id||''); }).slice(0,8).map(function(x){ return {id:x.id,name:str0(x.name,40)||'Pile'}; });
   var op=o.opt&&typeof o.opt==='object'?o.opt:{}, opt={}; DECK_OPT.forEach(function(x){ opt[x[0]]=x[0]==='colored'?([3,5].indexOf(+op.colored)>=0?+op.colored:0):x[0]==='bleeding'?Math.max(0,Math.min(2,Math.floor(n0(op.bleeding)))):!!op[x[0]]; });
   opt.handPlus=Math.max(0,Math.min(10,Math.floor(n0(op.handPlus))));
+  var man=[]; (Array.isArray(o.man)?o.man:[]).forEach(function(x){ if(!x||typeof x!=='object'||man.length>=30) return; var nm=str0(x.n,60).trim(); if(!nm||man.some(function(y){ return y.n===nm; })) return; man.push({n:nm,c:Math.max(1,Math.min(10,Math.floor(n0(x.c,1))))}); });
+  if(opt.handPlus&&!man.some(function(y){ return wkNorm(y.n)==='loadedhand'; })) man.push({n:'Loaded Hand',c:opt.handPlus}); opt.handPlus=0;
   var piles={}, P=o.piles&&typeof o.piles==='object'?o.piles:{}; deckPileIds({custom:custom}).forEach(function(k){ piles[k]=(Array.isArray(P[k])?P[k]:[]).filter(function(x){ return typeof x==='string'; }); });
-  var d={cards:cards,custom:custom,opt:opt,piles:piles,draw:o.draw===''||o.draw==null?'':Math.max(0,Math.min(60,Math.floor(n0(o.draw))))}; deckSync(d); return d; }
-function deckPileIds(d){ return ['deck','hand','table','discard','stun','wounds','death'].concat((d.custom||[]).map(function(x){ return x.id; })); }
-function deckPileName(d,k){ return ({deck:'Deck',hand:'Hand',table:'Table',discard:'Discard pile',stun:'Stun',wounds:'Wounds',death:'Death'})[k]||((d.custom||[]).filter(function(x){ return x.id===k; })[0]||{}).name||k; }
+  var d={cards:cards,custom:custom,opt:opt,piles:piles,man:man,draw:o.draw===''||o.draw==null?'':Math.max(0,Math.min(60,Math.floor(n0(o.draw))))}; deckSync(d); return d; }
+function deckPileIds(d){ return ['deck','hand','table','discard','stun','wounds','death','extra','side'].concat((d.custom||[]).map(function(x){ return x.id; })); }
+function deckPileName(d,k){ return ({deck:'Deck',hand:'Hand',table:'Table',discard:'Discard pile',stun:'Stun',wounds:'Wounds',death:'Death',extra:'Extra Deck',side:'Sideboard'})[k]||((d.custom||[]).filter(function(x){ return x.id===k; })[0]||{}).name||k; }
 /* the piles in play: Discard with Cooldown, Stun/Wounds/Death with Lifebound Deck (or when they hold cards), and your own */
-function deckPilesShown(d){ var o=d.opt||{}; return deckPileIds(d).filter(function(k){ return ['deck','hand','table'].indexOf(k)>=0||k==='discard'&&o.cooldown||/^(stun|wounds|death)$/.test(k)&&o.lifebound||(d.custom||[]).some(function(x){ return x.id===k; })||((d.piles||{})[k]||[]).length; }); }
+function deckPilesShown(d){ var o=d.opt||{}; return deckPileIds(d).filter(function(k){ return ['deck','hand','table'].indexOf(k)>=0||k==='discard'&&o.cooldown||/^(stun|wounds|death)$/.test(k)&&o.lifebound||k==='extra'&&deckMan(d,'Extra Deck')||k==='side'&&deckMan(d,'Sideboard')||(d.custom||[]).some(function(x){ return x.id===k; })||((d.piles||{})[k]||[]).length; }); }
 /* every copy of every card is in exactly one pile: new copies join the bottom of the deck, removed ones leave wherever they are */
 function deckSync(d){ var want={}; (d.cards||[]).forEach(function(c){ for(var i=0;i<c.n;i++) want[c.id+'.'+i]=1; }); var seen={};
   deckPileIds(d).forEach(function(k){ d.piles[k]=(d.piles[k]||[]).filter(function(x){ if(!want[x]||seen[x]) return false; seen[x]=1; return true; }); });
   Object.keys(want).forEach(function(x){ if(!seen[x]) d.piles.deck.push(x); }); }
 function deckCard(d,cid){ var id=String(cid).split('.')[0]; return (d.cards||[]).filter(function(c){ return c.id===id; })[0]||null; }
 function deckShuffle(a){ for(var i=a.length-1;i>0;i--){ var r; try{ var u=new Uint32Array(1); crypto.getRandomValues(u); r=u[0]%(i+1); }catch(e){ r=Math.floor(Math.random()*(i+1)); } var t=a[i]; a[i]=a[r]; a[r]=t; } return a; }
-function deckHandMax(d){ return d.opt&&d.opt.tight?3+n0(d.opt.handPlus):Infinity; }
+function deckHandMax(d){ return d.opt&&d.opt.tight?3+deckMan(d,'Loaded Hand'):Infinity; }
+/* times deck manipulation nm was taken */
+function deckMan(d,nm){ var k=wkNorm(nm), n=0; ((d&&d.man)||[]).forEach(function(x){ if(wkNorm(x.n)===k) n+=x.c; }); return n; }
+/* draw up to n cards (stops at the hand limit or an empty deck); Mana Point cards go to the table */
+function deckDrawCards(d,n){ var got=0; for(var i=0;i<n;i++){ if(!d.piles.deck.length||d.piles.hand.length>=deckHandMax(d)) break; var x=d.piles.deck.shift(), c=deckCard(d,x); (c&&c.mana&&d.opt.mana?d.piles.table:d.piles.hand).push(x); got++; } return got; }
+function deckDrewMsg(d,got,n){ return got?'Drew '+plural(got,'card')+(got<n?(d.piles.deck.length?' (hand limit)':' (the deck is empty)'):'')+'.':(d.piles.deck.length?'Your hand is at its limit.':'The deck is empty.'); }
+/* the wiki's deck feats and manipulations (classes/_cards.json), or null while loading */
+function deckData(){ return cwState('_cards')==='ok'?CW.f._cards:null; }
+/* deck feats you have: [{f: [name, text, prereq], n: times}] */
+function deckFeatsHave(cd){ var have={}; allPicks(ch).forEach(function(p){ if(p.kind!=='feat'&&p.kind!=='bonus') return; var k=wkNorm(p.name); have[k]=(have[k]||0)+pN(p); });
+  return ((cd&&cd.feats)||[]).filter(function(f){ return have[wkNorm(f[0])]; }).map(function(f){ return {f:f,n:have[wkNorm(f[0])]}; }); }
+/* what a prerequisite or requirement names that you don't have: Card Casting and its options, deck feats, manipulations, spheres, Charged Spells */
+function deckNeed(txt,cd,self){ txt=String(txt||''); var d=ch.deck, o=d.opt||{}, miss=[], low=txt.toLowerCase(), alt=/or|not possess/i.test(txt);
+  if(/card casting/i.test(txt)&&!alt&&!cardCaster(ch)) miss.push('the Card Casting drawback');
+  DECK_OPT.forEach(function(x){ if(low.indexOf(x[1].toLowerCase())>=0&&!o[x[0]]) miss.push(x[1]); });
+  if(/bleeding hand x2/i.test(txt)&&o.bleeding===1) miss.push('Bleeding Hand twice');
+  var hv={}; deckFeatsHave(cd).forEach(function(h){ hv[h.f[0]]=1; });
+  ((cd&&cd.feats)||[]).forEach(function(f){ if(f[0]!==self&&!hv[f[0]]&&new RegExp('(^|[^\\w])'+f[0].replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'($|[^\\w])','i').test(txt)&&!(f[0].indexOf(',')<0&&low.indexOf(f[0].toLowerCase()+', improved')>=0)) miss.push(f[0]); });
+  ((cd&&cd.man)||[]).forEach(function(m){ if(m[0]!==self&&low.indexOf(m[0].toLowerCase())>=0&&!deckMan(d,m[0])) miss.push(m[0]+' (manipulation)'); });
+  var sp={}; allPicks(ch).forEach(function(p){ var k=String(p.sphere||'').trim().toLowerCase(); if(k) sp[k]=1; });
+  if(!alt) (txt.match(/\b[A-Z][a-z]+ [Ss]phere\b/g)||[]).forEach(function(m){ var k=m.split(' ')[0].toLowerCase(); if(!sp[k]&&miss.indexOf(m)<0) miss.push(m.replace(/ s/,' S')); });
+  if(/charged spells/i.test(txt)&&!alt&&!((((ch.traditions||{}).casting||{}).drawbacks)||[]).some(function(x){ return /charged spells/i.test(x.name||''); })) miss.push('the Charged Spells drawback');
+  return miss; }
+/* the deck feats and manipulations card in the rules */
+function deckFeatsCard(d){ var cd=deckData(), st=cwState('_cards');
+  var h='<section class="card"><div class="cardhead"><h2>Deck feats and manipulations</h2><span class="note">Matched by name with your Feats tab</span></div>';
+  if(!cd) return h+(st==='err'?'<p class="note">Couldn’t load the deck feats (offline?).</p>':'<p class="note" data-cwneed="_cards">Loading the deck feats…</p>')+'</section>';
+  var hv=deckFeatsHave(cd), nF=hv.reduce(function(s0,x){ return s0+x.n; },0), nS=hv.filter(function(x){ return wkNorm(x.f[0])==='cardshark'; }).reduce(function(s0,x){ return s0+x.n; },0), cap=nF+nS, used=(d.man||[]).reduce(function(s0,x){ return s0+x.c; },0);
+  var warn=function(L){ return L.length?'<p class="note warn" style="margin:2px 0">Needs: '+L.map(esc).join(', ')+'.</p>':''; };
+  h+='<h3 style="margin:6px 0 2px">Your deck feats <span class="note">('+nF+')</span></h3>'+(hv.map(function(x){ return '<details data-keep="deckf-'+esc(wkNorm(x.f[0]))+'"><summary><b>'+esc(x.f[0])+'</b>'+(x.n>1?' ×'+x.n:'')+'</summary><div class="wkt" style="font-size:14px">'+mdLite(x.f[1])+'</div></details>'+warn(deckNeed(x.f[2],cd,x.f[0])); }).join('')||'<p class="empty">None yet: add deck feats on the Feats tab (each gives one deck manipulation).</p>');
+  h+='<h3 style="margin:10px 0 2px">Deck manipulations <span class="note">('+used+' of '+cap+': one per deck feat'+(nS?', plus '+nS+' from Card Shark':', plus one per Card Shark')+')</span></h3>';
+  if(used>cap) h+='<p class="note warn">'+plural(used,'manipulation')+' picked, your deck feats give '+cap+'.</p>';
+  h+=(d.man||[]).map(function(x,i){ var m=(cd.man||[]).filter(function(y){ return wkNorm(y[0])===wkNorm(x.n); })[0];
+      return '<div class="li" style="gap:6px;align-items:flex-start;border-top:1px solid var(--soft);padding:4px 0"><span style="flex:1 1 220px">'+(m?'<details data-keep="deckm-'+esc(wkNorm(x.n))+'"><summary><b>'+esc(x.n)+'</b></summary><div class="wkt" style="font-size:14px">'+mdLite(m[1])+'</div></details>'+warn(deckNeed(m[2],cd,m[0])):'<b>'+esc(x.n)+'</b>')+'</span>'+
+        fN('deck.man.'+i+'.c','Times',' min="1" max="10" style="width:4rem"')+'<button class="mini danger" data-a="deckManDel" data-i="'+i+'" aria-label="Remove '+esc(x.n)+'" style="align-self:flex-end">×</button></div>'; }).join('');
+  h+='<div class="row" style="margin-top:6px"><select data-dman="1" aria-label="Add a deck manipulation"><option value="">Add a manipulation…</option>'+(cd.man||[]).map(function(m){ var n0m=deckMan(d,m[0]); return '<option value="'+esc(m[0])+'">'+esc(m[0])+(m[2]?' (requires '+esc(m[2])+')':'')+(n0m?' · have '+n0m:'')+'</option>'; }).join('')+'</select></div>';
+  h+='<details data-keep="deck-allfeats" style="margin-top:8px"><summary>All deck feats ('+(cd.feats||[]).length+')</summary>'+(cd.feats||[]).map(function(f){ return '<details><summary>'+esc(f[0])+(f[2]?' <span class="note">· '+esc(f[2])+'</span>':'')+'</summary><div class="wkt" style="font-size:14px">'+mdLite(f[1])+'</div></details>'; }).join('')+'</details>';
+  return h+'</section>'; }
+/* a reminder for Damage and Heal on the Sheet when the deck has Lifebound, Exposed Grip or Strikable Assets */
+function deckHpNote(k,n){ var d=ch&&ch.deck, o=d&&d.opt; if(!o||!(cardCaster(ch)||(d.cards||[]).length)) return ''; var out=[];
+  var tot=(d.cards||[]).reduce(function(s0,c){ return s0+c.n; },0), v=Math.max(1,Math.floor(D.hpMax/3/Math.max(1,tot))), m=Math.floor(n/v);
+  if(o.lifebound&&n>0){ if(k==='dmg') out.push(m?'Lifebound: '+n+' damage = '+m+' × '+v+': move '+plural(m,'card')+' (Wounds→Death first, then Stun→Wounds, then deck→Stun).':'Lifebound: under your value of '+v+', no card moves.');
+    else if(k==='heal'&&m) out.push('Lifebound: healed '+n+' = '+m+' × '+v+': move '+plural(m,'card')+' back the other way.'); }
+  if(k==='dmg'){ if(o.exposed) out.push('Exposed Grip: if an attack hit you, discard a card (none: 4 Constitution burn).'); if(o.strikable) out.push('Strikable Assets: if an attack hit you, reveal a card at random (hand, top of deck or discard pile).'); }
+  return out.length?' '+out.join(' '):''; }
 /* how many drawbacks Card Casting counts as for boons: 1, +1 each for Cooldown, Mana Pool, Mana Graveyard and each modification
    (Bleeding Hand taken twice counts twice; five Colored Mana colors count two) */
 function deckWeight(d){ var o=d.opt||{}, n=1; DECK_OPT.forEach(function(x){ var v=o[x[0]]; if(x[0]==='colored') n+=v===5?2:v===3?1:0; else if(x[0]==='bleeding') n+=v; else if(v) n+=1; }); return n; }
@@ -2863,7 +2914,7 @@ function deckWarn(d){ var o=d.opt||{}, W0=[], eff=(d.cards||[]).filter(function(
   if(o.stagnant&&o.graveyard) W0.push('Stagnant Pool and Mana Graveyard can’t be taken together.');
   if((d.piles.hand||[]).length>deckHandMax(d)) W0.push('Tight Hand: '+(d.piles.hand||[]).length+' cards in hand, the limit is '+deckHandMax(d)+'.');
   return W0; }
-function deckDrawN(d){ return d.draw===''||d.draw==null?Math.max(2,1+(D.cam||0)):d.draw; }
+function deckDrawN(d){ return d.draw===''||d.draw==null?Math.max(2,1+(D.cam||0))+2*deckMan(d,'Loaded Hand'):d.draw; }
 function rDeck(){ var d=ch.deck||(ch.deck=deckClean({})), o=d.opt, shown=deckPilesShown(d), W0=deckWarn(d), cc=cardCaster(ch), wt=deckWeight(d), acts=(ch.actions||[]);
   var cardLine=function(cid,from){ var c=deckCard(d,cid); if(!c) return ''; return '<div class="li" style="gap:6px;align-items:flex-start;border-top:1px solid var(--soft);padding:4px 0"><span style="flex:1 1 180px"><b>'+esc(c.name||'Unnamed card')+'</b>'+
       (c.mana?' <span class="tag gold">Mana Point</span>':'')+(String(c.cost).trim()?' <span class="tag">'+esc(c.cost)+' sp</span>':'')+(o.colored&&c.color?' <span class="tag">'+esc(c.color)+'</span>':'')+(c.notes?'<br><span class="note">'+esc(c.notes)+'</span>':'')+'</span>'+
@@ -2874,7 +2925,8 @@ function rDeck(){ var d=ch.deck||(ch.deck=deckClean({})), o=d.opt, shown=deckPil
   /* the piles */
   h+='<div class="tiles">'+shown.map(function(k){ return tile(deckPileName(d,k),(d.piles[k]||[]).length+(k==='hand'&&o.tight?' / '+deckHandMax(d):''),''); }).join('')+'</div>';
   h+='<div class="row" style="flex-wrap:wrap;gap:6px;margin:8px 0"><button class="mini primary" data-a="deckDraw">Draw</button><input type="number" data-f="deck.draw" data-num="1" min="0" max="60" value="'+esc(d.draw===''?'':d.draw)+'" placeholder="'+deckDrawN(d)+'" aria-label="How many cards to draw" style="width:4rem">'+
-    '<button class="mini" data-a="deckDraw" data-n="1">Draw 1</button><button class="mini" data-a="deckShuffle">Shuffle the deck</button><button class="mini" data-a="deckReset">Reset: all cards back, shuffled</button></div>'+
+    '<button class="mini" data-a="deckDraw" data-n="1">Draw 1</button>'+(deckMan(d,'Fresh Hand')?'<button class="mini" data-a="deckFresh" title="Fresh Hand: the hand shuffles into the deck, then draw '+deckDrawN(d)+'">Fresh Hand</button>':'')+
+    (deckMan(d,'Read the Cards')?'<button class="mini" data-a="deckPeek" title="Read the Cards: look at the top card">Peek at the top</button><button class="mini" data-a="deckBottom" title="Read the Cards: 1 spell point">Top card to the bottom</button>':'')+'<button class="mini" data-a="deckShuffle">Shuffle the deck</button><button class="mini" data-a="deckReset">Reset: all cards back, shuffled</button></div>'+
     '<p class="note" style="margin:0 0 6px">The draw box starts at your starting hand: 1 + casting modifier, minimum 2'+(o.tight?' (Tight Hand stops at the limit)':'')+'. Mulligan: “Reset”, then draw one fewer.</p>';
   shown.filter(function(k){ return k!=='deck'; }).forEach(function(k){ var L=d.piles[k]||[]; h+='<h3 style="margin:10px 0 2px">'+esc(deckPileName(d,k))+' <span class="note">('+L.length+')</span>'+(L.length?' <button class="mini" data-a="deckBack" data-k="'+k+'">Shuffle '+(k==='hand'?'the hand':'it')+' into the deck</button>':'')+'</h3>'+
     (L.length?L.map(function(x){ return cardLine(x,k); }).join(''):'<p class="empty" style="margin:2px 0">Empty.</p>'); });
@@ -2896,12 +2948,12 @@ function rDeck(){ var d=ch.deck||(ch.deck=deckClean({})), o=d.opt, shown=deckPil
   h+='<section class="card"><div class="cardhead"><h2>Rules</h2><span class="note">What you took</span></div><div class="fields">'+DECK_OPT.map(function(x){ var k=x[0];
       if(k==='colored') return '<label class="fld"><span>Colored Mana</span><select data-f="deck.opt.colored" data-num="1"><option value="0"'+(!o.colored?' selected':'')+'>No</option><option value="3"'+(o.colored===3?' selected':'')+'>3 colors</option><option value="5"'+(o.colored===5?' selected':'')+'>5 colors (counts 2)</option></select></label>';
       if(k==='bleeding') return '<label class="fld"><span>Bleeding Hand</span><select data-f="deck.opt.bleeding" data-num="1"><option value="0"'+(!o.bleeding?' selected':'')+'>No</option><option value="1"'+(o.bleeding===1?' selected':'')+'>Once</option><option value="2"'+(o.bleeding===2?' selected':'')+'>Twice</option></select></label>';
-      return fC('deck.opt.'+k,x[1]); }).join('')+(o.tight?fN('deck.opt.handPlus','Loaded Hand (+1 hand size each)',' min="0" max="10" style="width:5rem"'):'')+'</div>'+
+      return fC('deck.opt.'+k,x[1]); }).join('')+'</div>'+
     '<p class="note">Counts as '+plural(wt,'drawback')+(cc?' (your Card Casting drawback is set to that, so your boons follow)':'')+'.'+(o.lifebound?' Lifebound value: '+Math.max(1,Math.floor(D.hpMax/3/Math.max(1,tot)))+' (⅓ of '+D.hpMax+' hp ÷ '+tot+' cards).':'')+'</p>'+
-    '<ul class="note" style="margin:4px 0 0 1.2rem;padding:0"><li><b>Card Casting:</b> you can only create effects that cost spell points from cards. Rest: build the deck (20+ cards). Initiative: draw 1 + casting modifier (minimum 2); you may shuffle the hand back and redraw one fewer, any number of times. Start of each later round: draw one'+(o.exposed?' (Exposed Grip: not automatically)':'')+'. Play a card from your hand (normal action and spell points); an ongoing effect stays on the table until it ends, then goes back'+(o.cooldown?' to the discard pile':' into the deck')+'. End of combat: the hand goes back into the deck. Out of combat: no hand; search the deck and cast a card with 1 more minute of casting time.</li>'+
+    '<ul class="note" style="margin:4px 0 0 1.2rem;padding:0"><li><b>Card Casting:</b> you can only create effects that cost spell points from cards. Rest: build the deck (20+ cards). Initiative: draw 1 + casting modifier (minimum 2)'+(deckMan(d,'Loaded Hand')?', +'+2*deckMan(d,'Loaded Hand')+' for Loaded Hand':'')+'; you may shuffle the hand back and redraw one fewer, any number of times'+(deckMan(d,'Mulligan')?' (Mulligan: the first redraw each encounter draws the same number)':'')+'. Start of each later round: draw one'+(o.exposed?' (Exposed Grip: not automatically)':'')+'. Play a card from your hand (normal action and spell points); an ongoing effect stays on the table until it ends, then goes back'+(o.cooldown?' to the discard pile':' into the deck')+'. End of combat: the hand goes back into the deck. Out of combat: no hand; search the deck and cast a card with 1 more minute of casting time.</li>'+
     DECK_OPT.filter(function(x){ return o[x[0]]; }).map(function(x){ return '<li><b>'+esc(x[1])+':</b> '+esc(DECK_SUM[x[0]])+'</li>'; }).join('')+'</ul>'+
     '<details data-keep="deck-wiki" style="margin-top:6px"><summary>The full wiki text</summary><div data-deckwiki="1">'+deckWikiText()+'</div></details></section>';
-  return h; }
+  return h+deckFeatsCard(d); }
 /* the drawback's wiki text (talents/drawbacks.json, loaded when the section opens) */
 function deckWikiText(){ var st=wkState('drawbacks'); if(st!=='ok') return st==='err'?'<p class="note">Couldn’t load the wiki text (offline?).</p>':'<p class="note" data-wkneed="drawbacks">Loading the wiki text…</p>';
   var e=(WK.f.drawbacks.d||[]).filter(function(x){ return /^card\s*casting$/i.test(x[0]); })[0]; return e?'<div class="wkt" style="font-size:14px">'+mdLite(e[3])+'</div>':'<p class="note">Not found in the wiki file.</p>'; }
@@ -5039,8 +5091,11 @@ var A={
     if(!nm){ toast('Type the feat or talent first.'); return 'skip'; }
     ch.extraPicks=(ch.extraPicks||[]).concat([{id:newId(),kind:kd,name:nm,sphere:sp,tkind:sp?sphereKind(sp):'',temp:'ps-'+id,notes:''}]); log(((persOf(ch,id)||{}).name||'Persona')+': '+nm+'.'); },
   persPickDel:function(el){ var id=el.dataset.id; (ch.levels||[]).forEach(function(l){ l.picks=(l.picks||[]).filter(function(q){ return q.id!==id; }); }); ch.extraPicks=(ch.extraPicks||[]).filter(function(q){ return q.id!==id; }); },
-  deckDraw:function(el){ var d=ch.deck, n=el.dataset.n?+el.dataset.n:deckDrawN(d), got=0; for(var i=0;i<n;i++){ if(!d.piles.deck.length||d.piles.hand.length>=deckHandMax(d)) break; var x=d.piles.deck.shift(), c=deckCard(d,x); (c&&c.mana&&d.opt.mana?d.piles.table:d.piles.hand).push(x); got++; }
-    UI.toast=got?'Drew '+plural(got,'card')+(got<n?(d.piles.deck.length?' (hand limit)':' (the deck is empty)'):'')+'.':(d.piles.deck.length?'Your hand is at its limit.':'The deck is empty.'); },
+  deckDraw:function(el){ var d=ch.deck, n=el.dataset.n?+el.dataset.n:deckDrawN(d); UI.toast=deckDrewMsg(d,deckDrawCards(d,n),n); },
+  deckFresh:function(){ var d=ch.deck, n=deckDrawN(d); d.piles.deck=d.piles.deck.concat(d.piles.hand); d.piles.hand=[]; deckShuffle(d.piles.deck); UI.toast='Fresh Hand: hand shuffled in. '+deckDrewMsg(d,deckDrawCards(d,n),n); },
+  deckPeek:function(){ var d=ch.deck, x=d.piles.deck[0], c=x&&deckCard(d,x); toast(c?'Top of the deck: '+(c.name||'Unnamed card')+'.':'The deck is empty.',true); return 'skip'; },
+  deckBottom:function(){ var d=ch.deck; if(!d.piles.deck.length) return 'skip'; var x=d.piles.deck.shift(), c=deckCard(d,x); d.piles.deck.push(x); UI.toast=(c&&c.name||'The top card')+' went to the bottom of the deck.'; },
+  deckManDel:function(el){ var d=ch.deck; if(!d.man[+el.dataset.i]) return 'skip'; d.man.splice(+el.dataset.i,1); },
   deckShuffle:function(){ deckShuffle(ch.deck.piles.deck); UI.toast='Deck shuffled.'; },
   deckMove:function(el){ var d=ch.deck, cid=el.dataset.c, to=el.dataset.to; if(!deckCard(d,cid)) return 'skip'; deckPileIds(d).forEach(function(k){ d.piles[k]=d.piles[k].filter(function(x){ return x!==cid; }); });
     d.piles[to].push(cid); if(to==='deck') deckShuffle(d.piles.deck); },
@@ -5165,8 +5220,8 @@ var A={
     buttons:[{label:'Close',value:null,primary:true}],onOpen:function(root){ var i=root.querySelector('[name=try]'), o=root.querySelector('#tryout'); i.addEventListener('input',function(){ o.innerHTML=fRes(i.value); }); }}).then(function(){return null;}); },
   why:function(el){ var k=el.dataset.k; return modal({title:(D.bd[k]||{}).label||'Breakdown',html:whyHTML(k),buttons:[{label:'Close',value:null,primary:true}]}).then(function(){return null;}); },
   hpDo:function(el){ var n=amt(), k=el.dataset.k; UI.amt=n||UI.amt; if(!n) return; var hp=hpObj();
-    if(k==='dmg'){ var t=Math.min(n0(hp.temp),n); hp.temp=n0(hp.temp)-t; hp.dmg=n0(hp.dmg)+(n-t); if(n>t) hp.stable=false; say('Took '+n+' damage'+(t?' ('+t+' from temp hp)':'')+'.'); }
-    else if(k==='heal'){ hp.dmg=Math.max(0,n0(hp.dmg)-n); hp.non=Math.max(0,n0(hp.non)-n); if(D.hpMax-hp.dmg>=0) hp.stable=false; say('Healed '+n+'.'); }
+    if(k==='dmg'){ var t=Math.min(n0(hp.temp),n); hp.temp=n0(hp.temp)-t; hp.dmg=n0(hp.dmg)+(n-t); if(n>t) hp.stable=false; say('Took '+n+' damage'+(t?' ('+t+' from temp hp)':'')+'.'); UI.toast+=deckHpNote('dmg',n-t); }
+    else if(k==='heal'){ var d0=n0(hp.dmg); hp.dmg=Math.max(0,n0(hp.dmg)-n); hp.non=Math.max(0,n0(hp.non)-n); if(D.hpMax-hp.dmg>=0) hp.stable=false; say('Healed '+n+'.'); UI.toast+=deckHpNote('heal',d0-hp.dmg); }
     else if(k==='temp'){ hp.temp=Math.max(n0(hp.temp),n); say('Temporary hp: '+hp.temp+'.'); }
     else { hp.non=n0(hp.non)+n; say('Took '+n+' nonlethal.'); } },
   hpFull:function(){ var hp=hpObj(); if(!n0(hp.dmg)&&!n0(hp.non)) return 'skip'; hp.dmg=0; hp.non=0; hp.stable=false; say('Healed to full ('+D.hpMax+').'); },
@@ -6029,7 +6084,10 @@ document.addEventListener('change',function(e){
     if(/^possess\.(lengthen|willing)$/.test(t.dataset.f)&&ch.possess) possRetime(plUsed);
     if(t.dataset.f==='possessOpt.timer'&&v&&ch.possess&&ch.possess.left==null) possTimerStart();
     if(/^deck\.opt\./.test(t.dataset.f)){ ch.deck.opt.colored=+ch.deck.opt.colored||0; ch.deck.opt.bleeding=+ch.deck.opt.bleeding||0; deckWeightSync(); }
-    if(/^deck\.cards\.\d+\.n$/.test(t.dataset.f)) deckSync(ch.deck); }
+    if(/^deck\.cards\.\d+\.n$/.test(t.dataset.f)) deckSync(ch.deck);
+    if(/^deck\.man\.\d+\.c$/.test(t.dataset.f)) (ch.deck.man||[]).forEach(function(x){ x.c=Math.max(1,Math.min(10,Math.floor(n0(x.c,1)))); }); }
+  else if(t.dataset.dman!==undefined){ var nm=t.value; if(!nm) return;
+    runAction(function(){ var dm=ch.deck, ex=(dm.man||[]).filter(function(y){ return y.n===nm; })[0]; if(ex) ex.c=Math.min(10,ex.c+1); else dm.man.push({n:nm,c:1}); UI.toast=nm+' added.'; return 'done'; }); return; }
   else if(t.dataset.dmove!==undefined){ var dk=ch.deck, cid=t.dataset.dmove, to=t.value; if(!to) return;
     runAction(function(){ deckPileIds(dk).forEach(function(k){ dk.piles[k]=dk.piles[k].filter(function(x){ return x!==cid; }); }); if(to==='decktop') dk.piles.deck.unshift(cid); else if(to==='deck'){ dk.piles.deck.push(cid); deckShuffle(dk.piles.deck); } else dk.piles[to].push(cid); return 'done'; }); return; }
   else if(t.dataset.dadd!==undefined){ var ac=(ch.actions||[]).filter(function(a){ return a.id===t.value; })[0]; if(!ac) return;

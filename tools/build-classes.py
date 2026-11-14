@@ -6,6 +6,7 @@ Reads the offline wiki bundle (SoP-Claude-Bundles) and writes, into public/class
                 the choices listed under a feature (striker arts, knacks, tactics...), and which features the class table
                 gives at each class level
   index.json    every class written, with its file, page and feature count
+  _cards.json   the Card Casting deck feats and deck manipulations, for the Card deck tab
 
 Run it again only when the wiki bundle or the class list changes:
   python3 tools/build-classes.py <path to SoP-Claude-Bundles folder>
@@ -443,6 +444,35 @@ def class_paths(sec, F, lv=None):
     return {'f': fi, 'n': n, 'p': out}
 
 
+def deck_data(pages):
+    """Card Casting deck feats and deck manipulations (2026-11-14, owner) from "Card and Deck Feats": the "Deck Feats" section's
+    feats ([[name, text, prerequisites]]) and the list of deck manipulations ([[name, text, requirement]]); Ante and Saga feats
+    are left out (owner's call). Written to classes/_cards.json for the Card deck tab."""
+    t = pages.get('card-and-deck-feats')
+    if not t:
+        return None
+    m = re.search(r'\n### Deck Feats\s*\n(.*?)(?=\n### |\Z)', t, re.S)
+    sec = m.group(1) if m else ''
+    feats = []
+    for fm in re.finditer(r'\n#### (.+?)\n(.*?)(?=\n#### |\Z)', '\n' + sec, re.S):
+        name = re.sub(r'\s*[\(\[][^)\]]*[\)\]]\s*', ' ', fm.group(1)).strip()
+        body = fm.group(2)
+        pre = (re.search(r'\*\*Prerequisites?:\*\*\s*([^\n]*)', body) or [None, ''])[1].strip()
+        feats.append([name, clean_md(body), pre])
+    i = sec.find('deck manipulation from the following list')
+    seg = sec[i:] if i >= 0 else ''
+    seg = seg[:seg.find('\n#### ')] if '\n#### ' in seg else seg
+    man = []
+    for mm in re.finditer(r'^\*\*([^*\n]{2,40}):\*\*\s*(.*)$', seg, re.M):
+        nm, tx = mm.group(1).strip(), mm.group(2).strip()
+        if re.match(r'(addendum|source)$', nm, re.I) and man:
+            man[-1][1] += '\n\n**' + nm + ':** ' + tx
+            continue
+        req = (re.match(r'\(requires ([^)]*)\)', tx) or [None, ''])[1]
+        man.append([nm, tx, req])
+    return {'v': V, 'n': 'Card Casting', 'p': 'card-and-deck-feats', 'f': [], 'feats': feats, 'man': man}
+
+
 def first_level(d, fi):
     """The first class level whose table entry names base feature fi (0 if the table never does)."""
     for k in sorted(d.get('lv', {}), key=int):
@@ -698,6 +728,13 @@ def build(bundle, outdir):
         index['classes'][sl] = {'n': data['n'], 'p': data['p'], 'c': len(data['f']), 'o': sum(len(f[2]) for f in data['f']), 'a': len(data['a'])}
         if data.get('pz'):
             index['classes'][sl]['pz'] = 1
+    cards = deck_data(pages)
+    if cards:
+        raw = json.dumps(cards, ensure_ascii=False, separators=(',', ':')).encode('utf8')
+        with open(os.path.join(outdir, '_cards.json'), 'wb') as fh:
+            fh.write(raw)
+        index['cards'] = {'feats': len(cards['feats']), 'man': len(cards['man'])}
+        print('deck feats: %d   deck manipulations: %d' % (len(cards['feats']), len(cards['man'])))
     raw = json.dumps(index, ensure_ascii=False, separators=(',', ':')).encode('utf8')
     with open(os.path.join(outdir, 'index.json'), 'wb') as fh:
         fh.write(raw)
