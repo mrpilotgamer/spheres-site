@@ -80,6 +80,17 @@ input[type=checkbox]{width:18px;height:18px;accent-color:var(--gold)}
 .more{display:inline}
 .drag{cursor:grab;color:var(--faint);padding:0 4px;font-size:15px;user-select:none}
 @media (pointer:coarse){.drag{display:none}}
+/* companion card header (2026-11-19): unchanged above 560px; on phones one row (fold, name, Present/Active, ⋯), the kind on a
+   short second row, and ↑/↓, Possess, Use as mount, Copy, Remove behind ⋯ (they show in place while it's open) */
+.cmpmore{display:none}
+@media (max-width:560px){
+  .cardhead.cmphead{align-items:center;justify-content:flex-start;gap:6px} .cmphead>.cmpl,.cmphead>.cmpr{display:contents}
+  .cmphead .cmpname{flex:1 1 0 !important;min-width:0;width:auto;font-size:18px !important}
+  .cmphead .cmpkind,.cmphead .tag.gold{order:5}
+  .cmphead .cmpmore{display:inline-block;order:4}
+  .cmpcard:not(.more) .cmphead .cmpx{display:none}
+  .cmpcard.more .cmphead .cmpx{order:6}
+}
 .mv{min-width:28px;padding:2px 6px}
 .c-mv{white-space:nowrap}
 .mvb{display:inline-flex;gap:2px;margin-left:6px}
@@ -2241,7 +2252,7 @@ function publishCopies(c){ if(!CL.user||!window.SheetCloud||!window.SheetCloud.s
       pubWarn('m'+lk,'Couldn’t update '+(c.name||'this character')+' in the party “'+p.name+'” ('+(e&&e.code||'offline')+'). The character itself is saved.'); throw e; }); PUB.mp[lk].catch(function(){}); });
     pubThrottle('sp:'+lk,30000,function(){ (PUB.mp[lk]||Promise.resolve()).then(function(){ return window.SheetCloud.sheetPut(p.pid,key,R()); }).catch(function(){}); }); }); }
 /* ---------- read-only viewer (a share link, or a GM opening a party member) ---------- */
-var RO_OK={why:1,sphToggle:1,allSk:1,fhelp:1,roExit:1,signIn:1,roCopy:1,cFold:1,cFoldAll:1,cFilterOff:1,cExport:1};
+var RO_OK={why:1,sphToggle:1,allSk:1,fhelp:1,roExit:1,signIn:1,roCopy:1,cFold:1,cFoldAll:1,cFilterOff:1,cExport:1,cMore:1};
 function roOpen(c,info){ var c1=safeChar(c); if(!c1){ alertBox(DAMAGED); return; } histNow(); if(pushT&&!UI.ro) cloudPush(); if(!UI.ro) UI.roPrev={ch:ch,hist:hist,tab:UI.tab,home:UI.home}; ch=c1; hist=[]; redoH=[]; UI.ro=info; UI.home=false; UI.tab='sheet'; paint(); window.scrollTo(0,0); }
 function roExit(){ var p=UI.roPrev||{}; UI.ro=null; UI.roPrev=null; ch=p.ch||null; hist=p.hist||[]; redoH=[]; UI.tab=p.tab||'sheet'; UI.home=!ch||!!p.home; paint(); window.scrollTo(0,0); }
 /* nothing in a viewed sheet can be changed: fields off, buttons other than looking (breakdowns, folding) off */
@@ -4025,11 +4036,13 @@ function cmpImportFlow(o){ var L=cmpFromFile(o);
 function compCard(c,i){
   var p='companions.'+i+'.', o=compStats(c), conj=c.kind==='conj';
   var fold=cmpFolded(c), noUp=cmpNeighbour(i,-1)<0, noDn=cmpNeighbour(i,1)<0;
-  var h='<section class="card cmpcard'+(fold?' folded':'')+'" id="cmp-'+esc(c.id)+'" data-drop="cmp" data-id="'+esc(c.id)+'" data-cfind="'+esc(cmpFind(c))+'"'+(cmpMatch(c)?'':' hidden')+'><div class="cardhead"><span class="row" style="margin:0;flex:1 1 300px">'+dragH('cmp',c.id)+
+  var more=UI.cmpMore===c.id, isMount=!!(ch.mount&&ch.mount.id===c.id);
+  var h='<section class="card cmpcard'+(fold?' folded':'')+(more?' more':'')+'" id="cmp-'+esc(c.id)+'" data-drop="cmp" data-id="'+esc(c.id)+'" data-cfind="'+esc(cmpFind(c))+'"'+(cmpMatch(c)?'':' hidden')+'><div class="cardhead cmphead"><span class="row cmpl" style="margin:0;flex:1 1 300px">'+dragH('cmp',c.id)+
     '<button class="mini cmpfold" data-a="cFold" data-id="'+esc(c.id)+'" aria-expanded="'+!fold+'" title="'+(fold?'Show the whole card':'Fold to a short line')+'" aria-label="'+(fold?'Unfold':'Fold')+' '+esc(c.name||'companion')+'">'+(fold?'▸':'▾')+'</button>'+
-    '<button class="mini" data-a="cMove" data-i="'+i+'" data-d="-1" title="Move up" aria-label="Move up"'+(noUp?' disabled':'')+'>↑</button><button class="mini" data-a="cMove" data-i="'+i+'" data-d="1" title="Move down" aria-label="Move down"'+(noDn?' disabled':'')+'>↓</button>'+
-    '<input type="text" data-f="'+p+'name" value="'+esc(c.name)+'" placeholder="Name" aria-label="Companion name" style="font-family:var(--f-display);font-size:20px;font-weight:700;flex:1 1 180px"><span class="tag">'+esc(CKN[c.kind]||'Creature')+'</span></span>'+
-    '<span class="row" style="margin:0">'+(ch.possess&&ch.possess.host===c.id?'<span class="tag gold">Possessed</span>':tabOn('poss')&&(!ch.possess||ch.possessCollective)?'<button class="mini" data-a="possStart" data-i="'+i+'">Possess</button>':'')+(c.kind!=='host'?'<button class="mini" data-a="cMount" data-i="'+i+'" aria-pressed="'+!!(ch.mount&&ch.mount.id===c.id)+'" title="Make it the creature you ride (one at a time)">'+(ch.mount&&ch.mount.id===c.id?'Your mount':'Use as mount')+'</button>':'')+'<button class="mini" data-a="cOn" data-i="'+i+'" aria-pressed="'+(c.on!==false)+'"'+(ch.rules.compLimit?' title="Active: taking part in this encounter (counts toward Companion limits)"':'')+'>'+(c.on!==false?(ch.rules.compLimit?'Active':'Present'):(ch.rules.compLimit?'Not active':'Not present'))+'</button><button class="mini" data-a="cCopy" data-i="'+i+'" title="Add copies of it (new ones start unhurt)">Copy</button><button class="mini danger" data-a="cDel" data-i="'+i+'">Remove</button></span></div>';
+    '<button class="mini cmpx" data-a="cMove" data-i="'+i+'" data-d="-1" title="Move up" aria-label="Move up"'+(noUp?' disabled':'')+'>↑</button><button class="mini cmpx" data-a="cMove" data-i="'+i+'" data-d="1" title="Move down" aria-label="Move down"'+(noDn?' disabled':'')+'>↓</button>'+
+    '<input type="text" data-f="'+p+'name" value="'+esc(c.name)+'" placeholder="Name" aria-label="Companion name" class="cmpname" style="font-family:var(--f-display);font-size:20px;font-weight:700;flex:1 1 180px"><span class="tag cmpkind">'+esc(CKN[c.kind]||'Creature')+'</span></span>'+
+    '<span class="row cmpr" style="margin:0">'+(ch.possess&&ch.possess.host===c.id?'<span class="tag gold">Possessed</span>':tabOn('poss')&&(!ch.possess||ch.possessCollective)?'<button class="mini cmpx" data-a="possStart" data-i="'+i+'">Possess</button>':'')+(c.kind!=='host'?'<button class="mini'+(isMount?'':' cmpx')+'" data-a="cMount" data-i="'+i+'" aria-pressed="'+!!(ch.mount&&ch.mount.id===c.id)+'" title="Make it the creature you ride (one at a time)">'+(ch.mount&&ch.mount.id===c.id?'Your mount':'Use as mount')+'</button>':'')+'<button class="mini" data-a="cOn" data-i="'+i+'" aria-pressed="'+(c.on!==false)+'"'+(ch.rules.compLimit?' title="Active: taking part in this encounter (counts toward Companion limits)"':'')+'>'+(c.on!==false?(ch.rules.compLimit?'Active':'Present'):(ch.rules.compLimit?'Not active':'Not present'))+'</button><button class="mini cmpx" data-a="cCopy" data-i="'+i+'" title="Add copies of it (new ones start unhurt)">Copy</button><button class="mini danger cmpx" data-a="cDel" data-i="'+i+'">Remove</button>'+
+    '<button class="mini cmpmore" data-a="cMore" data-id="'+esc(c.id)+'" aria-expanded="'+more+'" aria-label="'+(more?'Fewer':'More')+' buttons for '+esc(c.name||'this companion')+'" title="'+(more?'Fewer buttons':'Move, copy, mount, remove…')+'">'+(more?'✕':'⋯')+'</button></span></div>';
   if(fold) return h+cmpMini(c)+'</section>';
   if(ch.rules.compLimit&&c.kind!=='host') h+=compLimitRow(c,i,p);
   if(CAP_KINDS[c.kind]) h+=housedOn(c)?'':'<div class="row" style="margin:4px 0 2px;flex-wrap:wrap;gap:6px">'+fC(p+'free','Doesn’t count against the '+CAP_KINDS[c.kind]+' Hit Dice cap')+(c.free?fT(p+'freeWhy','Why',' placeholder="Hired, a possessed body, a yellow musk zombie…"',' wide'):'')+'</div>';
@@ -5271,13 +5284,14 @@ var A={
     return 'skip'; },
   cImport:function(){ return pickFile('Import companions','A companion file exported from this sheet. A character file, a sheet saved as a file or a backup works too: you choose which of its companions to bring in. You can also drop a file on the page.','cmp').then(function(o){ if(!o) return null;
     if(o.app!=='spheres-sheet-companion'&&o.app!=='spheres-sheet'&&o.app!=='spheres-sheet-backup'){ alertBox('That isn’t a companion or character file from this sheet.'); return null; } return cmpImportFlow(o); }); },
+  cMore:function(el){ var id=el.dataset.id; UI.cmpMore=UI.cmpMore===id?null:id; UI.focusSel='#cmp-'+CSS.escape(id)+' [data-a="cMore"]'; return 'ui'; },
   cFold:function(el){ var id=el.dataset.id; if(!(ch.companions||[]).some(function(c){ return c.id===id; })) return 'skip'; cmpSetFold([id],!own(cmpFoldMap(),id)); return 'ui'; },
   cFoldAll:function(el){ cmpSetFold((ch.companions||[]).filter(function(c){ return cmpShown(c)&&cmpMatch(c); }).map(function(c){ return c.id; }),el.dataset.v==='1'); return 'ui'; },
   cFilterOff:function(){ UI.cmpQ=''; UI.cmpKind=''; UI.cmpAct=false; var q=$('cmpQ'); if(q) q.value=''; return 'ui'; },
   cMove:function(el){ var i=+el.dataset.i, j=cmpNeighbour(i,+el.dataset.d<0?-1:1), L=ch.companions; if(!L||!L[i]||j<0) return 'skip'; var c=L.splice(i,1)[0]; L.splice(j,0,c); UI.focusSel='#cmp-'+CSS.escape(c.id)+' [data-a="cMove"][data-d="'+(+el.dataset.d<0?-1:1)+'"]'; },
   cCopy:function(el){ var i=+el.dataset.i, c=ch.companions[i]; if(!c) return 'skip';
     return modal({title:'Copy '+(c.name||'this companion'),html:fNum('n','How many copies',1,1,20)+'<p class="note">Each copy is a separate companion, placed after this one, with its stats, attacks, bonuses and notes. Copies start unhurt'+(reanOn(c)?' and not raised':'')+'; what it carries, being your mount or possessed stays with this one.</p>',buttons:[{label:'Cancel',value:null},{label:'Copy',value:'ok',primary:true}],read:function(root){ return rd(root).n('n'); }})
-    .then(function(r){ if(r.value!=='ok') return null; var n=Math.max(1,Math.min(20,r.data||1)); return function(){ var L=ch.companions, at=L.indexOf(c); if(at<0) return; var made=[];
+    .then(function(r){ if(r.value!=='ok') return null; var n=Math.max(1,Math.min(20,r.data||1)); return function(){ var L=ch.companions, at=L.indexOf(c); if(at<0) return; var made=[]; UI.cmpMore=null;
       for(var k=0;k<n;k++){ var x=cmpCopy(c,L.map(function(z){ return z.name; })); made.push(x); L.splice(at+1+k,0,x); }
       if(cmpFolded(c)) cmpSetFold(made.map(function(x){ return x.id; }),true);
       log('Copied '+(c.name||'a companion')+(n>1?' ×'+n:'')+'.'); UI.toast=n>1?plural(n,'copy','copies')+' added.':'Added '+(made[0].name||'a copy')+'.'; }; }); },
