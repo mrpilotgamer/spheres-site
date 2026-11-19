@@ -1016,13 +1016,8 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
   - **GM "what changed" highlight:** HP drops and new conditions since the GM last looked, highlighted on party cards.
   - **Several practitioner modifiers:** the wiki lets a creature with more than one use the highest; today it's one `pracAbil`.
   - ~~Class presets for granted talents and caster level~~: done 2026-11-13 (class presets and path pickers).
-  - **Class-specific tabs (owner, 2026-11-14: maybe later):**
-    - **Veilweaving:** one tab for the 13 veilweaving classes (Guru, Daevic, Nexus, Radiant, Vizier, Sphereshaper, Rajah,
-      Stormbound, Conduit, Eclipse, Amplifier, Black Templar, Agent of Accrual): veils shaped each day, essence invested and
-      moved. The October bundle has only some veil lists ("Enhanced", "Lunar", "Other", "Trinity"); check the live wiki for
-      the core list first.
-    - **Spirit binding:** the 4 binder prestige classes (Undying Soul, Mascareri, Ravage Binder, Greensprout Rapscallion).
-    - **Smaller trackers:** Eliciter emotions (uses per day, power tiers), Legendary Kineticist burn.
+  - ~~Class-specific tabs (Veilweaving, spirit binding, Eliciter and Kineticist trackers)~~: dropped from the list by the owner
+    on 2026-11-19 (not needed for now).
   - **Classes without wiki class data (owner, 2026-11-14: maybe later; none are played at the table):** Cyborg and the racial
     classes with no "Class Features" section (Dahren, Faen, Garuda, Goushen, Hushen, Mandragoran, Nagaraja, Ruishishen,
     Sanesaram, Shenxue, Verrik, Yueren), Divine Exorcist (no features read), Qahngol (no page).
