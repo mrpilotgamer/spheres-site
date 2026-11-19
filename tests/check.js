@@ -1039,6 +1039,7 @@ function check(what, got, want) {
     check('class list: Conscript, bonus talent at odd levels (like Incanter)', pick(lib('Conscript'), 'mart', 'tx'), 'expert/odd');
     check('class list: Raveler, bonus talent at even levels', pick(lib('Raveler'), 'tal', 'tx'), '1/even');
     check('class list: Professional, bonus talent at 1st and every 4', pick(lib('Professional'), 'tx'), 'f4');
+    check('class list: Alternate Justicar, Warleader sphere + 1 talent at 1st, then 1 every level (Righteous Command)', pick(lib('Alternate Justicar'), 'bs', 'bt', 'tx'), 'Warleader/1/all');
     check('class list: Advisor and Scholar, 2 bonus talents at 1st', [pick(lib('Advisor'), 'bt'), pick(lib('Scholar'), 'bt')].join(' '), '2 2');
 
     /* the talent totals those settings give (Talents used tile: 0 / total, incl. the 2 bonus magic talents for casters) */
@@ -1053,7 +1054,9 @@ function check(what, got, want) {
       ['Conscript 3', { martial: 'expert', talents: 'auto', talx: 'odd' }, 3, 5],
       ['Conscript 20', { martial: 'expert', talents: 'auto', talx: 'odd' }, 20, 30],
       ['Raveler 4', { cast: 'mid', talents: '1', talx: 'even' }, 4, 8],
-      ['Professional-style 9 (1st, 5th, 9th)', { martial: 'expert', talents: 'auto', talx: 'f4' }, 9, 12]];
+      ['Professional-style 9 (1st, 5th, 9th)', { martial: 'expert', talents: 'auto', talx: 'f4' }, 9, 12],
+      ['Alternate Justicar 1 (Warleader sphere + 1 talent)', { talents: 'auto', bonusTalents: 1, talx: 'all', prestige: true }, 1, 2],
+      ['Alternate Justicar 10 (+1 every level)', { talents: 'auto', bonusTalents: 1, talx: 'all', prestige: true }, 10, 11]];
     for (const [what, k, n, want] of cases) {
       await page.evaluate(([k, n]) => { const id = 'zz-cls'; localStorage.setItem('spheres-sheet-v1:' + id, JSON.stringify({ app: 'spheres-sheet', v: 1, id, name: 'Cls', classes: { c1: Object.assign({ name: 'C', hd: 8, bab: '3/4', good: ['will'], skills: 4 }, k) },
         levels: Array.from({ length: n }, () => ({ cls: 'c1', hp: 5, picks: [] })) })); localStorage.setItem('spheres-sheet-v1:last', JSON.stringify(id)); }, [k, n]);
@@ -1547,6 +1550,31 @@ function check(what, got, want) {
     check('folding still works on a phone', await ph.locator('#cmp-a.folded').count(), '1');
     check('no page errors on the phone', pErr.length ? pErr.join(' | ') : 'none', 'none');
     await pcx.close();
+  }
+
+  console.log('Several practitioner modifiers: the highest is used');
+  {
+    await page.evaluate(() => { const id = 'zz-pm'; localStorage.setItem('spheres-sheet-v1:' + id, JSON.stringify({ app: 'spheres-sheet', v: 1, id, name: 'Two Schools',
+      abil: { str: 10, dex: 10, con: 16, int: 10, wis: 12, cha: 18 }, pracAbil: 'wis', pracMore: ['wis', 'zzz', 'con', 'con', 7],
+      classes: { c1: { name: 'F', hd: 10, bab: 'full', good: ['fort'], skills: 2, martial: 'expert' } }, levels: Array.from({ length: 4 }, () => ({ cls: 'c1', hp: 5, picks: [] })) }));
+      localStorage.setItem('spheres-sheet-v1:last', JSON.stringify(id)); });
+    await page.reload(); await settle(); await go('Play', 'Sheet');
+    /* Martial DC = 10 + ½ BAB (4 → 2) + practitioner: Wis 12 (+1), Con 16 (+3), Cha 18 (+4) */
+    check('Wis practitioner with Con also ticked: Martial DC uses Con (10 + 2 + 3)', (await tile('Martial DC')).split(' ')[0], '15');
+    check('…and the tile says which', /\(Con\)/.test(await page.locator('.tile', { has: page.locator('.k', { hasText: /^Martial DC$/ }) }).first().innerText()), true);
+    await go('Character', 'Build');
+    check('a saved list is cleaned (no duplicates, not the main one, only abilities)', JSON.stringify((await page.evaluate(() => JSON.parse(localStorage.getItem('spheres-sheet-v1:zz-pm')))).pracMore), '["con"]');
+    await page.locator('input[data-in="pracMore"][data-v="cha"]').first().check(); await settle();
+    await go('Play', 'Sheet');
+    check('ticking Cha too: the highest, Cha (+4) → 16', (await tile('Martial DC')).split(' ')[0], '16');
+    await page.locator('[data-a="why"][data-k="mdc"]').first().click(); await untilDialog();
+    check('the breakdown names it', /Practitioner modifier \(Cha, the highest of Wis, Con, Cha\)/.test(await page.locator('.dlg').innerText()), true);
+    await page.keyboard.press('Escape'); await settle();
+    await go('Character', 'Build'); await page.selectOption('select[data-f="pracAbil"]', 'cha'); await settle();
+    check('making Cha the main one drops it from the extra list', JSON.stringify((await page.evaluate(() => JSON.parse(localStorage.getItem('spheres-sheet-v1:zz-pm')))).pracMore.filter(a => a !== 'cha')) + ' ' + await page.locator('input[data-in="pracMore"][data-v="cha"]').count(), '["con"] 0');
+    await page.evaluate(() => { const k = 'spheres-sheet-v1:zz-pm', c = JSON.parse(localStorage.getItem(k)); delete c.pracMore; c.pracAbil = 'con'; localStorage.setItem(k, JSON.stringify(c)); });
+    await page.reload(); await settle(); await go('Play', 'Sheet');
+    check('an old save without the list still works (Con: 10 + 2 + 3)', (await tile('Martial DC')).split(' ')[0], '15');
   }
 
   console.log('Times taken on tradition talents; mass level-up');

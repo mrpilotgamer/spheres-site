@@ -75,7 +75,7 @@ so every `firebase deploy` (Cloud Shell or GitHub) first checks the description 
 Normal sheet updates don't need this step; the `talents/` folder stays as it is.
 
 **Checks before deploying (optional):** `tests/check.js` opens the sheet in a headless browser, loads
-both example characters and runs 582 checks (about 95 seconds) against values worked out by hand (HP, AC, saves,
+both example characters and runs 592 checks (about 95 seconds) against values worked out by hand (HP, AC, saves,
 DCs, spell points, talents, skill ranks, attacks, toggles, the theme, free sphere ranks, blast augments, Roll20 macros,
 raised undead, temporary talents, cohorts, Workshop, wiki descriptions, adding talents from the wiki and more). It sits outside `public/`, so it is never deployed. Run it with:
 ```
@@ -609,7 +609,6 @@ this file (newest first); an item below names the changelog entry with its detai
 
 - **Maybe later (pinned 2026-11-09, from the code review's feature list, plus the owner's later additions; not planned yet):**
   - **GM "what changed" highlight:** HP drops and new conditions since the GM last looked, highlighted on party cards.
-  - **Several practitioner modifiers:** the wiki lets a creature with more than one use the highest; today it's one `pracAbil`.
   - ~~Class presets for granted talents and caster level~~: done 2026-11-13 (class presets and path pickers).
   - **Spirit binding tab (owner, 2026-11-14: maybe later):** the 4 binder prestige classes (Undying Soul, Mascareri, Ravage
     Binder, Greensprout Rapscallion).
@@ -617,14 +616,12 @@ this file (newest first); an item below names the changelog entry with its detai
   - **Classes without wiki class data (owner, 2026-11-14: maybe later; none are played at the table):** Cyborg and the racial
     classes with no "Class Features" section (Dahren, Faen, Garuda, Goushen, Hushen, Mandragoran, Nagaraja, Ruishishen,
     Sanesaram, Shenxue, Verrik, Yueren), Divine Exorcist (no features read), Qahngol (no page).
-  - **Warleader talents:** the Alternate Justicar's separate track (1 per level) isn't counted.
+  - ~~Warleader talents (Alternate Justicar)~~ and ~~several practitioner modifiers~~: done 2026-11-19 (see the Changelog).
   - **Joins per invite code:** limit how many characters can join with one code (needs a server function).
 
 - **Smaller open points (gathered 2026-11-19 from the changelog entries named in brackets):**
   - **Script policy:** the Content-Security-Policy `script-src` list goes out **report-only** (browsers block nothing). Switching
     it to enforcing is not done; watch the console on the live site first. (Feature batch 3; Review fixes, 2026-11-09.)
-  - **Workshop tab:** its entry still says "TRIAL (2026-11-05) … may be rolled back", but it has shipped with every deploy since.
-    The owner to confirm it stays, then drop the TRIAL label. (Workshop tab.)
   - **Roll20 macros:** not yet tested in a real Roll20 game; the Skills macro is the likeliest to need a fix. (Roll20 export.)
   - **Free-plan savers not done:** a per-user index document (Characters list: 1 read instead of 1 per character; needs a
     rules change and a backfill), and compressing the copies on the device. (Free-plan savers; Compressed account saves.)
@@ -846,6 +843,21 @@ const firebaseConfig = {
 Moved here from "Open items and ideas" on 2026-11-19, word for word. Entry dates are when the work was done; the order is
 roughly newest first, as it was kept. Anything still open from these entries is listed under "Open items and ideas".
 
+- **Quick rules fixes (2026-11-19).**
+  - **Alternate Justicar, Warleader talents (Righteous Command):** the Warleader sphere and 1 Warleader talent at 1st, then 1
+    more at every level. Class list: `bs:'Warleader'` (the sphere goes in the level's talents, like the Commander's), `bt:1`,
+    and a new `tx:'all'` ("1 at every level", `talxFor` → n), so its own levels give n + 1 talents. A class note says they are
+    Warleader talents (or a feat for using the sphere) and that it gains martial focus but no martial tradition. The sheet
+    doesn't stop other talents from using those slots. `tools/verify-classes.py` knows `tx:'all'`, and the class is no longer
+    in its list of known differences.
+  - **Several practitioner modifiers** (Using Spheres of Might: "If a creature has more than one practitioner modifier, they may
+    use the highest"): `ch.pracMore` (new, in `blankChar`; old saves get `[]`) holds abilities from more practitioner classes,
+    ticked under "Also from another practitioner class" next to Practitioner ability (Build and the Traditions tab's martial
+    card). `D.pm` is the highest of `pracAbil` and those (`D.pmAb`, `D.pmAll`); the Martial DC tile and breakdown say which.
+    `sanitizeChar` keeps only abilities, once each, and never the main one.
+  - Workshop tab: kept (owner); the "TRIAL" label is gone from its entry.
+  - Tests: 10 in `check.js` (the class entry, Justicar totals at 1st and 10th, "Several practitioner modifiers"). After it:
+    `engine-check.js` 337, `check.js` 592, `fuzz-check.js` 29, `talents-check.js` 66, `config-check.js` 14, `csp-check.js` 6 passed.
 - **Companion cards on phones (2026-11-19, owner: "would desktop stay the same?" Yes).** Below 560 px wide only: the card header
   is one row (fold, name, Present/Active, ⋯) plus the kind (and "Possessed") on a short second row: about 65 px instead of 150.
   ⋯ (`cMore`, `UI.cmpMore`: one card at a time, never saved) shows ↑/↓, Possess, Use as mount, Copy and Remove in place and
@@ -1402,7 +1414,7 @@ roughly newest first, as it was kept. Anything still open from these entries is 
   `1+floor((lvl.armiger+1)/4)`.
 - **Actions and temporary talents, 2026-11-05.** An action whose name starts with a temporary talent that isn't active is
   greyed on the Sheet with Use off ("temporary talent not active"), the same name rule as modifiers.
-- **Workshop tab (TRIAL, 2026-11-05; not deployed yet, may be rolled back).** Optional tab in Play (`ws`), on automatically with
+- **Workshop tab (2026-11-05; first a trial, kept: owner, 2026-11-19).** Optional tab in Play (`ws`), on automatically with
   Alchemy, Herbalism, Tech, Tinker or Trap (`TAB_DEFAULT.ws` → `wsAny`). One card per sphere you have ("Show every card" shows all).
   - **Ranks** (`wsSkill`): the skill linked to the sphere on its card, else a Craft/Profession line with the right label (alchemy,
     herbalist, mechanical, traps), else 0; `ch.ws.<card>.ranks` (Settings) overrides. Tech and Tinker share Craft (mechanical).

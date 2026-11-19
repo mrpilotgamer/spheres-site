@@ -35,7 +35,6 @@ KNOWN = {
     'Troubadour': 'magic talents at 5th and every 4 levels are in the text; the table shows combat talents only',
     'Cyborg': 'the 3rd-level bonus talent is a specific Tinker talent from the path (class note says to add it)',
     'Spheres Archwizard': '"+1 level of spherecasting class": advances another class (cast "adv"), not talents of its own',
-    'Alternate Justicar': 'Warleader talents are a separate track the sheet doesn\'t count yet (notes: maybe later)',
     'Qahngol (Variant Half-Orc)': 'a variant race, no class page',
 }
 # expected differences of the HD / ranks / class skills / BAB / saves checks: (class, kind) -> reason. Kinds: 'HD', 'ranks',
@@ -123,7 +122,8 @@ def sheet(e,n):
     if sk: v+= (n-n//4+n//2) if sk==1 else (n//2+(n+1)//2) if sk==.75 else (n//4+(n+1)//2)
     v+=e.get('bt',0) or 0
     tx=e.get('tx','')
-    if tx=='odd': v+=(n+1)//2
+    if tx=='all': v+=n
+    elif tx=='odd': v+=(n+1)//2
     elif tx=='m5': v+=(n-1)//4 if n>=5 else 0
     elif tx=='even': v+=n//2
     elif tx=='f4': v+=(n+3)//4
