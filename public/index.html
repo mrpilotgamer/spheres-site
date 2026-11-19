@@ -235,7 +235,7 @@ table.modt .c-sec select{max-width:11rem}
   table.modt .c-del{align-self:end;justify-self:end}
 }
 #toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:90;background:var(--raised);border:1px solid var(--gold);border-radius:8px;padding:8px 10px 8px 14px;display:flex;gap:12px;align-items:center;box-shadow:0 10px 30px rgba(0,0,0,.5);width:max-content;max-width:calc(100% - 24px);font-size:14px}
-#toast[hidden],.hrow[hidden],.charrow[hidden],.campgrp[hidden],details.arch[hidden]{display:none}
+#toast[hidden],.hrow[hidden],.cmpcard[hidden],.cmpgrp[hidden],#cmpNone[hidden],.charrow[hidden],.campgrp[hidden],details.arch[hidden]{display:none}
 .dlg-err{margin:10px 0 0}
 .dlg-err[hidden]{display:none}
 
@@ -1644,6 +1644,7 @@ function sanitizeChar(o){
   b.companions.forEach(function(c){ var bc=blankComp(c.kind||'conj'); c.abil=Object.assign({},bc.abil,c.abil&&typeof c.abil==='object'?c.abil:{}); c.inc=Object.assign({},bc.inc,c.inc&&typeof c.inc==='object'?c.inc:{});
     ['attacks','mods','traits'].forEach(function(f){ c[f]=rows(c[f]); }); if(!Array.isArray(c.good)) c.good=[];
     if(['auto','yes','no'].indexOf(c.talents)<0) delete c.talents; if(c.free!=null) c.free=!!c.free; if(c.freeWhy!=null) c.freeWhy=str(c.freeWhy).slice(0,120); if(typeof c.pack!=='string'||!/^p\d{1,3}$/.test(c.pack)) delete c.pack;
+    if(c.grp!=null){ c.grp=typeof c.grp==='string'?c.grp.replace(/\s+/g,' ').trim().slice(0,40):''; if(!c.grp) delete c.grp; }
     if(c.coh!=null){ if(typeof c.coh!=='object'||Array.isArray(c.coh)) delete c.coh; else c.coh={prof:own(COH_P,c.coh.prof)?c.coh.prof:'',troop:!!c.coh.troop}; }
     if(c.rean!=null){ if(typeof c.rean!=='object'||Array.isArray(c.rean)) delete c.rean; else { var R=Object.assign(reanBlank(),c.rean), num=function(v,d){ v=Number(v); return isFinite(v)?v:d; };
       R.tmpl=R.tmpl==='skeleton'||R.tmpl==='none'?R.tmpl:'zombie'; R.vars=(Array.isArray(R.vars)?R.vars:[]).filter(function(v){ return typeof v==='string'&&RN_VARS[R.tmpl==='none'?'zombie':R.tmpl].concat(R.tmpl==='none'?RN_VARS.skeleton:[]).some(function(x){ return x[0]===v; }); }); R.v2=!!c.rean.v2;
@@ -2240,7 +2241,7 @@ function publishCopies(c){ if(!CL.user||!window.SheetCloud||!window.SheetCloud.s
       pubWarn('m'+lk,'Couldn’t update '+(c.name||'this character')+' in the party “'+p.name+'” ('+(e&&e.code||'offline')+'). The character itself is saved.'); throw e; }); PUB.mp[lk].catch(function(){}); });
     pubThrottle('sp:'+lk,30000,function(){ (PUB.mp[lk]||Promise.resolve()).then(function(){ return window.SheetCloud.sheetPut(p.pid,key,R()); }).catch(function(){}); }); }); }
 /* ---------- read-only viewer (a share link, or a GM opening a party member) ---------- */
-var RO_OK={why:1,sphToggle:1,allSk:1,fhelp:1,roExit:1,signIn:1,roCopy:1};
+var RO_OK={why:1,sphToggle:1,allSk:1,fhelp:1,roExit:1,signIn:1,roCopy:1,cFold:1,cFoldAll:1,cFilterOff:1,cExport:1};
 function roOpen(c,info){ var c1=safeChar(c); if(!c1){ alertBox(DAMAGED); return; } histNow(); if(pushT&&!UI.ro) cloudPush(); if(!UI.ro) UI.roPrev={ch:ch,hist:hist,tab:UI.tab,home:UI.home}; ch=c1; hist=[]; redoH=[]; UI.ro=info; UI.home=false; UI.tab='sheet'; paint(); window.scrollTo(0,0); }
 function roExit(){ var p=UI.roPrev||{}; UI.ro=null; UI.roPrev=null; ch=p.ch||null; hist=p.hist||[]; redoH=[]; UI.tab=p.tab||'sheet'; UI.home=!ch||!!p.home; paint(); window.scrollTo(0,0); }
 /* nothing in a viewed sheet can be changed: fields off, buttons other than looking (breakdowns, folding) off */
@@ -3938,10 +3939,98 @@ function packBlock(pid){ var M=(ch.companions||[]).map(function(c,i){ return {c:
   if(o.attacks.length) h+='<div style="margin-top:6px">'+o.attacks.map(function(a){ return '<div class="atk" style="margin-bottom:4px"><b class="nm">'+esc(a.name||'Attack')+' × '+n+'</b><span class="hit">'+a.its.map(sgn).join('/')+(bonus?' <span class="note">('+a.its.map(function(v){ return sgn(v+2); }).join('/')+' if 2+ attack one target)</span>':'')+'</span><span>'+esc(a.dice||'')+(a.dmg?sgn(a.dmg):'')+(a.extra?' plus '+esc(a.extra):'')+'</span></div>'; }).join('')+'</div>';
   h+='<p class="note" style="margin:4px 0 0">Members attacking the same target: roll one attack and apply it to each; roll damage once and apply it for each that hits. Members can’t aid or buff each other. Forming or breaking a pack: free out of combat, a standard action in combat.</p></div>';
   return h; }
+/* ---------- organizing the Companions tab (2026-11-19, owner) ----------
+   c.grp: optional group name (trimmed, up to 40 characters), only for sorting this tab: groups are shown as folding
+   sections in the order of their first member, "Ungrouped" last. It is not c.pack (Companion limits). The order is the
+   order of ch.companions (↑/↓, or drag). Folded cards (UI.cmpFold, kept per browser and character under
+   spheres-cmp-fold:<id>) and the filters (UI.cmpQ name, UI.cmpKind, UI.cmpAct) are never saved in the character. */
+function cgrp(c){ return String(c&&c.grp||'').trim(); }
+function cmpGroups(){ var o=[]; (ch.companions||[]).forEach(function(c){ var g=cgrp(c); if(g&&o.indexOf(g)<0) o.push(g); }); return o; }
+function cmpFoldMap(){ if(!UI.cmpFold||UI.cmpFold.id!==ch.id){ var m=lsGet('spheres-cmp-fold:'+ch.id); UI.cmpFold={id:ch.id,m:m&&typeof m==='object'&&!Array.isArray(m)?m:{}}; } return UI.cmpFold.m; }
+function cmpFolded(c){ return !!own(cmpFoldMap(),c.id); }
+function cmpSetFold(ids,on){ var m=cmpFoldMap(); ids.forEach(function(id){ if(on) m[id]=1; else delete m[id]; });
+  Object.keys(m).forEach(function(id){ if(!(ch.companions||[]).some(function(c){ return c.id===id; })) delete m[id]; }); lsSet('spheres-cmp-fold:'+ch.id,m); }
+function cmpShown(c){ return (!UI.cmpKind||c.kind===UI.cmpKind||!(ch.companions||[]).some(function(x){ return x.kind===UI.cmpKind; }))&&(!UI.cmpAct||c.on!==false); }
+function cmpFind(c){ return (String(c.name||'')+' '+(CKN[c.kind]||'')+' '+cgrp(c)).toLowerCase(); }
+function cmpMatch(c){ var q=String(UI.cmpQ||'').trim().toLowerCase(); return !q||cmpFind(c).indexOf(q)>=0; }
+/* the index of the nearest companion before (d −1) or after (d 1) companion i in the same group that the filters show; −1 if none */
+function cmpNeighbour(i,d){ var L=ch.companions||[], c=L[i]; if(!c) return -1; for(var j=i+d;j>=0&&j<L.length;j+=d){ if(cgrp(L[j])===cgrp(c)&&cmpShown(L[j])&&cmpMatch(L[j])) return j; } return -1; }
+/* name search without redrawing (so typing keeps the caret) */
+function cmpFilter(){ var m=$('main'); if(!m||!ch) return; var any=false;
+  m.querySelectorAll('.cmpcard[data-cfind]').forEach(function(s){ var q=String(UI.cmpQ||'').trim().toLowerCase(), hit=!q||s.dataset.cfind.indexOf(q)>=0; s.hidden=!hit; if(hit) any=true; });
+  m.querySelectorAll('.cmpgrp').forEach(function(g){ g.hidden=!g.querySelector('.cmpcard:not([hidden])'); });
+  var no=$('cmpNone'); if(no) no.hidden=any; }
+/* a folded card: HP, AC and what's going on, on one line */
+function cmpMini(c){ var o=compStats(c), cur=o.hpMax-n0(c.dmg), pct=Math.max(0,Math.min(100,cur/o.hpMax*100));
+  return '<div class="row" style="margin:6px 0 0;gap:6px 12px;flex-wrap:wrap"><span><b>'+cur+'</b> / '+o.hpMax+' hp'+(n0(c.temp)?' <span class="tag gold">+'+n0(c.temp)+' temp</span>':'')+'</span><span style="flex:1 1 90px;max-width:220px"><span class="bar" style="display:block"><i class="'+(pct<=25?'crit':pct<=50?'low':'')+'" style="width:'+pct+'%"></i></span></span>'+
+    '<span>AC <b>'+o.ac+'</b></span>'+(o.form?'<span class="tag gold">In form: '+esc(o.form.name)+'</span>':'')+(reanOn(c)&&c.rean.left!=null?'<span class="tag">'+esc(shapeLeft(c.rean))+' left</span>':'')+'</div>'; }
+/* "Skeleton" → "Skeleton 2", "Bones 3" → the next free number after the highest "Bones n" */
+function cmpCopyName(nm,taken){ nm=String(nm||'').trim(); if(!nm) return ''; var m=/^(.*?)\s+(\d+)$/.exec(nm), base=m?m[1]:nm, hi=m?+m[2]:1;
+  taken.forEach(function(t){ var x=/^(.*?)\s+(\d+)$/.exec(String(t||'').trim()); if(x&&x[1]===base) hi=Math.max(hi,+x[2]); });
+  return base+' '+(hi+1); }
+/* a copy of a companion: a new id, unhurt, not in a shapeshift form; a raised undead copy starts not raised. Mount, possession and carried gear stay with the original (they're kept on the character, not the companion). */
+function cmpCopy(c,taken){ var k=JSON.parse(JSON.stringify(c)); k.id='k'+uidG().slice(1); k.name=cmpCopyName(c.name,taken); k.dmg=0; k.temp=0; delete k.stable; k.shape=null;
+  if(k.rean&&typeof k.rean==='object'){ k.on=false; k.rean.left=null; if(k.rean.total!=null) k.rean.total=null; }
+  return k; }
+/* ---------- companion files (2026-11-19, owner) ----------
+   Export: {app:'spheres-sheet-companion', v:1, savedAt, from (the character's name), companions:[…], gear:[…], containers:[…]}.
+   Companions go out fresh (cmpFresh) with their own ids (only to tie the gear to them); gear = items and containers they carry,
+   and items in those containers. Import takes a companion file, a character file or saved sheet, or a backup; every
+   companion and item goes through sanitizeChar (as part of an empty character), then gets a new id, and the gear is tied
+   to the new ids; anything else in the file is ignored. Formulas then use the importing character's numbers. */
+function cmpFresh(k){ k.dmg=0; k.temp=0; delete k.stable; k.shape=null; if(k.rean&&typeof k.rean==='object'){ k.on=false; k.rean.left=null; if(k.rean.total!=null) k.rean.total=null; } return k; }
+/* what a set of companions carries: items and containers with where c:<id>, and items in those containers */
+function cmpCarried(src,ids){ var on={}; ids.forEach(function(id){ on['c:'+id]=1; });
+  var K=(Array.isArray(src.containers)?src.containers:[]).filter(function(k){ return k&&typeof k==='object'&&own(on,String(k.where||'')); }), kin={};
+  K.forEach(function(k){ kin['k:'+k.id]=1; });
+  var G=(Array.isArray(src.gear)?src.gear:[]).filter(function(g){ var w=g&&typeof g==='object'?String(g.where||''):''; return own(on,w)||own(kin,w); });
+  return {gear:G,containers:K}; }
+function cmpExportData(list,withGear){ var cs=list.map(function(c){ var k=cmpFresh(JSON.parse(JSON.stringify(c))); delete k.pack; return k; }), G=withGear?cmpCarried(ch,list.map(function(c){ return c.id; })):{gear:[],containers:[]};
+  return {app:'spheres-sheet-companion',v:1,savedAt:Date.now(),from:String(ch.name||''),companions:cs,gear:JSON.parse(JSON.stringify(G.gear)),containers:JSON.parse(JSON.stringify(G.containers))}; }
+/* the companions a parsed file offers: [{c, from, src}] (src = the file part holding its gear) */
+function cmpFromFile(o){ var out=[], add=function(src,from){ (Array.isArray(src.companions)?src.companions:[]).forEach(function(c){ if(c&&typeof c==='object'&&!Array.isArray(c)) out.push({c:c,from:from,src:src}); }); };
+  if(o.app==='spheres-sheet-companion') add(o,String(o.from||''));
+  else if(o.app==='spheres-sheet-backup') (Array.isArray(o.chars)?o.chars:[]).forEach(function(x){ if(x&&typeof x==='object') add(x,String(x.name||'')); });
+  else if(o.app==='spheres-sheet') add(o,String(o.name||''));
+  return out.slice(0,500); }
+/* bring picked companions (and what they carry) into the open character: cleaned, new ids, gear tied to them */
+function cmpBring(picks,withGear,grp){ var C=[], G=[], K=[];
+  picks.forEach(function(x){ var c=JSON.parse(JSON.stringify(x.c)), old=typeof c.id==='string'?c.id:'', nid='k'+uidG().slice(1)+C.length; c.id=nid;
+    if(withGear&&old){ var cr=cmpCarried(x.src,[old]), kmap={};
+      cr.containers.forEach(function(k){ k=JSON.parse(JSON.stringify(k)); var kid='k'+uidG().slice(1)+'b'+K.length; kmap['k:'+k.id]=kid; k.id=kid; k.where='c:'+nid; K.push(k); });
+      cr.gear.forEach(function(g){ g=JSON.parse(JSON.stringify(g)); var w=String(g.where||''); g.where=own(kmap,w)?'k:'+kmap[w]:'c:'+nid; g.id=newId(); G.push(g); }); }
+    C.push(cmpFresh(c)); });
+  var T=safeChar({app:'spheres-sheet',v:1,id:'cmpimport',companions:C,gear:G,containers:K}); if(!T) throw new Error('part of it is damaged'+(safeChar.err?' ('+safeChar.err+')':''));
+  var ids={}, kids={}; T.companions.forEach(function(c){ ids['c:'+c.id]=1; cmpFresh(c); delete c.pack; if(grp) c.grp=grp; }); T.containers.forEach(function(k){ if(own(ids,String(k.where||''))) kids['k:'+k.id]=1; });
+  T.containers=T.containers.filter(function(k){ return own(ids,String(k.where||'')); }); T.gear=T.gear.filter(function(g){ var w=String(g.where||''); return own(ids,w)||own(kids,w); });
+  ch.companions=(ch.companions||[]).concat(T.companions); ch.containers=(ch.containers||[]).concat(T.containers); ch.gear=(ch.gear||[]).concat(T.gear);
+  return T; }
+/* a companion file (or a character, saved sheet or backup) was picked or dropped: choose which companions to bring */
+function cmpImportFlow(o){ var L=cmpFromFile(o);
+  if(!L.length){ alertBox(o.app==='spheres-sheet-companion'?'That companion file has no companions in it.':'There are no companions in that file.'); return Promise.resolve(null); }
+  var many=o.app==='spheres-sheet-backup', nG=function(x){ var c=cmpCarried(x.src,[String(x.c.id||'')]); return c.gear.length+c.containers.length; }, tot=L.reduce(function(s0,x){ return s0+nG(x); },0);
+  var html='<p class="note">'+(o.app==='spheres-sheet-companion'?'A companion file'+(o.from?' from '+esc(String(o.from).slice(0,80)):''):o.app==='spheres-sheet-backup'?'A backup of '+plural((o.chars||[]).length,'character'):'The character '+esc(String(o.name||'').slice(0,80)||'in the file'))+'. Tick the ones to bring in.</p>'+
+    (L.length>1?'<p style="margin:4px 0"><button type="button" class="link" data-cmpall="1">All</button> · <button type="button" class="link" data-cmpall="0">None</button></p>':'')+
+    '<div class="list" style="max-height:40vh;overflow:auto">'+L.map(function(x,j){ var n=nG(x); return '<label class="opt"><input type="checkbox" name="pick" value="'+j+'" checked><span>'+esc(String(x.c.name||'Unnamed').slice(0,80))+' <span class="note">'+esc(CKN[x.c.kind]||'Creature')+(x.c.grp&&typeof x.c.grp==='string'?' · '+esc(x.c.grp.slice(0,40)):'')+(many&&x.from?' · from '+esc(x.from.slice(0,60)):'')+(n?' · carries '+plural(n,'item'):'')+'</span></span></label>'; }).join('')+'</div>'+
+    (tot?fCheck('gear','Bring what they carry ('+plural(tot,'item')+')',true):'')+
+    '<label class="fld" style="margin-top:8px"><span>Put them in a group (blank = keep their own)</span><input type="text" name="grp" maxlength="40" list="cmpGrps"></label>'+
+    '<p class="note">They come in unhurt, with new ids. Numbers that follow a master (a Conjuration companion’s Hit Dice, formulas with cl, lvl…) now use '+esc(ch.name||'this character')+'’s. Packs (Companion limits) aren’t kept.</p>';
+  return modal({title:'Import companions',html:html,buttons:[{label:'Cancel',value:null},{label:'Import',value:'ok',primary:true}],
+    onOpen:function(root){ root.querySelectorAll('[data-cmpall]').forEach(function(b){ b.addEventListener('click',function(){ root.querySelectorAll('[name=pick]').forEach(function(x){ x.checked=b.dataset.cmpall==='1'; }); }); }); },
+    check:function(root){ return root.querySelector('[name=pick]:checked')?'':'Tick at least one companion.'; },
+    read:function(root){ return {pick:[].map.call(root.querySelectorAll('[name=pick]:checked'),function(x){ return +x.value; }),gear:rd(root).c('gear'),grp:rd(root).s('grp').replace(/\s+/g,' ').trim().slice(0,40)}; }})
+  .then(function(r){ if(r.value!=='ok'||!r.data) return null; var P=r.data.pick.map(function(j){ return L[j]; }).filter(Boolean); if(!P.length) return null;
+    return function(){ var T=cmpBring(P,r.data.gear,r.data.grp), n=T.companions.length, g=T.gear.length+T.containers.length;
+      log('Imported '+(n===1?T.companions[0].name||'a companion':plural(n,'companion'))+(g?' with '+plural(g,'item')+' they carry':'')+'.'); UI.toast='Imported '+plural(n,'companion')+(g?' and '+plural(g,'item'):'')+'.'; goTab('comp'); }; }); }
 function compCard(c,i){
   var p='companions.'+i+'.', o=compStats(c), conj=c.kind==='conj';
-  var h='<section class="card" id="cmp-'+esc(c.id)+'"><div class="cardhead"><span class="row" style="margin:0;flex:1 1 300px"><input type="text" data-f="'+p+'name" value="'+esc(c.name)+'" placeholder="Name" aria-label="Companion name" style="font-family:var(--f-display);font-size:20px;font-weight:700;flex:1 1 180px"><span class="tag">'+esc(CKN[c.kind]||'Creature')+'</span></span>'+
-    '<span class="row" style="margin:0">'+(ch.possess&&ch.possess.host===c.id?'<span class="tag gold">Possessed</span>':tabOn('poss')&&(!ch.possess||ch.possessCollective)?'<button class="mini" data-a="possStart" data-i="'+i+'">Possess</button>':'')+(c.kind!=='host'?'<button class="mini" data-a="cMount" data-i="'+i+'" aria-pressed="'+!!(ch.mount&&ch.mount.id===c.id)+'" title="Make it the creature you ride (one at a time)">'+(ch.mount&&ch.mount.id===c.id?'Your mount':'Use as mount')+'</button>':'')+'<button class="mini" data-a="cOn" data-i="'+i+'" aria-pressed="'+(c.on!==false)+'"'+(ch.rules.compLimit?' title="Active: taking part in this encounter (counts toward Companion limits)"':'')+'>'+(c.on!==false?(ch.rules.compLimit?'Active':'Present'):(ch.rules.compLimit?'Not active':'Not present'))+'</button><button class="mini danger" data-a="cDel" data-i="'+i+'">Remove</button></span></div>';
+  var fold=cmpFolded(c), noUp=cmpNeighbour(i,-1)<0, noDn=cmpNeighbour(i,1)<0;
+  var h='<section class="card cmpcard'+(fold?' folded':'')+'" id="cmp-'+esc(c.id)+'" data-drop="cmp" data-id="'+esc(c.id)+'" data-cfind="'+esc(cmpFind(c))+'"'+(cmpMatch(c)?'':' hidden')+'><div class="cardhead"><span class="row" style="margin:0;flex:1 1 300px">'+dragH('cmp',c.id)+
+    '<button class="mini cmpfold" data-a="cFold" data-id="'+esc(c.id)+'" aria-expanded="'+!fold+'" title="'+(fold?'Show the whole card':'Fold to a short line')+'" aria-label="'+(fold?'Unfold':'Fold')+' '+esc(c.name||'companion')+'">'+(fold?'▸':'▾')+'</button>'+
+    '<button class="mini" data-a="cMove" data-i="'+i+'" data-d="-1" title="Move up" aria-label="Move up"'+(noUp?' disabled':'')+'>↑</button><button class="mini" data-a="cMove" data-i="'+i+'" data-d="1" title="Move down" aria-label="Move down"'+(noDn?' disabled':'')+'>↓</button>'+
+    '<input type="text" data-f="'+p+'name" value="'+esc(c.name)+'" placeholder="Name" aria-label="Companion name" style="font-family:var(--f-display);font-size:20px;font-weight:700;flex:1 1 180px"><span class="tag">'+esc(CKN[c.kind]||'Creature')+'</span></span>'+
+    '<span class="row" style="margin:0">'+(ch.possess&&ch.possess.host===c.id?'<span class="tag gold">Possessed</span>':tabOn('poss')&&(!ch.possess||ch.possessCollective)?'<button class="mini" data-a="possStart" data-i="'+i+'">Possess</button>':'')+(c.kind!=='host'?'<button class="mini" data-a="cMount" data-i="'+i+'" aria-pressed="'+!!(ch.mount&&ch.mount.id===c.id)+'" title="Make it the creature you ride (one at a time)">'+(ch.mount&&ch.mount.id===c.id?'Your mount':'Use as mount')+'</button>':'')+'<button class="mini" data-a="cOn" data-i="'+i+'" aria-pressed="'+(c.on!==false)+'"'+(ch.rules.compLimit?' title="Active: taking part in this encounter (counts toward Companion limits)"':'')+'>'+(c.on!==false?(ch.rules.compLimit?'Active':'Present'):(ch.rules.compLimit?'Not active':'Not present'))+'</button><button class="mini" data-a="cCopy" data-i="'+i+'" title="Add copies of it (new ones start unhurt)">Copy</button><button class="mini danger" data-a="cDel" data-i="'+i+'">Remove</button></span></div>';
+  if(fold) return h+cmpMini(c)+'</section>';
   if(ch.rules.compLimit&&c.kind!=='host') h+=compLimitRow(c,i,p);
   if(CAP_KINDS[c.kind]) h+=housedOn(c)?'':'<div class="row" style="margin:4px 0 2px;flex-wrap:wrap;gap:6px">'+fC(p+'free','Doesn’t count against the '+CAP_KINDS[c.kind]+' Hit Dice cap')+(c.free?fT(p+'freeWhy','Why',' placeholder="Hired, a possessed body, a yellow musk zombie…"',' wide'):'')+'</div>';
   if(o.form) h+='<div class="li" style="border:1px solid var(--gold);border-radius:var(--r);padding:8px 10px;margin:6px 0;flex-wrap:wrap;gap:6px 10px;display:flex"><span style="flex:1 1 220px"><b>In form: '+esc(o.form.name)+'</b> <span class="tag gold">'+esc(o.form.tf)+'</span><br><span class="note">'+esc(o.form.notes.join(' · '))+'</span></span>'+shapeTimerBtns(c.shape,c.id)+'<button class="mini" data-a="shapeEnd" data-id="'+esc(c.id)+'">Dismiss</button></div>';
@@ -3950,6 +4039,7 @@ function compCard(c,i){
   h+=compSummary(c,i,true);
   /* edit */
   h+='<details data-keep="cmp-ed-'+esc(c.id)+'"><summary>Edit stats</summary>';
+  h+='<div class="fields">'+fT(p+'grp','Group (only for sorting this tab)',' list="cmpGrps" maxlength="40" placeholder="e.g. Skeleton horde"',' wide')+'</div>';
   if(reanOn(c)) h+=reanEditor(c,i,p)+compPossEd(c,p)+reanAbil(c,p,o);
   else {
   h+='<div class="fields">'+fS(p+'kind','Kind',CKINDS)+(conj?'<label class="fld"><span>Base form</span><select data-cform="'+i+'">'+Object.keys(CFORMS).map(function(f){ return '<option value="'+f+'"'+(c.form===f?' selected':'')+'>'+f.charAt(0).toUpperCase()+f.slice(1)+'</option>'; }).join('')+'</select></label>'+fS(p+'size','Size',[['M','Medium'],['S','Small (+2 Dex, −2 Str)']])
@@ -3974,14 +4064,27 @@ function compCard(c,i){
   return h+'</details></section>';
 }
 function rComp(){
-  var h='<section class="card" style="margin-top:var(--gap)"><div class="cardhead"><h2>Companions</h2><span class="row" style="margin:0"><select id="cmp-kind" aria-label="Kind of companion">'+CKINDS.map(function(k){ return '<option value="'+k[0]+'">'+k[1]+'</option>'; }).join('')+'</select><button class="mini primary" data-a="cAdd">Add a companion</button></span></div>'+
+  var h='<section class="card" style="margin-top:var(--gap)"><div class="cardhead"><h2>Companions</h2><span class="row" style="margin:0"><select id="cmp-kind" aria-label="Kind of companion">'+CKINDS.map(function(k){ return '<option value="'+k[0]+'">'+k[1]+'</option>'; }).join('')+'</select><button class="mini primary" data-a="cAdd">Add a companion</button><button class="mini" data-a="cImport">Import…</button>'+((ch.companions||[]).length?'<button class="mini" data-a="cExport">Export…</button>':'')+'</span></div>'+
     '<p class="note">Summons, undead, pets, cohorts. Numbers update as you level: a Conjuration companion’s Hit Dice, BAB, saves and natural armor follow your caster level (Table: Companion). Formulas can use your stats (cl, lvl, castmod…) and <i>chd</i>, the companion’s Hit Dice. A cohort with its own class levels is easier as a separate character.</p>';
   var caps=compCaps(); if(caps.length) h+='<div class="list">'+caps.map(function(x){ return '<div class="li"><span style="flex:1">'+esc(x[0])+'</span><b class="'+(x[1]>x[2]||x[3]?'bad':'')+'">'+x[1]+' / '+x[2]+'</b></div>'; }).join('')+'</div>';
   h+='</section>';
   if((ch.companions||[]).some(function(c){ return c.kind==='undead'; })||Object.keys(deathAuto()).length||allPicks(ch).some(function(p){ return /^death( sphere)?$/i.test(String(p.sphere||p.name||'').trim()); })) h+=deathCard();
   if(leadOn()) h+=leadCard();
-  if(!(ch.companions||[]).length) h+='<section class="card" style="margin-top:var(--gap)"><p class="empty">No companions yet. Pick a kind above and press Add.</p></section>';
-  h+='<div class="cols">'+[0,1].map(function(col){ return '<div class="col">'+(ch.companions||[]).map(function(c,i){ return i%2===col?compCard(c,i):''; }).join('')+'</div>'; }).join('')+'</div>';
+  var L=(ch.companions||[]).map(function(c,i){ return {c:c,i:i}; });
+  if(!L.length){ h+='<section class="card" style="margin-top:var(--gap)"><p class="empty">No companions yet. Pick a kind above and press Add.</p></section>'; return h; }
+  var G=cmpGroups(), kinds=CKINDS.filter(function(k){ return L.some(function(x){ return x.c.kind===k[0]; }); }), kf=UI.cmpKind&&kinds.some(function(k){ return k[0]===UI.cmpKind; })?UI.cmpKind:'';
+  if(L.length>1) h+='<div class="row cmpbar" style="margin:var(--gap) 0 0;flex-wrap:wrap;gap:6px 10px"><input type="search" id="cmpQ" value="'+esc(UI.cmpQ||'')+'" placeholder="Find a companion" aria-label="Find a companion by name" style="flex:1 1 180px;max-width:280px">'+
+    (kinds.length>1?'<select id="cmpKind" aria-label="Show one kind"><option value="">All kinds</option>'+kinds.map(function(k){ return '<option value="'+k[0]+'"'+(k[0]===kf?' selected':'')+'>'+esc(k[1])+'</option>'; }).join('')+'</select>':'')+
+    '<label class="ck"><input type="checkbox" id="cmpAct"'+(UI.cmpAct?' checked':'')+'> <span>'+(ch.rules.compLimit?'Active only':'Present only')+'</span></label>'+
+    '<span style="flex:1"></span><button class="mini" data-a="cFoldAll" data-v="1">Fold all</button><button class="mini" data-a="cFoldAll" data-v="0">Unfold all</button></div>';
+  h+='<datalist id="cmpGrps">'+G.map(function(g){ return '<option value="'+esc(g)+'">'; }).join('')+'</datalist>';
+  var cols=function(X){ return '<div class="cols">'+[0,1].map(function(col){ return '<div class="col">'+X.map(function(x,j){ return j%2===col?compCard(x.c,x.i):''; }).join('')+'</div>'; }).join('')+'</div>'; };
+  var shown=L.filter(function(x){ return cmpShown(x.c); });
+  if(!G.length) h+=cols(shown);
+  else G.concat(['']).forEach(function(g){ var X=shown.filter(function(x){ return cgrp(x.c)===g; }), all=L.filter(function(x){ return cgrp(x.c)===g; }); if(!X.length) return;
+    h+='<details class="campgrp cmpgrp" data-keep="cmpg-'+esc(g?slug(g):'-none')+'" data-grp="'+esc(g)+'" open'+(X.some(function(x){ return cmpMatch(x.c); })?'':' hidden')+'><summary class="camph"><span>'+esc(g||'Ungrouped')+'</span> <span class="tag">'+all.length+'</span>'+
+      (g?' <button class="link" data-a="cGrpRen" data-g="'+esc(g)+'">Rename</button> <button class="link" data-a="cGrpOff" data-g="'+esc(g)+'">Ungroup</button> <button class="link" data-a="cExport" data-g="'+esc(g)+'">Export</button>':'')+'</summary>'+cols(X)+'</details>'; });
+  h+='<p class="empty" id="cmpNone"'+(shown.some(function(x){ return cmpMatch(x.c); })?' hidden':'')+'>No companions match. <button class="link" data-a="cFilterOff">Show them all</button></p>';
   return h;
 }
 
@@ -5154,6 +5257,34 @@ var A={
     if(!R.left){ R.left=null; c.on=false; say((c.name||compStats(c).rean.title)+' collapses: time’s up.'); } },
   reanEnd:function(el){ var c=ch.companions[+el.dataset.i]; if(!reanOn(c)) return 'skip'; c.on=false; c.rean.left=null; say((c.name||compStats(c).rean.title)+' collapses.'); },
   reanStart:function(el){ var c=ch.companions[+el.dataset.i]; if(!c||c.kind!=='undead') return 'skip'; if(c.rean){ c.rean.v2=false; reanClean(c); c.rean.tmpl=c.rean.tmpl==='skeleton'?'skeleton':'zombie'; say((c.name||'The undead')+' is worked out from its corpse again.'); return; } c.rean=reanBlank(); c.rean.v2=false; reanClean(c); c.attacks=(c.attacks||[]).filter(function(a){ return !/^(slam|claws?)$/i.test(String(a.name||'').trim()); }); say((c.name||'The undead')+' is now worked out from its corpse.'); },
+  cExport:function(el){ var L=ch.companions||[]; if(!L.length) return 'skip'; var G=cmpGroups(), pre=el.dataset.g&&G.indexOf(el.dataset.g)>=0?'g:'+el.dataset.g:'all';
+    var opts=[['all','All companions ('+L.length+')']].concat(G.map(function(g){ return ['g:'+g,'Group: '+g+' ('+L.filter(function(c){ return cgrp(c)===g; }).length+')']; })).concat(L.map(function(c){ return ['c:'+c.id,(c.name||'Unnamed')+' ('+(CKN[c.kind]||'Creature')+')']; }));
+    var pick=function(v){ return v==='all'?L.slice():v.indexOf('g:')===0?L.filter(function(c){ return cgrp(c)===v.slice(2); }):L.filter(function(c){ return 'c:'+c.id===v; }); };
+    var nG=function(v){ var X=cmpCarried(ch,pick(v).map(function(c){ return c.id; })); return X.gear.length+X.containers.length; };
+    modal({title:'Export companions',html:fSel('what','Which',opts,pre)+'<div data-cg>'+fCheck('gear','Include what they carry',true)+'</div><p class="note">Saves a file you can import into another character (Companions → Import…), or share. They’re saved unhurt, and without links to this character (mount, possession, packs, a shapeshift form).</p>',
+      buttons:[{label:'Cancel',value:null},{label:'Export',value:'ok',primary:true}],
+      onOpen:function(root){ var sel=root.querySelector('[name=what]'), box=root.querySelector('[data-cg]'), upd=function(){ var n=nG(sel.value); box.hidden=!n; box.querySelector('span').textContent='Include what they carry ('+plural(n,'item')+')'; }; sel.addEventListener('change',upd); upd(); },
+      read:function(root){ return {what:rd(root).s('what'),gear:rd(root).c('gear')}; }})
+    .then(function(r){ if(r.value!=='ok'||!r.data) return; var X=pick(r.data.what); if(!X.length) return;
+      var nm=r.data.what.indexOf('c:')===0?(X[0].name||'companion'):r.data.what.indexOf('g:')===0?r.data.what.slice(2):(ch.name||'character');
+      download(slug(nm)+(X.length===1?'.companion.json':'.companions.json'),JSON.stringify(cmpExportData(X,r.data.gear&&nG(r.data.what)>0),null,1),'application/json'); });
+    return 'skip'; },
+  cImport:function(){ return pickFile('Import companions','A companion file exported from this sheet. A character file, a sheet saved as a file or a backup works too: you choose which of its companions to bring in. You can also drop a file on the page.','cmp').then(function(o){ if(!o) return null;
+    if(o.app!=='spheres-sheet-companion'&&o.app!=='spheres-sheet'&&o.app!=='spheres-sheet-backup'){ alertBox('That isn’t a companion or character file from this sheet.'); return null; } return cmpImportFlow(o); }); },
+  cFold:function(el){ var id=el.dataset.id; if(!(ch.companions||[]).some(function(c){ return c.id===id; })) return 'skip'; cmpSetFold([id],!own(cmpFoldMap(),id)); return 'ui'; },
+  cFoldAll:function(el){ cmpSetFold((ch.companions||[]).filter(function(c){ return cmpShown(c)&&cmpMatch(c); }).map(function(c){ return c.id; }),el.dataset.v==='1'); return 'ui'; },
+  cFilterOff:function(){ UI.cmpQ=''; UI.cmpKind=''; UI.cmpAct=false; var q=$('cmpQ'); if(q) q.value=''; return 'ui'; },
+  cMove:function(el){ var i=+el.dataset.i, j=cmpNeighbour(i,+el.dataset.d<0?-1:1), L=ch.companions; if(!L||!L[i]||j<0) return 'skip'; var c=L.splice(i,1)[0]; L.splice(j,0,c); UI.focusSel='#cmp-'+CSS.escape(c.id)+' [data-a="cMove"][data-d="'+(+el.dataset.d<0?-1:1)+'"]'; },
+  cCopy:function(el){ var i=+el.dataset.i, c=ch.companions[i]; if(!c) return 'skip';
+    return modal({title:'Copy '+(c.name||'this companion'),html:fNum('n','How many copies',1,1,20)+'<p class="note">Each copy is a separate companion, placed after this one, with its stats, attacks, bonuses and notes. Copies start unhurt'+(reanOn(c)?' and not raised':'')+'; what it carries, being your mount or possessed stays with this one.</p>',buttons:[{label:'Cancel',value:null},{label:'Copy',value:'ok',primary:true}],read:function(root){ return rd(root).n('n'); }})
+    .then(function(r){ if(r.value!=='ok') return null; var n=Math.max(1,Math.min(20,r.data||1)); return function(){ var L=ch.companions, at=L.indexOf(c); if(at<0) return; var made=[];
+      for(var k=0;k<n;k++){ var x=cmpCopy(c,L.map(function(z){ return z.name; })); made.push(x); L.splice(at+1+k,0,x); }
+      if(cmpFolded(c)) cmpSetFold(made.map(function(x){ return x.id; }),true);
+      log('Copied '+(c.name||'a companion')+(n>1?' ×'+n:'')+'.'); UI.toast=n>1?plural(n,'copy','copies')+' added.':'Added '+(made[0].name||'a copy')+'.'; }; }); },
+  cGrpRen:function(el){ var g=el.dataset.g, M=(ch.companions||[]).filter(function(c){ return cgrp(c)===g; }); if(!g||!M.length) return 'skip';
+    return modal({title:'Rename “'+g+'”',html:'<label class="fld"><span>New name (blank = no group)</span><input type="text" name="n" maxlength="40" value="'+esc(g)+'" list="cmpGrps"></label><p class="note">Moves all '+plural(M.length,'companion')+' in it. A name that’s already a group joins the two.</p>',buttons:[{label:'Cancel',value:null},{label:'Rename',value:'ok',primary:true}],read:function(root){ return rd(root).s('n').trim().slice(0,40); }})
+    .then(function(r){ if(r.value!=='ok'||r.data===g) return null; return function(){ M.forEach(function(c){ if(r.data) c.grp=r.data; else delete c.grp; }); }; }); },
+  cGrpOff:function(el){ var g=el.dataset.g, M=(ch.companions||[]).filter(function(c){ return cgrp(c)===g; }); if(!g||!M.length) return 'skip'; M.forEach(function(c){ delete c.grp; }); UI.toast='“'+g+'” ungrouped ('+plural(M.length,'companion')+').'; },
   cAdd:function(){ var k=($('cmp-kind')||{}).value||'conj', c=blankComp(k); c.name=k==='conj'?'Companion':''; ch.companions=(ch.companions||[]).concat([c]); UI.focusNew='[data-f="companions.'+(ch.companions.length-1)+'.name"]'; log('Added a companion ('+CKN[k]+').'); },
   cDel:function(el){ var i=+el.dataset.i, c=ch.companions[i]; if(!c) return 'skip'; var mine=(ch.gear||[]).filter(function(g){ return (g.where||'')==='c:'+c.id; }).length; return askRemove(c.name?'“'+c.name+'”':'this companion',(mine?'What it carries ('+plural(mine,'item')+') goes back to you. ':'')+(ch.possess&&ch.possess.host===c.id?'Your possession of it ends.':''),function(){ if(ch.possess&&ch.possess.host===c.id) possLeave(false); if(ch.mount&&ch.mount.id===c.id) delete ch.mount; ch.companions=ch.companions.filter(function(x){ return x!==c; }); (ch.gear||[]).concat(ch.containers||[]).forEach(function(g){ if((g.where||'')==='c:'+c.id) g.where=''; }); }); },
   cOn:function(el){ var c=ch.companions[+el.dataset.i]; if(!c) return 'skip'; var on=c.on===false, rule=!!ch.rules.compLimit;
@@ -5597,6 +5728,7 @@ function parseImport(text,isChar){ text=String(text==null?'':text);
     return {err:'That text isn’t a valid file'+at+': '+msg+'. If you copied and pasted it, check nothing is missing at the start or the end.'}; }
   if(!o||typeof o!=='object'||Array.isArray(o)) return {err:'That file holds '+(Array.isArray(o)?'a list':o===null?'nothing':'a single '+typeof o)+', not '+(isChar?'a character':'something this sheet exported')+'.'};
   if(!isChar) return {o:o};
+  if(isChar==='cmp'&&o.app==='spheres-sheet-companion') return {o:o};
   if(o.app==='spheres-sheet-backup') return Array.isArray(o.chars)?{o:o}:{err:'That backup file has no list of characters in it.'};
   if(o.app!=='spheres-sheet') return {err:'That isn’t a character from this sheet'+(o.app?' (it says it’s from “'+String(o.app).slice(0,40)+'”).':': files from this sheet start with {"app":"spheres-sheet".')};
   return {o:o}; }
@@ -5633,7 +5765,7 @@ document.addEventListener('drop',function(e){ if(!dragHasFiles(e)) return; e.pre
   var f=e.dataTransfer.files&&e.dataTransfer.files[0]; if(!f||UI.ro) return;
   var box=document.querySelector('.dlg-back textarea[name="j"]');
   fileText(f).then(function(t){ if(box){ box.value=t; return; } if(document.querySelector('.dlg-back')) return;
-    var p=parseImport(t,true); if(p.err){ alertBox(p.err); return; } runAction(function(){ return importChar(p.o); }); }, function(err){ alertBox(err.message); }); });
+    var p=parseImport(t,ch&&!UI.home?'cmp':true); if(p.err){ alertBox(p.err); return; } runAction(function(){ return p.o.app==='spheres-sheet-companion'?cmpImportFlow(p.o):importChar(p.o); }); }, function(err){ alertBox(err.message); }); });
 /* share links and party memberships stay with the account that made them: never taken from a file */
 function noLinks(c){ if(c&&typeof c==='object'){ delete c.share; c.parties=[]; } return c; }
 function restoreBackup(cs){ var n0c=cs.length; cs=cs.filter(function(c){ return c&&c.app==='spheres-sheet'&&c.id; }).map(function(c){ var s0=c.savedAt; c=safeChar(noLinks(c)); if(c) c.savedAt=typeof s0==='number'?s0:0; return c; }).filter(Boolean);
@@ -6188,7 +6320,7 @@ document.addEventListener('change',function(e){
   remember(before); save(); paintSoon();
 });
 var fresT=null;
-document.addEventListener('input',function(e){ var t=e.target; if(t&&t.id==='homeQ'){ UI.homeQ=t.value; homeFilter(); return; } if(t&&t.id==='histQ'){ UI.histQ=t.value; histFilter(); return; } });
+document.addEventListener('input',function(e){ var t=e.target; if(t&&t.id==='homeQ'){ UI.homeQ=t.value; homeFilter(); return; } if(t&&t.id==='cmpQ'){ UI.cmpQ=t.value; cmpFilter(); return; } if(t&&t.id==='histQ'){ UI.histQ=t.value; histFilter(); return; } });
 var DRAG=null;
 document.addEventListener('dragstart',function(e){ if(UI.ro){ e.preventDefault(); return; } var d=e.target.closest&&e.target.closest('[data-drag]'); if(!d) return; DRAG={type:d.dataset.drag,id:d.dataset.id}; var row=d.closest('[data-drop]');
   try{ e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain',d.dataset.id); if(row) e.dataTransfer.setDragImage(row,10,10); }catch(x){} if(row) row.classList.add('dragging'); });
@@ -6201,9 +6333,11 @@ document.addEventListener('drop',function(e){ var t=dropTarget(e); if(!t||!ch||U
   else if(D0.type==='pk'){ var fr=pickRefs().filter(function(x){ return x.p.id===D0.id; })[0], tr=pickRefs().filter(function(x){ return x.p.id===t.dataset.id; })[0]; if(!fr||!tr||(fr.p.kind||'feat')!==(tr.p.kind||'feat')) return;
     if(fr.p.kind==='talent'&&String(fr.p.sphere||'').trim()!==String(tr.p.sphere||'').trim()) return;
     if(fr.p.kind!=='talent') fr.p.grp=tr.p.grp||''; var sib=pkSiblings(tr.p).filter(function(x){ return x.p!==fr.p; }), at=sib.map(function(x){ return x.p; }).indexOf(tr.p)+(after?1:0); sib.splice(at,0,fr); sib.forEach(function(x,j){ x.p.ord=j; }); }
+  else if(D0.type==='cmp'){ var CL=ch.companions||[], cf=CL.filter(function(c){ return c.id===D0.id; })[0], ct=CL.filter(function(c){ return c.id===t.dataset.id; })[0]; if(!cf||!ct) return;
+    if(cgrp(ct)) cf.grp=cgrp(ct); else delete cf.grp; CL.splice(CL.indexOf(cf),1); CL.splice(CL.indexOf(ct)+(after?1:0),0,cf); }
   else if(D0.type==='sph'){ var L0=sphCur().filter(function(k){ return k!==D0.id; }), at=L0.indexOf(t.dataset.id)+(after?1:0); L0.splice(at,0,D0.id); ch.sphOrder=L0; }
   remember(before); save(); paint(); });
-document.addEventListener('change',function(e){ var t=e.target; if(t&&t.id==='hist-lvl'){ UI.histLvl=t.value; paint(); histFilter(); } });
+document.addEventListener('change',function(e){ var t=e.target; if(t&&t.id==='hist-lvl'){ UI.histLvl=t.value; paint(); histFilter(); } if(t&&t.id==='cmpKind'){ UI.cmpKind=t.value; paint(); } if(t&&t.id==='cmpAct'){ UI.cmpAct=t.checked; paint(); } });
 document.addEventListener('input',function(e){ var t=e.target; if(!t||!ch||UI.ro||t.closest('.dlg-back')) return;
   if(t.id==='condQ'){ UI.condQ=t.value; var q=t.value.toLowerCase(); t.parentNode.querySelectorAll('.chips button').forEach(function(b){ b.hidden=!!q&&b.dataset.k.toLowerCase().indexOf(q)<0; }); return; }
   if(t.dataset&&t.dataset.dice){ var dbx=t.closest('.fld'), dpv=dbx&&dbx.querySelector('.dres'); if(dpv) dpv.innerHTML=dicePrev(t.value,ch.actions[+t.dataset.fv]?actVars(ch.actions[+t.dataset.fv]):D.V); }
