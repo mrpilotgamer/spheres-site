@@ -123,6 +123,11 @@ were not run (the database code is unchanged).
 commit's page → "Revert"), or the next push puts the broken version back.
 
 ### GitHub and automatic deploys (set up 2026-11-06)
+
+**Pinned deploy action (2026-11-19):** the Firebase Hosting step (`FirebaseExtended/action-hosting-deploy`) gets the deploy key,
+so it is pinned to one commit SHA (v0.11.0), not the moving `v0` tag. To update it: look up the new release's commit
+(`git ls-remote --tags https://github.com/FirebaseExtended/action-hosting-deploy`), change the SHA and its comment, and let the
+checks run. `tests/config-check.js` fails if an action from outside GitHub isn't pinned to a full SHA.
 - **Files:** `.gitignore` (leaves out `node_modules/`, `release/`, `.firebase/`, debug logs) and
   `.github/workflows/deploy.yml` (reworked 2026-11-09): on every push to `main` and every pull request (or "Run workflow")
   the `test` job runs `talents-check.js`, `config-check.js`, `check.js` and, in the emulators, `rules-check.js`,
@@ -200,7 +205,7 @@ Script blocks inside, in order:
    (`signIn`, `signOut`, `onUser`, `list`, `get`, `put`, `del`). The config is here; it isn't a secret.
    The SDK is version 10.12.2 from `https://www.gstatic.com/firebasejs/10.12.2/`.
 3. **Rules data blocks** (`type="application/json"`, read once at start-up):
-   - `#traitLib` (about 65 KB): 160 Alteration traits (see the `#traitLib` entry under Open items).
+   - `#traitLib` (about 65 KB): 160 Alteration traits (see the `#traitLib` entry in the Changelog).
    - `#classLib` (about 76 KB): 344 classes (see "Class list").
    - `#wsLib` (about 26 KB): Workshop formulae, toxins, mutagens and herbs.
    - `#persLib` (about 23 KB): persona tropes and quirks.
@@ -599,6 +604,248 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
 
 ## Open items and ideas
 
+What is still open, in one place. Finished work, with how each feature was built, is in the **Changelog** at the end of
+this file (newest first); an item below names the changelog entry with its details. Split out of one long list on 2026-11-19.
+
+- **Maybe later (pinned 2026-11-09, from the code review's feature list, plus the owner's later additions; not planned yet):**
+  - **GM "what changed" highlight:** HP drops and new conditions since the GM last looked, highlighted on party cards.
+  - **Several practitioner modifiers:** the wiki lets a creature with more than one use the highest; today it's one `pracAbil`.
+  - ~~Class presets for granted talents and caster level~~: done 2026-11-13 (class presets and path pickers).
+  - **Spirit binding tab (owner, 2026-11-14: maybe later):** the 4 binder prestige classes (Undying Soul, Mascareri, Ravage
+    Binder, Greensprout Rapscallion).
+  - ~~Veilweaving tab, Eliciter and Legendary Kineticist trackers~~: dropped from the list by the owner on 2026-11-19.
+  - **Classes without wiki class data (owner, 2026-11-14: maybe later; none are played at the table):** Cyborg and the racial
+    classes with no "Class Features" section (Dahren, Faen, Garuda, Goushen, Hushen, Mandragoran, Nagaraja, Ruishishen,
+    Sanesaram, Shenxue, Verrik, Yueren), Divine Exorcist (no features read), Qahngol (no page).
+  - **Warleader talents:** the Alternate Justicar's separate track (1 per level) isn't counted.
+  - **Joins per invite code:** limit how many characters can join with one code (needs a server function).
+
+- **Smaller open points (gathered 2026-11-19 from the changelog entries named in brackets):**
+  - **Script policy:** the Content-Security-Policy `script-src` list goes out **report-only** (browsers block nothing). Switching
+    it to enforcing is not done; watch the console on the live site first. (Feature batch 3; Review fixes, 2026-11-09.)
+  - **Workshop tab:** its entry still says "TRIAL (2026-11-05) … may be rolled back", but it has shipped with every deploy since.
+    The owner to confirm it stays, then drop the TRIAL label. (Workshop tab.)
+  - **Roll20 macros:** not yet tested in a real Roll20 game; the Skills macro is the likeliest to need a fix. (Roll20 export.)
+  - **Free-plan savers not done:** a per-user index document (Characters list: 1 read instead of 1 per character; needs a
+    rules change and a backfill), and compressing the copies on the device. (Free-plan savers; Compressed account saves.)
+  - **Possession, not built:** Greater Possession (several hosts), casting the host's spells at 18th, the extra spell point
+    after a failed attempt, the host's racial skill bonuses, host DR and immunities as numbers. (Possession; Possession gaps closed.)
+  - **Shapeshift, not built:** Swarm Shape and other non-transformation forms (use Blank + traits), forms owned by a companion
+    (a cohort casting Alteration itself), shapeshifting while possessing. Companions *can* now be the target of a form
+    (`c.shape`), so the old "shapeshifting companions: not built" lines in the changelog are out of date. (Shapeshift tab.)
+  - **Raised undead, not built:** other creature templates (advanced, giant, celestial). (Raised undead.)
+  - **Low priority or not wanted:** feats from the wiki (the table also uses core PF1e feats, which the bundle lacks); a list
+    for martial-tradition drawbacks (already in `drawbacks.json`); Mythic (not played); archetypes of Paizo classes other
+    than the sphere conversions (not wanted for now); an installable app or offline mode (not wanted). (Feature roadmap;
+    Class features from the wiki.)
+  - Optional confirmations not added: Enter in the HP box, a cap on the resource "Now" field.
+
+- **To keep an eye on (owner, 2026-11-12): how strict the archetype clash rule should be.** Two open questions, to settle
+  against the rules as written before changing anything:
+  1. **Same number, same value.** Two archetypes that both set a number now clash even when they agree (both make the hit
+     die d10). The alternative: clash only when the values differ. With the October 2026 data it changes nothing: the
+     only same-value pairs (Raveler: Casting + Scholastic, Martial + Resolute; trade traditions: Eliciter Bellwether +
+     Proclaimer, Prodigy Exploitant + Sync, Symbiat Cerebral Singer + Champion Symbiat) also share a class feature, and the
+     one pair the number rule blocks on its own (Hedgewitch Iron Mage + Dragonblooded Mortal) has different saves.
+  2. **Identical alterations.** Two archetypes that alter the same feature in exactly the same way (Bellwether and
+     Proclaimer both give "Blended Training", altering Magic Talents) clash under the rule as the owner described it; some
+     tables allow them. Proclaimer's page only says its trade tradition doesn't conflict with another archetype's.
+  Re-check both after a wiki update (a list of the pairs is quick to make from `public/classes/*.json`: `a[3]` for the
+  numbers, `a[2][i][3]` for the features each archetype changes). The rule lives in `cwArchClash` in `public/index.html`.
+
+---
+
+## Hosting files (to rebuild the site folder from scratch)
+
+`firebase.json`
+```json
+{
+  "hosting": {
+    "public": "public",
+    "ignore": [
+      "firebase.json",
+      "**/.*"
+    ],
+    "headers": [
+      {
+        "source": "**/*.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
+      },
+      {
+        "source": "/",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
+      },
+      {
+        "source": "/talents/**",
+        "headers": [
+          {
+            "key": "Access-Control-Allow-Origin",
+            "value": "*"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=3600"
+          }
+        ]
+      }
+    ]
+  },
+  "firestore": {
+    "rules": "firestore.rules"
+  }
+}
+```
+
+`.firebaserc`
+```json
+{ "projects": { "default": "spheres-character-sheet" } }
+```
+
+`firestore.rules` (copied from the site zip on 2026-11-06; if they ever differ, the site zip wins)
+```
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Each player can read and write only their own characters: users/{their uid}/characters/{character id}
+    match /users/{uid}/characters/{charId} {
+      allow read, delete: if request.auth != null && request.auth.uid == uid;
+      // A character is saved either compressed (z: gzip bytes, about 1 MB) or as plain text (json, older versions).
+      allow create, update: if request.auth != null && request.auth.uid == uid
+        && ((request.resource.data.z is bytes && request.resource.data.z.size() < 1000000)
+            || (request.resource.data.json is string && request.resource.data.json.size() < 900000));
+    }
+
+    function signedIn() { return request.auth != null; }
+    function sizeOk(d) {
+      return (d.z is bytes && d.z.size() < 1000000) || (d.json is string && d.json.size() < 900000);
+    }
+    // A character copy (share link or a party's full sheet): only these fields, short labels.
+    function copyOk(d) {
+      return d.keys().hasOnly(['z', 'enc', 'json', 'owner', 'name', 'summary', 'savedAt', 'updatedAt'])
+        && sizeOk(d)
+        && (!('name' in d) || (d.name is string && d.name.size() <= 200))
+        && (!('summary' in d) || (d.summary is string && d.summary.size() <= 400));
+    }
+    // A party member's summary: only these fields, lists and labels of sensible size.
+    function memberOk(d, key) {
+      return d.keys().hasOnly(['name', 'player', 'cls', 'lvl', 'race', 'hp', 'ac', 'touch', 'ff', 'cmd', 'fort', 'ref', 'will',
+          'init', 'perc', 'conds', 'buffs', 'res', 'form', 'host', 'neg', 'accent', 'code', 'charId', 'owner', 'updatedAt'])
+        && d.charId is string && key == request.auth.uid + '_' + d.charId
+        && d.get('name', '') is string && d.get('name', '').size() <= 200
+        && d.get('player', '') is string && d.get('player', '').size() <= 100
+        && d.get('cls', '') is string && d.get('cls', '').size() <= 300
+        && d.get('conds', []) is list && d.get('conds', []).size() <= 60
+        && d.get('buffs', []) is list && d.get('buffs', []).size() <= 60
+        && d.get('res', []) is list && d.get('res', []).size() <= 60;
+    }
+
+    // Read-only share links: a copy of one character. Anyone with the link (its long random id) can read it;
+    // nobody can list them. Only the player who made it can write or delete it.
+    match /shares/{shareId} {
+      allow get: if true;
+      allow list: if false;
+      // New links start with the owner's id, so a stopped link can't be taken over by someone else.
+      allow create: if signedIn() && shareId.matches(request.auth.uid + '_.+')
+        && request.resource.data.owner == request.auth.uid && copyOk(request.resource.data);
+      allow update: if signedIn() && resource.data.owner == request.auth.uid
+        && request.resource.data.owner == request.auth.uid && copyOk(request.resource.data);
+      allow delete: if signedIn() && resource.data.owner == request.auth.uid;
+    }
+
+    // Parties: only their GMs can read them. Players join a character with the invite code; GMs join with the GM code.
+    match /parties/{pid} {
+      function party() { return get(/databases/$(database)/documents/parties/$(pid)).data; }
+      function isGM() { return signedIn() && request.auth.uid in party().gms; }
+
+      allow get, list: if signedIn() && request.auth.uid in resource.data.gms;
+      // New parties start with the creator's id (so a deleted party can't be re-created by someone holding its invite),
+      // and record the creator as owner.
+      allow create: if signedIn() && pid.matches(request.auth.uid + '_.+')
+        && request.resource.data.gms == [request.auth.uid] && request.resource.data.owner == request.auth.uid
+        && request.resource.data.code is string && request.resource.data.code.size() >= 16
+        && request.resource.data.gmCode is string && request.resource.data.gmCode.size() >= 16
+        && request.resource.data.name is string && request.resource.data.name.size() <= 120;
+      // A GM can rename the party and change its codes. The GM list: anyone may add or remove only themselves;
+      // only the creator may change it otherwise. The owner never changes. Anyone else can only join as GM with the GM code.
+      function gmsOk() {
+        return request.resource.data.gms == resource.data.gms
+          || request.resource.data.gms == resource.data.gms.removeAll([request.auth.uid])
+          || request.auth.uid == resource.data.get('owner', '');
+      }
+      allow update: if signedIn() && request.resource.data.gms is list
+        && request.resource.data.get('owner', '') == resource.data.get('owner', '') && (
+        (request.auth.uid in resource.data.gms && gmsOk()
+          && request.resource.data.code.size() >= 16 && request.resource.data.gmCode.size() >= 16
+          && request.resource.data.name is string && request.resource.data.name.size() <= 120)
+        || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['gms', 'gmJoin'])
+          && request.resource.data.gmJoin == resource.data.gmCode
+          && request.resource.data.gms == resource.data.gms.concat([request.auth.uid])));
+      allow delete: if signedIn() && request.auth.uid in resource.data.gms;
+
+      // One summary per character in the party, written by its player, read by the GMs.
+      // The document id is "<player uid>_<character id>".
+      match /members/{key} {
+        allow get, list: if isGM();
+        allow create: if signedIn() && key.matches(request.auth.uid + '_.+')
+          && request.resource.data.owner == request.auth.uid
+          && request.resource.data.code == party().code
+          && memberOk(request.resource.data, key);
+        allow update: if signedIn() && resource.data.owner == request.auth.uid
+          && request.resource.data.owner == request.auth.uid
+          && request.resource.data.code == resource.data.code
+          && memberOk(request.resource.data, key);
+        allow delete: if signedIn() && (resource.data.owner == request.auth.uid || isGM());
+      }
+      // The full character, for the GM's read-only view. Only for characters in the party.
+      match /sheets/{key} {
+        allow get, list: if isGM();
+        allow create, update: if signedIn() && key.matches(request.auth.uid + '_.+')
+          && request.resource.data.owner == request.auth.uid
+          && exists(/databases/$(database)/documents/parties/$(pid)/members/$(key))
+          && copyOk(request.resource.data);
+        allow delete: if signedIn() && (key.matches(request.auth.uid + '_.+') || isGM());
+      }
+    }
+
+    // Everything else is closed.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+```
+
+Then put the sheet at `public/index.html`.
+
+## Firebase web config (already in the sheet)
+```js
+const firebaseConfig = {
+  apiKey: "AIzaSyA9AqUEfkvPWQaXlwgLMgugHC8EAMnbNt8",
+  authDomain: "spheres-character-sheet.firebaseapp.com",
+  projectId: "spheres-character-sheet",
+  storageBucket: "spheres-character-sheet.firebasestorage.app",
+  messagingSenderId: "415828278170",
+  appId: "1:415828278170:web:c720647aa3e4421b205823"
+};
+```
+
+---
+
+## Changelog (finished work, newest first)
+
+Moved here from "Open items and ideas" on 2026-11-19, word for word. Entry dates are when the work was done; the order is
+roughly newest first, as it was kept. Anything still open from these entries is listed under "Open items and ideas".
+
 - **Companions tab: organizing and companion files (built 2026-11-19).**
   - **Today:** `ch.companions` is one flat list drawn in two columns (`rComp`, `i%2`); every card is full size. Other code
     points at a companion by `id`: gear `where:'c:<id>'`, `ch.mount.id`, `ch.possess.host`, `c.shape.form` (→ `ch.forms`), `c.pack`.
@@ -882,18 +1129,7 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
     (`cwPrefill`); table entries for path parts ("path benefit", "path secrets") are a note, not their own rows; the rows
     that pick paths are no longer filed under Paths / Haunt Path. Wiki text for path features and parts (`cwPathText`) in
     the dialog and on the Feats tab.
-  - **To keep an eye on (owner, 2026-11-12): how strict the archetype clash rule should be.** Two open questions, to settle
-    against the rules as written before changing anything:
-    1. **Same number, same value.** Two archetypes that both set a number now clash even when they agree (both make the hit
-       die d10). The alternative: clash only when the values differ. With the October 2026 data it changes nothing: the
-       only same-value pairs (Raveler: Casting + Scholastic, Martial + Resolute; trade traditions: Eliciter Bellwether +
-       Proclaimer, Prodigy Exploitant + Sync, Symbiat Cerebral Singer + Champion Symbiat) also share a class feature, and the
-       one pair the number rule blocks on its own (Hedgewitch Iron Mage + Dragonblooded Mortal) has different saves.
-    2. **Identical alterations.** Two archetypes that alter the same feature in exactly the same way (Bellwether and
-       Proclaimer both give "Blended Training", altering Magic Talents) clash under the rule as the owner described it; some
-       tables allow them. Proclaimer's page only says its trade tradition doesn't conflict with another archetype's.
-    Re-check both after a wiki update (a list of the pairs is quick to make from `public/classes/*.json`: `a[3]` for the
-    numbers, `a[2][i][3]` for the features each archetype changes). The rule lives in `cwArchClash` in `public/index.html`.
+  - **Archetype clash rule:** two open questions, moved to "Open items" at the top of this section (2026-11-19).
   - **Not yet:** archetypes of Paizo classes other than the sphere conversions (owner's call: not wanted for now).
 
 - **Any talent can be taken more than once (2026-11-10, owner's call: "just to simplify").** Talents from a tradition
@@ -1011,19 +1247,6 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
     (a copy named "… (imported)"); Replace is suggested when the file's is newer, with a warning when it's older.
   - **Drag and drop:** dropping a file anywhere imports it (`body.dropping` shows the drop area); with an import box open, the
     file fills the box instead. Nothing happens in the read-only viewer.
-
-- **Maybe later (pinned 2026-11-09, from the code review's feature list; not planned yet):**
-  - **GM "what changed" highlight:** HP drops and new conditions since the GM last looked, highlighted on party cards.
-  - **Several practitioner modifiers:** the wiki lets a creature with more than one use the highest; today it's one `pracAbil`.
-  - ~~Class presets for granted talents and caster level~~: done 2026-11-13 (class presets and path pickers).
-  - **Spirit binding tab (owner, 2026-11-14: maybe later):** the 4 binder prestige classes (Undying Soul, Mascareri, Ravage
-    Binder, Greensprout Rapscallion).
-  - ~~Veilweaving tab, Eliciter and Legendary Kineticist trackers~~: dropped from the list by the owner on 2026-11-19.
-  - **Classes without wiki class data (owner, 2026-11-14: maybe later; none are played at the table):** Cyborg and the racial
-    classes with no "Class Features" section (Dahren, Faen, Garuda, Goushen, Hushen, Mandragoran, Nagaraja, Ruishishen,
-    Sanesaram, Shenxue, Verrik, Yueren), Divine Exorcist (no features read), Qahngol (no page).
-  - **Warleader talents:** the Alternate Justicar's separate track (1 per level) isn't counted.
-  - **Joins per invite code:** limit how many characters can join with one code (needs a server function).
 
 - **Review fixes, 2026-11-09.** From a code review; each has a check under "Review fixes" or "Damaged saves" in `check.js`.
   - DR "bypassed by" and source text are escaped on the Sheet tab and in print; they reach other people through share links and parties.
@@ -1817,190 +2040,3 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
   - **Pinned, low priority:** Mythic (the table doesn't play it). Not wanted: an installable app / offline mode.
 - Spell points tracker: **already automatic** (corrected 2026-11-06): level-up adds a Spell points resource (max `spmax`) when a
   casting class arrives, and Martial focus for a martial one.
-- Optional confirmations not added: Enter in the HP box, a cap on the resource "Now" field.
-
----
-
-## Hosting files (to rebuild the site folder from scratch)
-
-`firebase.json`
-```json
-{
-  "hosting": {
-    "public": "public",
-    "ignore": [
-      "firebase.json",
-      "**/.*"
-    ],
-    "headers": [
-      {
-        "source": "**/*.html",
-        "headers": [
-          {
-            "key": "Cache-Control",
-            "value": "no-cache"
-          }
-        ]
-      },
-      {
-        "source": "/",
-        "headers": [
-          {
-            "key": "Cache-Control",
-            "value": "no-cache"
-          }
-        ]
-      },
-      {
-        "source": "/talents/**",
-        "headers": [
-          {
-            "key": "Access-Control-Allow-Origin",
-            "value": "*"
-          },
-          {
-            "key": "Cache-Control",
-            "value": "public, max-age=3600"
-          }
-        ]
-      }
-    ]
-  },
-  "firestore": {
-    "rules": "firestore.rules"
-  }
-}
-```
-
-`.firebaserc`
-```json
-{ "projects": { "default": "spheres-character-sheet" } }
-```
-
-`firestore.rules` (copied from the site zip on 2026-11-06; if they ever differ, the site zip wins)
-```
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    // Each player can read and write only their own characters: users/{their uid}/characters/{character id}
-    match /users/{uid}/characters/{charId} {
-      allow read, delete: if request.auth != null && request.auth.uid == uid;
-      // A character is saved either compressed (z: gzip bytes, about 1 MB) or as plain text (json, older versions).
-      allow create, update: if request.auth != null && request.auth.uid == uid
-        && ((request.resource.data.z is bytes && request.resource.data.z.size() < 1000000)
-            || (request.resource.data.json is string && request.resource.data.json.size() < 900000));
-    }
-
-    function signedIn() { return request.auth != null; }
-    function sizeOk(d) {
-      return (d.z is bytes && d.z.size() < 1000000) || (d.json is string && d.json.size() < 900000);
-    }
-    // A character copy (share link or a party's full sheet): only these fields, short labels.
-    function copyOk(d) {
-      return d.keys().hasOnly(['z', 'enc', 'json', 'owner', 'name', 'summary', 'savedAt', 'updatedAt'])
-        && sizeOk(d)
-        && (!('name' in d) || (d.name is string && d.name.size() <= 200))
-        && (!('summary' in d) || (d.summary is string && d.summary.size() <= 400));
-    }
-    // A party member's summary: only these fields, lists and labels of sensible size.
-    function memberOk(d, key) {
-      return d.keys().hasOnly(['name', 'player', 'cls', 'lvl', 'race', 'hp', 'ac', 'touch', 'ff', 'cmd', 'fort', 'ref', 'will',
-          'init', 'perc', 'conds', 'buffs', 'res', 'form', 'host', 'neg', 'accent', 'code', 'charId', 'owner', 'updatedAt'])
-        && d.charId is string && key == request.auth.uid + '_' + d.charId
-        && d.get('name', '') is string && d.get('name', '').size() <= 200
-        && d.get('player', '') is string && d.get('player', '').size() <= 100
-        && d.get('cls', '') is string && d.get('cls', '').size() <= 300
-        && d.get('conds', []) is list && d.get('conds', []).size() <= 60
-        && d.get('buffs', []) is list && d.get('buffs', []).size() <= 60
-        && d.get('res', []) is list && d.get('res', []).size() <= 60;
-    }
-
-    // Read-only share links: a copy of one character. Anyone with the link (its long random id) can read it;
-    // nobody can list them. Only the player who made it can write or delete it.
-    match /shares/{shareId} {
-      allow get: if true;
-      allow list: if false;
-      // New links start with the owner's id, so a stopped link can't be taken over by someone else.
-      allow create: if signedIn() && shareId.matches(request.auth.uid + '_.+')
-        && request.resource.data.owner == request.auth.uid && copyOk(request.resource.data);
-      allow update: if signedIn() && resource.data.owner == request.auth.uid
-        && request.resource.data.owner == request.auth.uid && copyOk(request.resource.data);
-      allow delete: if signedIn() && resource.data.owner == request.auth.uid;
-    }
-
-    // Parties: only their GMs can read them. Players join a character with the invite code; GMs join with the GM code.
-    match /parties/{pid} {
-      function party() { return get(/databases/$(database)/documents/parties/$(pid)).data; }
-      function isGM() { return signedIn() && request.auth.uid in party().gms; }
-
-      allow get, list: if signedIn() && request.auth.uid in resource.data.gms;
-      // New parties start with the creator's id (so a deleted party can't be re-created by someone holding its invite),
-      // and record the creator as owner.
-      allow create: if signedIn() && pid.matches(request.auth.uid + '_.+')
-        && request.resource.data.gms == [request.auth.uid] && request.resource.data.owner == request.auth.uid
-        && request.resource.data.code is string && request.resource.data.code.size() >= 16
-        && request.resource.data.gmCode is string && request.resource.data.gmCode.size() >= 16
-        && request.resource.data.name is string && request.resource.data.name.size() <= 120;
-      // A GM can rename the party and change its codes. The GM list: anyone may add or remove only themselves;
-      // only the creator may change it otherwise. The owner never changes. Anyone else can only join as GM with the GM code.
-      function gmsOk() {
-        return request.resource.data.gms == resource.data.gms
-          || request.resource.data.gms == resource.data.gms.removeAll([request.auth.uid])
-          || request.auth.uid == resource.data.get('owner', '');
-      }
-      allow update: if signedIn() && request.resource.data.gms is list
-        && request.resource.data.get('owner', '') == resource.data.get('owner', '') && (
-        (request.auth.uid in resource.data.gms && gmsOk()
-          && request.resource.data.code.size() >= 16 && request.resource.data.gmCode.size() >= 16
-          && request.resource.data.name is string && request.resource.data.name.size() <= 120)
-        || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['gms', 'gmJoin'])
-          && request.resource.data.gmJoin == resource.data.gmCode
-          && request.resource.data.gms == resource.data.gms.concat([request.auth.uid])));
-      allow delete: if signedIn() && request.auth.uid in resource.data.gms;
-
-      // One summary per character in the party, written by its player, read by the GMs.
-      // The document id is "<player uid>_<character id>".
-      match /members/{key} {
-        allow get, list: if isGM();
-        allow create: if signedIn() && key.matches(request.auth.uid + '_.+')
-          && request.resource.data.owner == request.auth.uid
-          && request.resource.data.code == party().code
-          && memberOk(request.resource.data, key);
-        allow update: if signedIn() && resource.data.owner == request.auth.uid
-          && request.resource.data.owner == request.auth.uid
-          && request.resource.data.code == resource.data.code
-          && memberOk(request.resource.data, key);
-        allow delete: if signedIn() && (resource.data.owner == request.auth.uid || isGM());
-      }
-      // The full character, for the GM's read-only view. Only for characters in the party.
-      match /sheets/{key} {
-        allow get, list: if isGM();
-        allow create, update: if signedIn() && key.matches(request.auth.uid + '_.+')
-          && request.resource.data.owner == request.auth.uid
-          && exists(/databases/$(database)/documents/parties/$(pid)/members/$(key))
-          && copyOk(request.resource.data);
-        allow delete: if signedIn() && (key.matches(request.auth.uid + '_.+') || isGM());
-      }
-    }
-
-    // Everything else is closed.
-    match /{document=**} {
-      allow read, write: if false;
-    }
-  }
-}
-```
-
-Then put the sheet at `public/index.html`.
-
-## Firebase web config (already in the sheet)
-```js
-const firebaseConfig = {
-  apiKey: "AIzaSyA9AqUEfkvPWQaXlwgLMgugHC8EAMnbNt8",
-  authDomain: "spheres-character-sheet.firebaseapp.com",
-  projectId: "spheres-character-sheet",
-  storageBucket: "spheres-character-sheet.firebasestorage.app",
-  messagingSenderId: "415828278170",
-  appId: "1:415828278170:web:c720647aa3e4421b205823"
-};
-```

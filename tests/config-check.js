@@ -46,6 +46,11 @@ check('workflow has no tab characters', !/\t/.test(wf));
 const wfBad = wfLines.map((l, i) => yamlLineProblems(l).map(p => 'line ' + (i + 1) + ': ' + p + ' (' + l.trim() + ')')).flat();
 check('workflow: no unquoted name or run value contains ": "', !wfBad.length, wfBad.join('; '));
 check('workflow has both jobs, test and deploy', /^  test:\s*$/m.test(wf) && /^  deploy:\s*$/m.test(wf));
+/* actions from outside GitHub (anything not actions/…) run with the workflow's secrets: pinned to a full commit SHA, not a tag */
+const uses = wfLines.map(l => (/^\s*(?:-\s*)?uses:\s*([^\s#]+)/.exec(l) || [])[1]).filter(Boolean);
+const unpinned = uses.filter(u => !/^actions\//.test(u) && !/@[0-9a-f]{40}$/.test(u));
+check('workflow: every action from outside GitHub is pinned to a commit SHA', uses.length > 0 && !unpinned.length, 'pin these to a full commit SHA: ' + unpinned.join(', '));
+check('workflow self-test: the pin check sees a tag as unpinned', ['FirebaseExtended/x@v0'].filter(u => !/^actions\//.test(u) && !/@[0-9a-f]{40}$/.test(u)).length === 1);
 check('workflow: deploy still only runs for pushes to main', wf.includes("if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'"));
 
 console.log(`\n${pass} passed, ${fail} failed`);
