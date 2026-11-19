@@ -75,7 +75,7 @@ so every `firebase deploy` (Cloud Shell or GitHub) first checks the description 
 Normal sheet updates don't need this step; the `talents/` folder stays as it is.
 
 **Checks before deploying (optional):** `tests/check.js` opens the sheet in a headless browser, loads
-both example characters and runs 530 checks (about 95 seconds) against values worked out by hand (HP, AC, saves,
+both example characters and runs 554 checks (about 95 seconds) against values worked out by hand (HP, AC, saves,
 DCs, spell points, talents, skill ranks, attacks, toggles, the theme, free sphere ranks, blast augments, Roll20 macros,
 raised undead, temporary talents, cohorts, Workshop, wiki descriptions, adding talents from the wiki and more). It sits outside `public/`, so it is never deployed. Run it with:
 ```
@@ -112,6 +112,9 @@ After class features from the wiki (2026-11-12, latest): `engine-check.js` 336, 
 After deck feats (2026-11-14): `engine-check.js` 337, `check.js` 526, `fuzz-check.js` 27, `talents-check.js` 66, `config-check.js` 12
 passed; `csp-check.js` needs the firebase package (CI only) and the emulator checks were not run in that session.
 After companions that don't count (2026-11-14, later): `engine-check.js` 337, `check.js` 530, `fuzz-check.js` 27, `talents-check.js` 66 passed.
+After companion organizing (2026-11-19): `engine-check.js` 337, `check.js` 554 (24 new: "Organizing companions"), `fuzz-check.js` 27
+(with hostile group names, the copy and rename dialogs, folded cards and the search), `talents-check.js` 66, `config-check.js` 12 passed;
+`csp-check.js` and the emulator checks were not run in this session (the database code is unchanged).
 
 **Rollback:** Firebase console → Hosting → release history → roll back. With GitHub: also revert the commit (the
 commit's page → "Revert"), or the next push puts the broken version back.
@@ -593,10 +596,25 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
 
 ## Open items and ideas
 
-- **PLANNED: Companions tab organizing and import/export (2026-11-19, owner-approved; not built yet).**
+- **Companions tab organizing (built 2026-11-19) and import/export (planned, next).**
   - **Today:** `ch.companions` is one flat list drawn in two columns (`rComp`, `i%2`); every card is full size. Other code
     points at a companion by `id`: gear `where:'c:<id>'`, `ch.mount.id`, `ch.possess.host`, `c.shape.form` (→ `ch.forms`), `c.pack`.
-  - **Organizing (all four in the first version):**
+  - **Organizing (done 2026-11-19).** Code: the block "organizing the Companions tab" before `compCard`, the `cmpcard` header,
+    `rComp`, actions `cFold cFoldAll cFilterOff cMove cCopy cGrpRen cGrpOff`, the `cmp` branch of the drop handler.
+    - Group: "Group (only for sorting this tab)" at the top of Edit stats (suggests existing groups). Section headers have
+      Rename (a name that's already a group joins them; blank = no group) and Ungroup. Without any group there are no sections.
+    - ↑/↓ move to the nearest companion in the same group that the filters show (other groups are skipped); dragging onto a
+      card puts it before/after that card and into its group. The Sheet's companion list follows the same order.
+    - Folded card: header (with Active, Copy, Remove) plus one line: HP, bar, AC, form, reanimation time left. Read-only
+      viewers can fold and filter (`RO_OK`). The fold list drops ids of companions that no longer exist when it's next saved.
+    - Filters: name search also matches the kind and the group, and works as you type (`cmpFilter`, no redraw); the kind
+      list only offers kinds the character has; "Active only" ("Present only" without the house rule). The bar shows from
+      2 companions. When nothing matches, "Show them all" clears every filter.
+    - Copy (1–20): "Skeleton" → "Skeleton 2"; "Bones 3" → the next number after the highest "Bones n". Copies go right after
+      the original, keep its group and pack, start unhurt (no damage, temp HP, stable), not in a shapeshift form; a
+      reanimated copy starts not raised (`on:false`, no time left). One Undo takes all the copies back.
+    - Loading (`sanitizeChar`): `c.grp` must be text; spaces squeezed, trimmed, cut to 40 characters, empty = removed.
+  - **What was planned:**
     - Reorder: drag handle (`dragH('cmp',id)`, a new `cmp` branch in the drop handler) plus ↑/↓ buttons for touch. The order
       is the array order, so old saves need no conversion.
     - Named groups: optional `c.grp` (free text, trimmed, max ~40 chars); collapsible sections with a count, like the

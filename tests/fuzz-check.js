@@ -91,6 +91,9 @@ const clean = () => { window.__xss = 0; document.querySelectorAll('.__inj,img[sr
   for (const mode of ['text', 'keys', 'all', 'nums']) for (let ei = 0; ei < 2; ei++) {
     const tag = `${mode}, ${names[ei]}`;
     const c = poison(JSON.parse(examples[ei]), '', mode); c.id = 'fz' + ei; c.tabsOff = {};
+    /* companion groups (2026-11-19): a hostile group name (cut to 40 characters when loaded) and a second companion, so the filter bar and group sections show */
+    if (Array.isArray(c.companions) && c.companions.length) { c.companions.forEach(x => { if (x && typeof x === 'object') x.grp = PAYLOAD; });
+      if (c.companions.length === 1 && c.companions[0] && typeof c.companions[0] === 'object') c.companions.push(Object.assign({}, c.companions[0], { id: 'fzk' + ei, grp: 'x"><b class=__inj>' })); }
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
     const page = await ctx.newPage(), errors = [], hits = [];
     page.on('pageerror', e => errors.push(e.message.slice(0, 200)));
@@ -123,6 +126,13 @@ const clean = () => { window.__xss = 0; document.querySelectorAll('.__inj,img[sr
           await probe(`tab ${id} why#${i}`); await page.keyboard.press('Escape');
         }
       }
+    }
+    /* the Companions tab's own dialogs and the folded card */
+    if (seen.has('comp')) {
+      await page.locator('#tabbar [data-tgrp]', { hasText: 'Character' }).click().catch(() => {}); await page.locator('#tabbar [data-tab="comp"]').click().catch(() => {}); await settle();
+      for (const a of ['cGrpRen', 'cCopy']) { const b = page.locator(`#main [data-a="${a}"]`).first(); if (await b.count()) { await b.click({ timeout: 1000 }).catch(() => {}); await settle(); await probe('companions ' + a); await page.keyboard.press('Escape'); } }
+      await page.locator('#main [data-a="cFoldAll"][data-v="1"]').click({ timeout: 1000 }).catch(() => {}); await settle(); await probe('companions folded');
+      await page.fill('#cmpQ', 'img').catch(() => {}); await settle(); await probe('companions search');
     }
     await page.evaluate(() => window.dispatchEvent(new Event('beforeprint'))); await settle(); await probe('print view');
     for (const a of ['levelUp', 'theme', 'tabCfg', 'home']) {

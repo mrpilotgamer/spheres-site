@@ -1354,6 +1354,97 @@ function check(what, got, want) {
     check('removing the mount companion clears it as your mount', await page.evaluate(id => 'mount' in JSON.parse(localStorage.getItem('spheres-sheet-v1:' + id)), mid), false);
   }
 
+  console.log('Organizing companions: order, groups, folding, filters, copies');
+  {
+    let oid = '', nO = 0;
+    const mkO = comps => page.evaluate(([comps, id]) => { localStorage.setItem('spheres-sheet-v1:' + id, JSON.stringify({ app: 'spheres-sheet', v: 1, id, name: 'Keeper',
+      classes: { c1: { name: 'Hero', hd: 8, bab: '3/4', good: ['will'], skills: 4, talents: 'none' } }, levels: Array.from({ length: 4 }, () => ({ cls: 'c1', hp: 5, picks: [] })), companions: comps }));
+      localStorage.setItem('spheres-sheet-v1:last', JSON.stringify(id)); }, [comps, oid = 'zz-org' + (++nO)]);
+    const saved = () => page.evaluate(id => JSON.parse(localStorage.getItem('spheres-sheet-v1:' + id)), oid);
+    const order = async () => (await saved()).companions.map(c => c.name).join(', ');
+    const card = name => page.locator('#main section.cmpcard', { has: page.locator(`input[data-f$=".name"][value="${name}"]`) }).first();
+    const visible = async () => (await page.locator('#main section.cmpcard:visible input[data-f$=".name"]').evaluateAll(es => es.map(e => e.value))).sort().join(', ');
+    const C = (id, name, kind, extra) => Object.assign({ id, name, kind, on: true, hd: '2', attacks: [], mods: [], traits: [] }, extra || {});
+
+    /* old saves: a group name is trimmed, squeezed and cut to 40 characters; anything that isn't text is dropped */
+    await mkO([C('a', 'Alpha', 'conj'), C('b', 'Bones 1', 'animal', { grp: '  Night   horde ', dmg: 3 }), C('c', 'Cora', 'cohort', { on: false, grp: 'x'.repeat(60) }), C('d', 'Dog', 'animal', { grp: { bad: 1 } })]);
+    await page.reload(); await settle(); await go('Character', 'Companions');
+    await card('Alpha').locator('[data-a="cMove"][data-d="1"]').click(); await settle(); /* any change saves the cleaned character */
+    const g0 = (await saved()).companions.sort((x, y) => x.name < y.name ? -1 : 1).map(c => c.grp === undefined ? '-' : c.grp.length > 20 ? c.grp.length : c.grp).join('|');
+    check('a saved group name is cleaned when loaded (trimmed, 40 characters at most, not text = none)', g0, '-|Night horde|40|-');
+
+    /* groups: folding sections in the order of their first member, Ungrouped last, with counts */
+    const heads = async () => (await page.locator('#main details.cmpgrp > summary > span:first-child').allInnerTexts()).join(' / ');
+    check('groups show as sections, Ungrouped last', await heads(), 'Night horde / ' + 'x'.repeat(40) + ' / Ungrouped');
+    await card('Dog').locator('details[data-keep^="cmp-ed-"] > summary').click();
+    await card('Dog').locator('input[data-f$=".grp"]').fill('Night horde'); await card('Dog').locator('input[data-f$=".grp"]').press('Tab'); await settle();
+    check('typing a group name in Edit stats moves it into that group', [await heads(), await page.locator('#main details.cmpgrp', { hasText: 'Night horde' }).first().locator('.tag').first().innerText()].join(' · '), 'Night horde / ' + 'x'.repeat(40) + ' / Ungrouped · 2');
+    await page.locator('#main details.cmpgrp', { hasText: 'x'.repeat(40) }).first().locator('[data-a="cGrpRen"]').click(); await untilDialog();
+    await page.fill('.dlg [name=n]', 'Night horde'); await page.locator('.dlg button.primary').click(); await settle();
+    check('renaming a group to another group’s name joins them', [await heads(), (await saved()).companions.filter(c => c.grp === 'Night horde').length].join(' · '), 'Night horde / Ungrouped · 3');
+    await page.locator('#main details.cmpgrp', { hasText: 'Night horde' }).first().locator('[data-a="cGrpOff"]').click(); await settle();
+    check('Ungroup puts them all back in one list (no sections)', [await page.locator('#main details.cmpgrp').count(), (await saved()).companions.filter(c => 'grp' in c).length].join(' '), '0 0');
+    await page.click('[data-a="undo"]'); await settle();
+    check('…and Undo brings the group back', await heads(), 'Night horde / Ungrouped');
+
+    /* order: ↑/↓ move within the group, skipping companions in other groups; the first one's ↑ is off */
+    await mkO([C('a', 'Alpha', 'conj'), C('b', 'Bones', 'animal', { grp: 'Pack' }), C('c', 'Cora', 'cohort'), C('d', 'Dog', 'animal', { grp: 'Pack' })]);
+    await page.reload(); await settle(); await go('Character', 'Companions');
+    check('the first in a group has ↑ off, the last ↓ off', [await card('Bones').locator('[data-a="cMove"][data-d="-1"]').isDisabled(), await card('Dog').locator('[data-a="cMove"][data-d="1"]').isDisabled()].join(' '), 'true true');
+    await card('Dog').locator('[data-a="cMove"][data-d="-1"]').click(); await settle();
+    check('↑ on Dog jumps over Cora (another group) to before Bones', await order(), 'Alpha, Dog, Bones, Cora');
+    await card('Alpha').locator('[data-a="cMove"][data-d="1"]').click(); await settle();
+    check('↓ on Alpha moves it after Cora, the next ungrouped one', await order(), 'Dog, Bones, Cora, Alpha');
+    /* dragging (a mouse): a companion dropped on another goes next to it and joins its group */
+    if (await page.locator('[data-drag="cmp"]').count()) {
+      await page.locator('[data-drag="cmp"][data-id="a"]').dragTo(card('Bones'), { targetPosition: { x: 20, y: 5 } }); await settle();
+      const s1 = await saved();
+      check('dragging Alpha onto the top of Bones puts it before Bones, in the Pack group', s1.companions.map(c => c.name + (c.grp ? ':' + c.grp : '')).join(', '), 'Dog:Pack, Alpha:Pack, Bones:Pack, Cora');
+    } else check('drag handles show with a mouse', 'none', 'some');
+
+    /* folding: a short line (HP, AC); kept for this browser, never in the character */
+    await card('Bones').locator('[data-a="cFold"]').click(); await settle();
+    check('a folded card shows HP and AC, no stats or Edit stats', [await card('Bones').locator('.tiles').count(), await card('Bones').locator('details').count(), /\d+ \/ \d+ hp/.test(await card('Bones').innerText()), /AC \d+/.test(await card('Bones').innerText())].join(' '), '0 0 true true');
+    const s2 = await saved();
+    check('folding isn’t saved in the character (only in this browser)', [JSON.stringify(s2).includes('fold'), await page.evaluate(id => localStorage.getItem('spheres-cmp-fold:' + id), oid)].join(' '), 'false {"b":1}');
+    await page.reload(); await settle(); await go('Character', 'Companions');
+    check('…and stays folded after a reload', await card('Bones').locator('.tiles').count(), '0');
+    await page.click('[data-a="cFoldAll"][data-v="1"]'); await settle();
+    check('Fold all folds every card', await page.locator('#main section.cmpcard.folded').count(), '4');
+    await page.click('[data-a="cFoldAll"][data-v="0"]'); await settle();
+    check('Unfold all opens them again', await page.locator('#main section.cmpcard.folded').count(), '0');
+
+    /* filters: name (as you type), kind, present only; none match → a way back */
+    await page.fill('#cmpQ', 'cor'); await settle(); /* the search also looks at the kind and group, so not 'co' (Conjuration companion) */
+    check('the name search shows only matches as you type (and the empty group hides)', [await visible(), await page.locator('#main details.cmpgrp:visible').count()].join(' · '), 'Cora · 1');
+    await page.fill('#cmpQ', ''); await settle();
+    await page.selectOption('#cmpKind', 'animal'); await settle();
+    check('the kind filter', await visible(), 'Bones, Dog');
+    await page.selectOption('#cmpKind', ''); await card('Cora').locator('[data-a="cOn"]').click(); await settle();
+    await page.check('#cmpAct'); await settle();
+    check('“Present only” hides the ones not present', await visible(), 'Alpha, Bones, Dog');
+    await page.fill('#cmpQ', 'zzz'); await settle();
+    check('nothing matches: a note with a way to show them all', await page.locator('#cmpNone').isVisible(), true);
+    await page.click('#cmpNone [data-a="cFilterOff"]'); await settle();
+    check('“Show them all” clears every filter', [await visible(), await page.inputValue('#cmpQ'), await page.isChecked('#cmpAct')].join(' · '), 'Alpha, Bones, Cora, Dog ·  · false');
+
+    /* copies: numbered names, unhurt, after the original, new ids, same group; Undo takes them all back */
+    await mkO([C('b', 'Bones 1', 'animal', { grp: 'Pack', dmg: 3, temp: 2 }), C('z', 'Bones 4', 'animal'), C('c', 'Cora', 'cohort')]);
+    await page.reload(); await settle(); await go('Character', 'Companions');
+    await card('Bones 1').locator('[data-a="cCopy"]').click(); await untilDialog(); await page.fill('.dlg [name=n]', '2'); await page.locator('.dlg button.primary').click(); await settle();
+    const s3 = (await saved()).companions;
+    check('Copy ×2: next free numbers, right after the original, in its group, unhurt', s3.map(c => [c.name, c.grp || '', c.dmg || 0, c.temp || 0].join(':')).join(', '), 'Bones 1:Pack:3:2, Bones 5:Pack:0:0, Bones 6:Pack:0:0, Bones 4::0:0, Cora::0:0');
+    check('…each with its own id', new Set(s3.map(c => c.id)).size, '5');
+    await page.click('[data-a="undo"]'); await settle();
+    check('…and one Undo takes both copies back', await order(), 'Bones 1, Bones 4, Cora');
+    /* a raised undead's copy starts not raised */
+    await mkO([C('u', 'Shambler', 'undead', { on: true, rean: { tmpl: 'zombie', dur: 'timed', left: 30, total: 60 } })]);
+    await page.reload(); await settle(); await go('Character', 'Companions');
+    await card('Shambler').locator('[data-a="cCopy"]').click(); await untilDialog(); await page.locator('.dlg button.primary').click(); await settle();
+    const s4 = (await saved()).companions[1];
+    check('a raised undead’s copy starts not raised, with no time left', [s4.name, s4.on, s4.rean.left].join(' '), 'Shambler 2 false');
+  }
+
   console.log('Times taken on tradition talents; mass level-up');
   /* wiki text from the local talent files, never the live site (these sections open talent boxes that load it) */
   const localTalents = route => { const f = decodeURIComponent(route.request().url().slice(SITE.length));
