@@ -75,7 +75,7 @@ so every `firebase deploy` (Cloud Shell or GitHub) first checks the description 
 Normal sheet updates don't need this step; the `talents/` folder stays as it is.
 
 **Checks before deploying (optional):** `tests/check.js` opens the sheet in a headless browser, loads
-both example characters and runs 554 checks (about 95 seconds) against values worked out by hand (HP, AC, saves,
+both example characters and runs 573 checks (about 95 seconds) against values worked out by hand (HP, AC, saves,
 DCs, spell points, talents, skill ranks, attacks, toggles, the theme, free sphere ranks, blast augments, Roll20 macros,
 raised undead, temporary talents, cohorts, Workshop, wiki descriptions, adding talents from the wiki and more). It sits outside `public/`, so it is never deployed. Run it with:
 ```
@@ -115,6 +115,9 @@ After companions that don't count (2026-11-14, later): `engine-check.js` 337, `c
 After companion organizing (2026-11-19): `engine-check.js` 337, `check.js` 554 (24 new: "Organizing companions"), `fuzz-check.js` 27
 (with hostile group names, the copy and rename dialogs, folded cards and the search), `talents-check.js` 66, `config-check.js` 12 passed;
 `csp-check.js` and the emulator checks were not run in this session (the database code is unchanged).
+After companion files (2026-11-19, later): `engine-check.js` 337, `check.js` 573 (19 new: "Companion files"), `fuzz-check.js` 29 (a hostile
+companion file imported into both examples), `talents-check.js` 66, `config-check.js` 12, `csp-check.js` 6 passed; the emulator checks
+were not run (the database code is unchanged).
 
 **Rollback:** Firebase console → Hosting → release history → roll back. With GitHub: also revert the commit (the
 commit's page → "Revert"), or the next push puts the broken version back.
@@ -596,7 +599,7 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
 
 ## Open items and ideas
 
-- **Companions tab organizing (built 2026-11-19) and import/export (planned, next).**
+- **Companions tab: organizing and companion files (built 2026-11-19).**
   - **Today:** `ch.companions` is one flat list drawn in two columns (`rComp`, `i%2`); every card is full size. Other code
     points at a companion by `id`: gear `where:'c:<id>'`, `ch.mount.id`, `ch.possess.host`, `c.shape.form` (→ `ch.forms`), `c.pack`.
   - **Organizing (done 2026-11-19).** Code: the block "organizing the Companions tab" before `compCard`, the `cmpcard` header,
@@ -614,6 +617,19 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
       the original, keep its group and pack, start unhurt (no damage, temp HP, stable), not in a shapeshift form; a
       reanimated copy starts not raised (`on:false`, no time left). One Undo takes all the copies back.
     - Loading (`sanitizeChar`): `c.grp` must be text; spaces squeezed, trimmed, cut to 40 characters, empty = removed.
+  - **Companion files (done 2026-11-19).** Code: the block "companion files" before `compCard`, actions `cExport` and `cImport`.
+    - Export… (Companions card; also "Export" on a group header): all, a group or one companion, "Include what they carry"
+      (shown only when they carry something). File `<character>.companions.json`, `<group>.companions.json` or
+      `<name>.companion.json`: `{app:'spheres-sheet-companion', v:1, savedAt, from, companions, gear, containers}`. Fresh
+      (`cmpFresh`: no damage, temp HP, stable, shapeshift form; a reanimated one not raised), no `pack`; mount and
+      possession live on the character, so they never go. Read-only viewers can export (`RO_OK`).
+    - Import… takes a companion file, a character file, a saved sheet (.html) or a backup (`pickFile(…,'cmp')`; in that mode
+      `parseImport` also accepts a companion file). A dialog lists the companions (all ticked; All / None), "Bring what they
+      carry", and an optional group for all of them. Dropping a companion file on the page with a character open does the same.
+    - `cmpBring`: new ids for companions, containers and items; carried gear re-tied to them; then everything goes through
+      `sanitizeChar` as part of an empty character (so it's cleaned exactly like a save, instead of a separate
+      `sanitizeComp`), and items or containers not carried by an imported companion are dropped. Packs are not kept.
+      One Undo takes the whole import back. Names aren't changed (two "Alpha"s are fine).
   - **What was planned:**
     - Reorder: drag handle (`dragH('cmp',id)`, a new `cmp` branch in the drop handler) plus ↑/↓ buttons for touch. The order
       is the array order, so old saves need no conversion.

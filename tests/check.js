@@ -1445,6 +1445,78 @@ function check(what, got, want) {
     check('a raised undead’s copy starts not raised, with no time left', [s4.name, s4.on, s4.rean.left].join(' '), 'Shambler 2 false');
   }
 
+  console.log('Companion files: export and import');
+  {
+    let fid = '', nF = 0;
+    const mkF = (name, comps, extra) => page.evaluate(([name, comps, extra, id]) => { localStorage.setItem('spheres-sheet-v1:' + id, JSON.stringify(Object.assign({ app: 'spheres-sheet', v: 1, id, name,
+      classes: { c1: { name: 'Hero', hd: 8, bab: '3/4', good: ['will'], skills: 4, talents: 'none' } }, levels: Array.from({ length: 4 }, () => ({ cls: 'c1', hp: 5, picks: [] })), companions: comps }, extra || {})));
+      localStorage.setItem('spheres-sheet-v1:last', JSON.stringify(id)); }, [name, comps, extra, fid = 'zz-file' + (++nF)]);
+    const saved = () => page.evaluate(id => JSON.parse(localStorage.getItem('spheres-sheet-v1:' + id)), fid);
+    const C = (id, name, kind, extra) => Object.assign({ id, name, kind, on: true, hd: '2', attacks: [], mods: [], traits: [] }, extra || {});
+    const exportAs = async (what, gear) => { await page.click('#main [data-a="cExport"]'); await untilDialog();
+      if (what) await page.selectOption('.dlg select[name=what]', what); if (gear === false) await page.uncheck('.dlg [name=gear]');
+      const dl = page.waitForEvent('download'); await page.locator('.dlg button.primary').click(); const d = await dl;
+      return { name: d.suggestedFilename(), data: JSON.parse(fs.readFileSync(await d.path(), 'utf8')) }; };
+    const importText = async text => { await page.click('#main [data-a="cImport"]'); await untilDialog(); await page.fill('.dlg [name=j]', text); await page.locator('.dlg button.primary').click(); await settle(); };
+    const giver = [C('a', 'Alpha', 'conj', { dmg: 2, temp: 3, pack: 'p1', grp: 'Riders' }), C('b', 'Bones', 'undead', { grp: 'Riders', rean: { tmpl: 'zombie', dur: 'timed', left: 30, total: 60 } }), C('c', 'Cat', 'animal')];
+    const gGear = { gear: [{ id: 'g1', name: 'Saddle', qty: 1, wt: 20, where: 'c:a' }, { id: 'g2', name: 'Rope', qty: 1, wt: 10, where: '' }, { id: 'g3', name: 'Apple', qty: 3, wt: 1, where: 'k:kk' }],
+      containers: [{ id: 'kk', name: 'Saddlebags', wt: 8, cap: 20, where: 'c:a' }], mount: { id: 'a', on: false } };
+    await mkF('Giver', giver, gGear); await page.reload(); await settle(); await go('Character', 'Companions');
+
+    await page.click('#main [data-a="cExport"]'); await untilDialog();
+    check('Export offers all, each group and each companion', (await page.locator('.dlg select[name=what] option').allInnerTexts()).join(' | '), 'All companions (3) | Group: Riders (2) | Alpha (Conjuration companion) | Bones (Undead (Death sphere)) | Cat (Animal companion or familiar)');
+    check('…and says how many things they carry (a saddle, saddlebags and the apple in them)', await page.locator('.dlg [data-cg]').innerText(), 'Include what they carry (3 items)');
+    await page.selectOption('.dlg select[name=what]', 'c:c'); await settle();
+    check('…the gear box hides for one that carries nothing', await page.locator('.dlg [data-cg]').isHidden(), true);
+    await page.keyboard.press('Escape'); await settle();
+    const all = await exportAs('all');
+    check('all: one file named after the character', all.name, 'giver.companions.json');
+    check('the file: app, all three, fresh (no damage, temp HP, pack; the undead not raised, no time left)', [all.data.app, all.data.companions.map(c => [c.name, c.dmg, c.temp, 'pack' in c, c.on, c.rean ? c.rean.left : '-'].join(':')).join(', ')].join(' · '),
+      'spheres-sheet-companion · Alpha:0:0:false:true:-, Bones:0:0:false:false:, Cat:0:0:false:true:-');
+    check('…with what they carry (not the rope on the character), and nothing about the mount', [all.data.gear.map(g => g.name).join(','), all.data.containers.map(k => k.name).join(','), JSON.stringify(all.data).includes('mount')].join(' · '), 'Saddle,Apple · Saddlebags · false');
+    const one = await exportAs('c:a', false);
+    check('one companion, without its gear', [one.name, one.data.companions.length, one.data.gear.length + one.data.containers.length].join(' '), 'alpha.companion.json 1 0');
+    const grp = await exportAs('g:Riders');
+    check('a group (also from its header)', [grp.name, grp.data.companions.map(c => c.name).join(',')].join(' '), 'riders.companions.json Alpha,Bones');
+    check('Exporting changes nothing in the character', [(await saved()).companions[0].dmg, (await saved()).mount.id].join(' '), '2 a');
+
+    /* import into another character */
+    await mkF('Taker', [C('x', 'Xeno', 'tamed')]); await page.reload(); await settle(); await go('Character', 'Companions');
+    await importText(JSON.stringify(all.data)); await untilDialog();
+    check('Import lists the file’s companions, all ticked, with what they carry', [await page.locator('.dlg [name=pick]').count(), await page.locator('.dlg [name=pick]:checked').count(), /Alpha.*carries 3 items/.test(await page.locator('.dlg .list').innerText())].join(' '), '3 3 true');
+    await page.locator('.dlg [name=pick][value="2"]').uncheck(); await page.fill('.dlg [name=grp]', 'From Giver'); await page.locator('.dlg button.primary').click(); await settle();
+    let s1 = await saved();
+    const A = s1.companions.find(c => c.name === 'Alpha');
+    check('the ticked ones come in after the others, in the chosen group, with new ids', [s1.companions.map(c => c.name + ':' + (c.grp || '')).join(', '), s1.companions.every(c => !['a', 'b', 'c'].includes(c.id)), new Set(s1.companions.map(c => c.id)).size].join(' · '), 'Xeno:, Alpha:From Giver, Bones:From Giver · true · 3');
+    check('…and what Alpha carries is tied to the new Alpha (saddlebags on it, the apple in them)', [s1.gear.map(g => g.name + '@' + (g.where === 'c:' + A.id ? 'Alpha' : s1.containers.some(k => g.where === 'k:' + k.id) ? 'bags' : g.where)).join(','), s1.containers.map(k => k.name + '@' + (k.where === 'c:' + A.id ? 'Alpha' : k.where)).join(',')].join(' · '), 'Saddle@Alpha,Apple@bags · Saddlebags@Alpha');
+    await page.click('[data-a="undo"]'); await settle(); s1 = await saved();
+    check('one Undo takes the whole import back', [s1.companions.length, s1.gear.length, s1.containers.length].join(' '), '1 0 0');
+
+    /* from a character file: pick one; its gear stays behind if unticked */
+    await importText(JSON.stringify(Object.assign({ app: 'spheres-sheet', v: 1, id: 'other', name: 'Giver' }, gGear, { companions: giver })));  await untilDialog();
+    for (const j of ['1', '2']) await page.locator(`.dlg [name=pick][value="${j}"]`).uncheck();
+    await page.uncheck('.dlg [name=gear]'); await page.locator('.dlg button.primary').click(); await settle(); s1 = await saved();
+    check('from a character file: only the ticked one, no gear, its own group kept, unhurt, no pack', [s1.companions.map(c => c.name + ':' + (c.grp || '') + ':' + (c.dmg || 0) + ':' + ('pack' in c)).join(', '), s1.gear.length].join(' · '), 'Xeno::0:false, Alpha:Riders:0:false · 0');
+    await importText(JSON.stringify(Object.assign({ app: 'spheres-sheet', v: 1, id: 'other', name: 'Giver' }, gGear, { companions: giver }))); await untilDialog();
+    await page.locator('.dlg [data-cmpall="0"]').click(); await page.locator('.dlg button.primary').click(); await settle();
+    check('ticking none says so and stays open', [await page.locator('.dlg .dlg-err').innerText(), await page.locator('.dlg').count()].join(' · '), 'Tick at least one companion. · 1');
+    await page.keyboard.press('Escape'); await settle();
+
+    /* damaged or hostile files: cleaned like a saved character; files that aren't ours are refused */
+    await importText(JSON.stringify({ app: 'spheres-sheet-companion', v: 1, companions: [{ id: 'q', name: 'Odd', kind: 'animal', abil: null, mods: 'x', attacks: [5, null], grp: { no: 1 }, pack: 'p1' }, 'junk', null],
+      gear: [{ id: 'z', name: 'Not theirs', where: 'c:nobody' }, { id: 'y', name: 'Collar', where: 'c:q' }] })); await untilDialog();
+    check('a damaged file lists only real companions', await page.locator('.dlg [name=pick]').count(), '1');
+    await page.locator('.dlg button.primary').click(); await settle(); s1 = await saved();
+    const odd = s1.companions.find(c => c.name === 'Odd');
+    check('…and it comes in cleaned (abilities, lists, no bad group or pack), with only its own gear', [odd.abil.str, Array.isArray(odd.mods), odd.attacks.length, 'grp' in odd, 'pack' in odd, s1.gear.map(g => g.name).join(',')].join(' '), '10 true 0 false false Collar');
+    await importText(JSON.stringify({ app: 'something-else', companions: [] })); await untilDialog();
+    check('a file from somewhere else is refused', /isn’t a character from this sheet|isn’t a companion or character file/.test(await page.locator('.dlg').innerText()), true);
+    await page.keyboard.press('Escape'); await settle();
+    await importText(JSON.stringify({ app: 'spheres-sheet-companion', v: 1, companions: [] })); await untilDialog();
+    check('an empty companion file says so', /has no companions in it/.test(await page.locator('.dlg').innerText()), true);
+    await page.keyboard.press('Escape'); await settle();
+  }
+
   console.log('Times taken on tradition talents; mass level-up');
   /* wiki text from the local talent files, never the live site (these sections open talent boxes that load it) */
   const localTalents = route => { const f = decodeURIComponent(route.request().url().slice(SITE.length));

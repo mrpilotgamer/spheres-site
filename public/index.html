@@ -2241,7 +2241,7 @@ function publishCopies(c){ if(!CL.user||!window.SheetCloud||!window.SheetCloud.s
       pubWarn('m'+lk,'Couldn’t update '+(c.name||'this character')+' in the party “'+p.name+'” ('+(e&&e.code||'offline')+'). The character itself is saved.'); throw e; }); PUB.mp[lk].catch(function(){}); });
     pubThrottle('sp:'+lk,30000,function(){ (PUB.mp[lk]||Promise.resolve()).then(function(){ return window.SheetCloud.sheetPut(p.pid,key,R()); }).catch(function(){}); }); }); }
 /* ---------- read-only viewer (a share link, or a GM opening a party member) ---------- */
-var RO_OK={why:1,sphToggle:1,allSk:1,fhelp:1,roExit:1,signIn:1,roCopy:1,cFold:1,cFoldAll:1,cFilterOff:1};
+var RO_OK={why:1,sphToggle:1,allSk:1,fhelp:1,roExit:1,signIn:1,roCopy:1,cFold:1,cFoldAll:1,cFilterOff:1,cExport:1};
 function roOpen(c,info){ var c1=safeChar(c); if(!c1){ alertBox(DAMAGED); return; } histNow(); if(pushT&&!UI.ro) cloudPush(); if(!UI.ro) UI.roPrev={ch:ch,hist:hist,tab:UI.tab,home:UI.home}; ch=c1; hist=[]; redoH=[]; UI.ro=info; UI.home=false; UI.tab='sheet'; paint(); window.scrollTo(0,0); }
 function roExit(){ var p=UI.roPrev||{}; UI.ro=null; UI.roPrev=null; ch=p.ch||null; hist=p.hist||[]; redoH=[]; UI.tab=p.tab||'sheet'; UI.home=!ch||!!p.home; paint(); window.scrollTo(0,0); }
 /* nothing in a viewed sheet can be changed: fields off, buttons other than looking (breakdowns, folding) off */
@@ -3972,6 +3972,56 @@ function cmpCopyName(nm,taken){ nm=String(nm||'').trim(); if(!nm) return ''; var
 function cmpCopy(c,taken){ var k=JSON.parse(JSON.stringify(c)); k.id='k'+uidG().slice(1); k.name=cmpCopyName(c.name,taken); k.dmg=0; k.temp=0; delete k.stable; k.shape=null;
   if(k.rean&&typeof k.rean==='object'){ k.on=false; k.rean.left=null; if(k.rean.total!=null) k.rean.total=null; }
   return k; }
+/* ---------- companion files (2026-11-19, owner) ----------
+   Export: {app:'spheres-sheet-companion', v:1, savedAt, from (the character's name), companions:[…], gear:[…], containers:[…]}.
+   Companions go out fresh (cmpFresh) with their own ids (only to tie the gear to them); gear = items and containers they carry,
+   and items in those containers. Import takes a companion file, a character file or saved sheet, or a backup; every
+   companion and item goes through sanitizeChar (as part of an empty character), then gets a new id, and the gear is tied
+   to the new ids; anything else in the file is ignored. Formulas then use the importing character's numbers. */
+function cmpFresh(k){ k.dmg=0; k.temp=0; delete k.stable; k.shape=null; if(k.rean&&typeof k.rean==='object'){ k.on=false; k.rean.left=null; if(k.rean.total!=null) k.rean.total=null; } return k; }
+/* what a set of companions carries: items and containers with where c:<id>, and items in those containers */
+function cmpCarried(src,ids){ var on={}; ids.forEach(function(id){ on['c:'+id]=1; });
+  var K=(Array.isArray(src.containers)?src.containers:[]).filter(function(k){ return k&&typeof k==='object'&&own(on,String(k.where||'')); }), kin={};
+  K.forEach(function(k){ kin['k:'+k.id]=1; });
+  var G=(Array.isArray(src.gear)?src.gear:[]).filter(function(g){ var w=g&&typeof g==='object'?String(g.where||''):''; return own(on,w)||own(kin,w); });
+  return {gear:G,containers:K}; }
+function cmpExportData(list,withGear){ var cs=list.map(function(c){ var k=cmpFresh(JSON.parse(JSON.stringify(c))); delete k.pack; return k; }), G=withGear?cmpCarried(ch,list.map(function(c){ return c.id; })):{gear:[],containers:[]};
+  return {app:'spheres-sheet-companion',v:1,savedAt:Date.now(),from:String(ch.name||''),companions:cs,gear:JSON.parse(JSON.stringify(G.gear)),containers:JSON.parse(JSON.stringify(G.containers))}; }
+/* the companions a parsed file offers: [{c, from, src}] (src = the file part holding its gear) */
+function cmpFromFile(o){ var out=[], add=function(src,from){ (Array.isArray(src.companions)?src.companions:[]).forEach(function(c){ if(c&&typeof c==='object'&&!Array.isArray(c)) out.push({c:c,from:from,src:src}); }); };
+  if(o.app==='spheres-sheet-companion') add(o,String(o.from||''));
+  else if(o.app==='spheres-sheet-backup') (Array.isArray(o.chars)?o.chars:[]).forEach(function(x){ if(x&&typeof x==='object') add(x,String(x.name||'')); });
+  else if(o.app==='spheres-sheet') add(o,String(o.name||''));
+  return out.slice(0,500); }
+/* bring picked companions (and what they carry) into the open character: cleaned, new ids, gear tied to them */
+function cmpBring(picks,withGear,grp){ var C=[], G=[], K=[];
+  picks.forEach(function(x){ var c=JSON.parse(JSON.stringify(x.c)), old=typeof c.id==='string'?c.id:'', nid='k'+uidG().slice(1)+C.length; c.id=nid;
+    if(withGear&&old){ var cr=cmpCarried(x.src,[old]), kmap={};
+      cr.containers.forEach(function(k){ k=JSON.parse(JSON.stringify(k)); var kid='k'+uidG().slice(1)+'b'+K.length; kmap['k:'+k.id]=kid; k.id=kid; k.where='c:'+nid; K.push(k); });
+      cr.gear.forEach(function(g){ g=JSON.parse(JSON.stringify(g)); var w=String(g.where||''); g.where=own(kmap,w)?'k:'+kmap[w]:'c:'+nid; g.id=newId(); G.push(g); }); }
+    C.push(cmpFresh(c)); });
+  var T=safeChar({app:'spheres-sheet',v:1,id:'cmpimport',companions:C,gear:G,containers:K}); if(!T) throw new Error('part of it is damaged'+(safeChar.err?' ('+safeChar.err+')':''));
+  var ids={}, kids={}; T.companions.forEach(function(c){ ids['c:'+c.id]=1; cmpFresh(c); delete c.pack; if(grp) c.grp=grp; }); T.containers.forEach(function(k){ if(own(ids,String(k.where||''))) kids['k:'+k.id]=1; });
+  T.containers=T.containers.filter(function(k){ return own(ids,String(k.where||'')); }); T.gear=T.gear.filter(function(g){ var w=String(g.where||''); return own(ids,w)||own(kids,w); });
+  ch.companions=(ch.companions||[]).concat(T.companions); ch.containers=(ch.containers||[]).concat(T.containers); ch.gear=(ch.gear||[]).concat(T.gear);
+  return T; }
+/* a companion file (or a character, saved sheet or backup) was picked or dropped: choose which companions to bring */
+function cmpImportFlow(o){ var L=cmpFromFile(o);
+  if(!L.length){ alertBox(o.app==='spheres-sheet-companion'?'That companion file has no companions in it.':'There are no companions in that file.'); return Promise.resolve(null); }
+  var many=o.app==='spheres-sheet-backup', nG=function(x){ var c=cmpCarried(x.src,[String(x.c.id||'')]); return c.gear.length+c.containers.length; }, tot=L.reduce(function(s0,x){ return s0+nG(x); },0);
+  var html='<p class="note">'+(o.app==='spheres-sheet-companion'?'A companion file'+(o.from?' from '+esc(String(o.from).slice(0,80)):''):o.app==='spheres-sheet-backup'?'A backup of '+plural((o.chars||[]).length,'character'):'The character '+esc(String(o.name||'').slice(0,80)||'in the file'))+'. Tick the ones to bring in.</p>'+
+    (L.length>1?'<p style="margin:4px 0"><button type="button" class="link" data-cmpall="1">All</button> · <button type="button" class="link" data-cmpall="0">None</button></p>':'')+
+    '<div class="list" style="max-height:40vh;overflow:auto">'+L.map(function(x,j){ var n=nG(x); return '<label class="opt"><input type="checkbox" name="pick" value="'+j+'" checked><span>'+esc(String(x.c.name||'Unnamed').slice(0,80))+' <span class="note">'+esc(CKN[x.c.kind]||'Creature')+(x.c.grp&&typeof x.c.grp==='string'?' · '+esc(x.c.grp.slice(0,40)):'')+(many&&x.from?' · from '+esc(x.from.slice(0,60)):'')+(n?' · carries '+plural(n,'item'):'')+'</span></span></label>'; }).join('')+'</div>'+
+    (tot?fCheck('gear','Bring what they carry ('+plural(tot,'item')+')',true):'')+
+    '<label class="fld" style="margin-top:8px"><span>Put them in a group (blank = keep their own)</span><input type="text" name="grp" maxlength="40" list="cmpGrps"></label>'+
+    '<p class="note">They come in unhurt, with new ids. Numbers that follow a master (a Conjuration companion’s Hit Dice, formulas with cl, lvl…) now use '+esc(ch.name||'this character')+'’s. Packs (Companion limits) aren’t kept.</p>';
+  return modal({title:'Import companions',html:html,buttons:[{label:'Cancel',value:null},{label:'Import',value:'ok',primary:true}],
+    onOpen:function(root){ root.querySelectorAll('[data-cmpall]').forEach(function(b){ b.addEventListener('click',function(){ root.querySelectorAll('[name=pick]').forEach(function(x){ x.checked=b.dataset.cmpall==='1'; }); }); }); },
+    check:function(root){ return root.querySelector('[name=pick]:checked')?'':'Tick at least one companion.'; },
+    read:function(root){ return {pick:[].map.call(root.querySelectorAll('[name=pick]:checked'),function(x){ return +x.value; }),gear:rd(root).c('gear'),grp:rd(root).s('grp').replace(/\s+/g,' ').trim().slice(0,40)}; }})
+  .then(function(r){ if(r.value!=='ok'||!r.data) return null; var P=r.data.pick.map(function(j){ return L[j]; }).filter(Boolean); if(!P.length) return null;
+    return function(){ var T=cmpBring(P,r.data.gear,r.data.grp), n=T.companions.length, g=T.gear.length+T.containers.length;
+      log('Imported '+(n===1?T.companions[0].name||'a companion':plural(n,'companion'))+(g?' with '+plural(g,'item')+' they carry':'')+'.'); UI.toast='Imported '+plural(n,'companion')+(g?' and '+plural(g,'item'):'')+'.'; goTab('comp'); }; }); }
 function compCard(c,i){
   var p='companions.'+i+'.', o=compStats(c), conj=c.kind==='conj';
   var fold=cmpFolded(c), noUp=cmpNeighbour(i,-1)<0, noDn=cmpNeighbour(i,1)<0;
@@ -4014,7 +4064,7 @@ function compCard(c,i){
   return h+'</details></section>';
 }
 function rComp(){
-  var h='<section class="card" style="margin-top:var(--gap)"><div class="cardhead"><h2>Companions</h2><span class="row" style="margin:0"><select id="cmp-kind" aria-label="Kind of companion">'+CKINDS.map(function(k){ return '<option value="'+k[0]+'">'+k[1]+'</option>'; }).join('')+'</select><button class="mini primary" data-a="cAdd">Add a companion</button></span></div>'+
+  var h='<section class="card" style="margin-top:var(--gap)"><div class="cardhead"><h2>Companions</h2><span class="row" style="margin:0"><select id="cmp-kind" aria-label="Kind of companion">'+CKINDS.map(function(k){ return '<option value="'+k[0]+'">'+k[1]+'</option>'; }).join('')+'</select><button class="mini primary" data-a="cAdd">Add a companion</button><button class="mini" data-a="cImport">Import…</button>'+((ch.companions||[]).length?'<button class="mini" data-a="cExport">Export…</button>':'')+'</span></div>'+
     '<p class="note">Summons, undead, pets, cohorts. Numbers update as you level: a Conjuration companion’s Hit Dice, BAB, saves and natural armor follow your caster level (Table: Companion). Formulas can use your stats (cl, lvl, castmod…) and <i>chd</i>, the companion’s Hit Dice. A cohort with its own class levels is easier as a separate character.</p>';
   var caps=compCaps(); if(caps.length) h+='<div class="list">'+caps.map(function(x){ return '<div class="li"><span style="flex:1">'+esc(x[0])+'</span><b class="'+(x[1]>x[2]||x[3]?'bad':'')+'">'+x[1]+' / '+x[2]+'</b></div>'; }).join('')+'</div>';
   h+='</section>';
@@ -4033,7 +4083,7 @@ function rComp(){
   if(!G.length) h+=cols(shown);
   else G.concat(['']).forEach(function(g){ var X=shown.filter(function(x){ return cgrp(x.c)===g; }), all=L.filter(function(x){ return cgrp(x.c)===g; }); if(!X.length) return;
     h+='<details class="campgrp cmpgrp" data-keep="cmpg-'+esc(g?slug(g):'-none')+'" data-grp="'+esc(g)+'" open'+(X.some(function(x){ return cmpMatch(x.c); })?'':' hidden')+'><summary class="camph"><span>'+esc(g||'Ungrouped')+'</span> <span class="tag">'+all.length+'</span>'+
-      (g?' <button class="link" data-a="cGrpRen" data-g="'+esc(g)+'">Rename</button> <button class="link" data-a="cGrpOff" data-g="'+esc(g)+'">Ungroup</button>':'')+'</summary>'+cols(X)+'</details>'; });
+      (g?' <button class="link" data-a="cGrpRen" data-g="'+esc(g)+'">Rename</button> <button class="link" data-a="cGrpOff" data-g="'+esc(g)+'">Ungroup</button> <button class="link" data-a="cExport" data-g="'+esc(g)+'">Export</button>':'')+'</summary>'+cols(X)+'</details>'; });
   h+='<p class="empty" id="cmpNone"'+(shown.some(function(x){ return cmpMatch(x.c); })?' hidden':'')+'>No companions match. <button class="link" data-a="cFilterOff">Show them all</button></p>';
   return h;
 }
@@ -5207,6 +5257,20 @@ var A={
     if(!R.left){ R.left=null; c.on=false; say((c.name||compStats(c).rean.title)+' collapses: time’s up.'); } },
   reanEnd:function(el){ var c=ch.companions[+el.dataset.i]; if(!reanOn(c)) return 'skip'; c.on=false; c.rean.left=null; say((c.name||compStats(c).rean.title)+' collapses.'); },
   reanStart:function(el){ var c=ch.companions[+el.dataset.i]; if(!c||c.kind!=='undead') return 'skip'; if(c.rean){ c.rean.v2=false; reanClean(c); c.rean.tmpl=c.rean.tmpl==='skeleton'?'skeleton':'zombie'; say((c.name||'The undead')+' is worked out from its corpse again.'); return; } c.rean=reanBlank(); c.rean.v2=false; reanClean(c); c.attacks=(c.attacks||[]).filter(function(a){ return !/^(slam|claws?)$/i.test(String(a.name||'').trim()); }); say((c.name||'The undead')+' is now worked out from its corpse.'); },
+  cExport:function(el){ var L=ch.companions||[]; if(!L.length) return 'skip'; var G=cmpGroups(), pre=el.dataset.g&&G.indexOf(el.dataset.g)>=0?'g:'+el.dataset.g:'all';
+    var opts=[['all','All companions ('+L.length+')']].concat(G.map(function(g){ return ['g:'+g,'Group: '+g+' ('+L.filter(function(c){ return cgrp(c)===g; }).length+')']; })).concat(L.map(function(c){ return ['c:'+c.id,(c.name||'Unnamed')+' ('+(CKN[c.kind]||'Creature')+')']; }));
+    var pick=function(v){ return v==='all'?L.slice():v.indexOf('g:')===0?L.filter(function(c){ return cgrp(c)===v.slice(2); }):L.filter(function(c){ return 'c:'+c.id===v; }); };
+    var nG=function(v){ var X=cmpCarried(ch,pick(v).map(function(c){ return c.id; })); return X.gear.length+X.containers.length; };
+    modal({title:'Export companions',html:fSel('what','Which',opts,pre)+'<div data-cg>'+fCheck('gear','Include what they carry',true)+'</div><p class="note">Saves a file you can import into another character (Companions → Import…), or share. They’re saved unhurt, and without links to this character (mount, possession, packs, a shapeshift form).</p>',
+      buttons:[{label:'Cancel',value:null},{label:'Export',value:'ok',primary:true}],
+      onOpen:function(root){ var sel=root.querySelector('[name=what]'), box=root.querySelector('[data-cg]'), upd=function(){ var n=nG(sel.value); box.hidden=!n; box.querySelector('span').textContent='Include what they carry ('+plural(n,'item')+')'; }; sel.addEventListener('change',upd); upd(); },
+      read:function(root){ return {what:rd(root).s('what'),gear:rd(root).c('gear')}; }})
+    .then(function(r){ if(r.value!=='ok'||!r.data) return; var X=pick(r.data.what); if(!X.length) return;
+      var nm=r.data.what.indexOf('c:')===0?(X[0].name||'companion'):r.data.what.indexOf('g:')===0?r.data.what.slice(2):(ch.name||'character');
+      download(slug(nm)+(X.length===1?'.companion.json':'.companions.json'),JSON.stringify(cmpExportData(X,r.data.gear&&nG(r.data.what)>0),null,1),'application/json'); });
+    return 'skip'; },
+  cImport:function(){ return pickFile('Import companions','A companion file exported from this sheet. A character file, a sheet saved as a file or a backup works too: you choose which of its companions to bring in. You can also drop a file on the page.','cmp').then(function(o){ if(!o) return null;
+    if(o.app!=='spheres-sheet-companion'&&o.app!=='spheres-sheet'&&o.app!=='spheres-sheet-backup'){ alertBox('That isn’t a companion or character file from this sheet.'); return null; } return cmpImportFlow(o); }); },
   cFold:function(el){ var id=el.dataset.id; if(!(ch.companions||[]).some(function(c){ return c.id===id; })) return 'skip'; cmpSetFold([id],!own(cmpFoldMap(),id)); return 'ui'; },
   cFoldAll:function(el){ cmpSetFold((ch.companions||[]).filter(function(c){ return cmpShown(c)&&cmpMatch(c); }).map(function(c){ return c.id; }),el.dataset.v==='1'); return 'ui'; },
   cFilterOff:function(){ UI.cmpQ=''; UI.cmpKind=''; UI.cmpAct=false; var q=$('cmpQ'); if(q) q.value=''; return 'ui'; },
@@ -5664,6 +5728,7 @@ function parseImport(text,isChar){ text=String(text==null?'':text);
     return {err:'That text isn’t a valid file'+at+': '+msg+'. If you copied and pasted it, check nothing is missing at the start or the end.'}; }
   if(!o||typeof o!=='object'||Array.isArray(o)) return {err:'That file holds '+(Array.isArray(o)?'a list':o===null?'nothing':'a single '+typeof o)+', not '+(isChar?'a character':'something this sheet exported')+'.'};
   if(!isChar) return {o:o};
+  if(isChar==='cmp'&&o.app==='spheres-sheet-companion') return {o:o};
   if(o.app==='spheres-sheet-backup') return Array.isArray(o.chars)?{o:o}:{err:'That backup file has no list of characters in it.'};
   if(o.app!=='spheres-sheet') return {err:'That isn’t a character from this sheet'+(o.app?' (it says it’s from “'+String(o.app).slice(0,40)+'”).':': files from this sheet start with {"app":"spheres-sheet".')};
   return {o:o}; }
@@ -5700,7 +5765,7 @@ document.addEventListener('drop',function(e){ if(!dragHasFiles(e)) return; e.pre
   var f=e.dataTransfer.files&&e.dataTransfer.files[0]; if(!f||UI.ro) return;
   var box=document.querySelector('.dlg-back textarea[name="j"]');
   fileText(f).then(function(t){ if(box){ box.value=t; return; } if(document.querySelector('.dlg-back')) return;
-    var p=parseImport(t,true); if(p.err){ alertBox(p.err); return; } runAction(function(){ return importChar(p.o); }); }, function(err){ alertBox(err.message); }); });
+    var p=parseImport(t,ch&&!UI.home?'cmp':true); if(p.err){ alertBox(p.err); return; } runAction(function(){ return p.o.app==='spheres-sheet-companion'?cmpImportFlow(p.o):importChar(p.o); }); }, function(err){ alertBox(err.message); }); });
 /* share links and party memberships stay with the account that made them: never taken from a file */
 function noLinks(c){ if(c&&typeof c==='object'){ delete c.share; c.parties=[]; } return c; }
 function restoreBackup(cs){ var n0c=cs.length; cs=cs.filter(function(c){ return c&&c.app==='spheres-sheet'&&c.id; }).map(function(c){ var s0=c.savedAt; c=safeChar(noLinks(c)); if(c) c.savedAt=typeof s0==='number'?s0:0; return c; }).filter(Boolean);

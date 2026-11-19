@@ -133,6 +133,17 @@ const clean = () => { window.__xss = 0; document.querySelectorAll('.__inj,img[sr
       for (const a of ['cGrpRen', 'cCopy']) { const b = page.locator(`#main [data-a="${a}"]`).first(); if (await b.count()) { await b.click({ timeout: 1000 }).catch(() => {}); await settle(); await probe('companions ' + a); await page.keyboard.press('Escape'); } }
       await page.locator('#main [data-a="cFoldAll"][data-v="1"]').click({ timeout: 1000 }).catch(() => {}); await settle(); await probe('companions folded');
       await page.fill('#cmpQ', 'img').catch(() => {}); await settle(); await probe('companions search');
+      /* importing a hostile companion file: the pick list, then the imported cards */
+      if (mode === 'text') {
+        const file = JSON.stringify({ app: 'spheres-sheet-companion', v: 1, from: PAYLOAD, companions: [{ id: 'q', name: PAYLOAD, kind: 'animal', grp: PAYLOAD, notes: PAYLOAD, attacks: [{ name: PAYLOAD, kind: 'primary', dice: PAYLOAD }], traits: [{ name: PAYLOAD, notes: PAYLOAD }] }],
+          gear: [{ id: 'y', name: PAYLOAD, where: 'c:q' }] });
+        const nBefore = await page.evaluate(() => { const id = JSON.parse(localStorage.getItem('spheres-sheet-v1:last')); return JSON.parse(localStorage.getItem('spheres-sheet-v1:' + id)).companions.length; });
+        await page.locator('#main [data-a="cImport"]').click({ timeout: 1000 }).catch(() => {}); await settle();
+        await page.fill('.dlg [name=j]', file).catch(() => {}); await page.locator('.dlg button.primary').click({ timeout: 1000 }).catch(() => {}); await settle(); await probe('companion import list');
+        await page.locator('.dlg button.primary').click({ timeout: 1000 }).catch(() => {}); await settle(); await page.fill('#cmpQ', '').catch(() => {}); await settle();
+        await page.locator('#main [data-a="cFoldAll"][data-v="0"]').click({ timeout: 1000 }).catch(() => {}); await settle(); await openAll(); await settle(); await probe('companions imported');
+        check(`the hostile companion file was imported (${tag})`, await page.evaluate(() => { const id = JSON.parse(localStorage.getItem('spheres-sheet-v1:last')); return JSON.parse(localStorage.getItem('spheres-sheet-v1:' + id)).companions.length; }), nBefore + 1);
+      }
     }
     await page.evaluate(() => window.dispatchEvent(new Event('beforeprint'))); await settle(); await probe('print view');
     for (const a of ['levelUp', 'theme', 'tabCfg', 'home']) {
