@@ -1517,6 +1517,38 @@ function check(what, got, want) {
     await page.keyboard.press('Escape'); await settle();
   }
 
+  console.log('Companion cards on a phone: compact header, ⋯ for the rarer buttons');
+  {
+    /* desktop (the main page, 1280 wide): no ⋯, every button where it was */
+    await page.evaluate(() => { const id = 'zz-phone'; localStorage.setItem('spheres-sheet-v1:' + id, JSON.stringify({ app: 'spheres-sheet', v: 1, id, name: 'Pocket',
+      classes: { c1: { name: 'Hero', hd: 8, bab: '3/4', good: ['will'], skills: 4, talents: 'none' } }, levels: [{ cls: 'c1', hp: 5, picks: [] }],
+      companions: [{ id: 'a', name: 'Alpha', kind: 'conj', on: true }, { id: 'b', name: 'Bones', kind: 'animal', on: true }], mount: { id: 'b', on: false } }));
+      localStorage.setItem('spheres-sheet-v1:last', JSON.stringify(id)); });
+    await page.reload(); await settle(); await go('Character', 'Companions');
+    const shown = (p, id) => p.evaluate(id => ['cMore', 'cMove', 'cMount', 'cOn', 'cCopy', 'cDel'].map(a => a + ':' + [...document.querySelectorAll('#cmp-' + id + ' .cardhead [data-a="' + a + '"]')].filter(e => e.getClientRects().length).length).join(' '), id);
+    check('desktop: no ⋯ button, every header button shows', await shown(page, 'a'), 'cMore:0 cMove:2 cMount:1 cOn:1 cCopy:1 cDel:1');
+    /* a phone (390 wide, touch) */
+    const pcx = await newCtx({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true }), ph = await pcx.newPage();
+    const pErr = []; ph.on('pageerror', e => pErr.push(e.message));
+    await ph.goto(FILE); await ph.evaluate(c => { localStorage.setItem('spheres-sheet-v1:zz-phone', c); localStorage.setItem('spheres-sheet-v1:last', JSON.stringify('zz-phone')); }, await page.evaluate(() => localStorage.getItem('spheres-sheet-v1:zz-phone')));
+    await ph.reload(); await settle(ph);
+    await ph.click('#tabbar [data-tgrp]:has-text("Character")'); await settle(ph); await ph.locator('#tabbar [data-tab]', { hasText: 'Companions' }).first().click(); await settle(ph);
+    const headH = id => ph.evaluate(id => Math.round(document.querySelector('#cmp-' + id + ' .cardhead').getBoundingClientRect().height), id);
+    check('phone: only fold, name, Present and ⋯ in the header (the mount button stays: it says “Your mount”)', [await shown(ph, 'a'), await shown(ph, 'b')].join(' / '), 'cMore:1 cMove:0 cMount:0 cOn:1 cCopy:0 cDel:0 / cMore:1 cMove:0 cMount:1 cOn:1 cCopy:0 cDel:0');
+    check('phone: the header is two short rows (under 80 px)', (await headH('a')) < 80, true);
+    check('phone: nothing wider than the screen', await ph.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await ph.locator('#cmp-a [data-a="cMore"]').click(); await settle(ph);
+    check('⋯ shows the rest in place (on that card only) and turns into ✕', [await shown(ph, 'a'), (await ph.locator('#cmp-a [data-a="cMore"]').innerText()).trim(), await ph.locator('#cmp-b [data-a="cCopy"]').isVisible()].join(' · '), 'cMore:1 cMove:2 cMount:1 cOn:1 cCopy:1 cDel:1 · ✕ · false');
+    await ph.locator('#cmp-a [data-a="cMove"][data-d="1"]').click(); await settle(ph);
+    check('…the buttons work from there (↓ moves it) and the row stays open', [(await ph.evaluate(() => JSON.parse(localStorage.getItem('spheres-sheet-v1:zz-phone')).companions.map(c => c.name).join(','))), await ph.locator('#cmp-a [data-a="cCopy"]').isVisible()].join(' · '), 'Bones,Alpha · true');
+    await ph.locator('#cmp-a [data-a="cCopy"]').click(); await until('the copy dialog', () => !!document.querySelector('.dlg'), null, ph); await ph.locator('.dlg button.primary').click(); await settle(ph);
+    check('Copy closes the row again; the open row is never saved in the character', [await ph.locator('#cmp-a [data-a="cCopy"]').isVisible(), (await ph.evaluate(() => localStorage.getItem('spheres-sheet-v1:zz-phone'))).includes('cmpMore'), await ph.evaluate(() => JSON.parse(localStorage.getItem('spheres-sheet-v1:zz-phone')).companions.length)].join(' '), 'false false 3');
+    await ph.locator('#cmp-a [data-a="cFold"]').click(); await settle(ph);
+    check('folding still works on a phone', await ph.locator('#cmp-a.folded').count(), '1');
+    check('no page errors on the phone', pErr.length ? pErr.join(' | ') : 'none', 'none');
+    await pcx.close();
+  }
+
   console.log('Times taken on tradition talents; mass level-up');
   /* wiki text from the local talent files, never the live site (these sections open talent boxes that load it) */
   const localTalents = route => { const f = decodeURIComponent(route.request().url().slice(SITE.length));

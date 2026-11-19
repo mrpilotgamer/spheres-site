@@ -75,7 +75,7 @@ so every `firebase deploy` (Cloud Shell or GitHub) first checks the description 
 Normal sheet updates don't need this step; the `talents/` folder stays as it is.
 
 **Checks before deploying (optional):** `tests/check.js` opens the sheet in a headless browser, loads
-both example characters and runs 573 checks (about 95 seconds) against values worked out by hand (HP, AC, saves,
+both example characters and runs 582 checks (about 95 seconds) against values worked out by hand (HP, AC, saves,
 DCs, spell points, talents, skill ranks, attacks, toggles, the theme, free sphere ranks, blast augments, Roll20 macros,
 raised undead, temporary talents, cohorts, Workshop, wiki descriptions, adding talents from the wiki and more). It sits outside `public/`, so it is never deployed. Run it with:
 ```
@@ -846,6 +846,14 @@ const firebaseConfig = {
 Moved here from "Open items and ideas" on 2026-11-19, word for word. Entry dates are when the work was done; the order is
 roughly newest first, as it was kept. Anything still open from these entries is listed under "Open items and ideas".
 
+- **Companion cards on phones (2026-11-19, owner: "would desktop stay the same?" Yes).** Below 560 px wide only: the card header
+  is one row (fold, name, Present/Active, ⋯) plus the kind (and "Possessed") on a short second row: about 65 px instead of 150.
+  ⋯ (`cMore`, `UI.cmpMore`: one card at a time, never saved) shows ↑/↓, Possess, Use as mount, Copy and Remove in place and
+  turns into ✕; Copy closes it again. "Your mount" stays visible (it's a status). CSS only (`.cmphead`, `.cmpx`, `.cmpmore`;
+  the two header spans become `display:contents` so the buttons can be reordered), so each button exists once and desktop
+  is unchanged: the header's element positions at 1280 px were compared with the live page and are identical. Tests: 9 in
+  `check.js` ("Companion cards on a phone", a 390 px touch page). After it: `engine-check.js` 337, `check.js` 582,
+  `fuzz-check.js` 29, `talents-check.js` 66, `config-check.js` 14, `csp-check.js` 6 passed.
 - **Companions tab: organizing and companion files (built 2026-11-19).**
   - **Today:** `ch.companions` is one flat list drawn in two columns (`rComp`, `i%2`); every card is full size. Other code
     points at a companion by `id`: gear `where:'c:<id>'`, `ch.mount.id`, `ch.possess.host`, `c.shape.form` (→ `ch.forms`), `c.pack`.
