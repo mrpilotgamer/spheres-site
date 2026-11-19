@@ -75,7 +75,7 @@ so every `firebase deploy` (Cloud Shell or GitHub) first checks the description 
 Normal sheet updates don't need this step; the `talents/` folder stays as it is.
 
 **Checks before deploying (optional):** `tests/check.js` opens the sheet in a headless browser, loads
-both example characters and runs 459 checks (about 95 seconds) against values worked out by hand (HP, AC, saves,
+both example characters and runs 530 checks (about 95 seconds) against values worked out by hand (HP, AC, saves,
 DCs, spell points, talents, skill ranks, attacks, toggles, the theme, free sphere ranks, blast augments, Roll20 macros,
 raised undead, temporary talents, cohorts, Workshop, wiki descriptions, adding talents from the wiki and more). It sits outside `public/`, so it is never deployed. Run it with:
 ```
@@ -592,6 +592,29 @@ plus the character, so each downloaded character file is about 1.2 MB or more.
 ---
 
 ## Open items and ideas
+
+- **PLANNED: Companions tab organizing and import/export (2026-11-19, owner-approved; not built yet).**
+  - **Today:** `ch.companions` is one flat list drawn in two columns (`rComp`, `i%2`); every card is full size. Other code
+    points at a companion by `id`: gear `where:'c:<id>'`, `ch.mount.id`, `ch.possess.host`, `c.shape.form` (→ `ch.forms`), `c.pack`.
+  - **Organizing (all four in the first version):**
+    - Reorder: drag handle (`dragH('cmp',id)`, a new `cmp` branch in the drop handler) plus ↑/↓ buttons for touch. The order
+      is the array order, so old saves need no conversion.
+    - Named groups: optional `c.grp` (free text, trimmed, max ~40 chars); collapsible sections with a count, like the
+      Characters screen's campaign groups; "Ungrouped" last; rename/ungroup a whole group. Display only, separate from
+      `c.pack` (Companion limits).
+    - Compact cards: a folded card shows name, kind, HP bar, AC, Active; "Fold all / Unfold all". Fold state is per device
+      (`data-keep`/UI), not saved in the character.
+    - Filter bar (name search, kind, active only) and a Copy button with a count (for hordes): new ids; no mount,
+      possession, pack slot or carried gear.
+  - **Export:** one companion, a group, or all → `<name>.companion.json` = `{app:'spheres-sheet-companion', v:1, companions:[…],
+    gear:[…]}`. Exported fresh: `dmg`/`temp` 0, reanimation timers cleared; ids, mount, possession, `pack`, `shape` dropped.
+    "Include what it carries" checkbox (on by default): items with `where:'c:<id>'` go along and land on the companion.
+  - **Import:** file picker (`pickFile`) accepting a companion file, or a character export/backup to choose companions from.
+    Files only for now (not straight from another character in the account). Every companion goes through the same cleaning
+    as a save: move the companion part of `sanitizeChar` into `sanitizeComp(c)` and use it for both. New ids on import; the
+    dialog notes that formulas (cl, lvl…) now use this character's numbers. Respect `IMPORT_MAX`.
+  - **Tests:** `check.js` (reorder, groups, fold, filter, copy, export→import round trip, gear option, old saves still load),
+    `fuzz-check.js` (hostile companion files and group names), engine-check if any numbers change.
 
 - **Level up: feat and class feature rows (2026-11-12, owner: "just a line to type" felt weak).** The "Feats & talents" step
   (`step4` in `levelUpFlow`) now has rows instead of the two text boxes:
