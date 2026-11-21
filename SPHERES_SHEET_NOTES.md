@@ -843,6 +843,33 @@ const firebaseConfig = {
 Moved here from "Open items and ideas" on 2026-11-19, word for word. Entry dates are when the work was done; the order is
 roughly newest first, as it was kept. Anything still open from these entries is listed under "Open items and ideas".
 
+- **Arranging the Play page (2026-11-21, from a player's review; owner: "like the talents and companions organization").**
+  Code: the block "arranging the Play page" before `rSheet`; `rSheet` now builds one function per card (`C.hp`, `C.abil`, …)
+  and `playPage` draws them in the player's order. Actions `pArr pFold pMv pSide pHide pShow pReset`, the `play` branch of the
+  drop handler, CSS `.phead .pfold .pcard.folded .parr .parrbar .pend`.
+  - **Saved:** `ch.play = {L, R, hide}` (new, in `blankChar`): the two columns top to bottom and the hidden cards. Empty L and R =
+    the standard layout (`PLAY_L`: hp, abil, def, sph, mount, comp; `PLAY_R`: pers, seq, buffs, atk, res, cons, acts, log), and
+    `playSet` stores the standard order as empty again, so old saves need nothing. A card missing from the saved lists (a new
+    card in a later version, or one shown again) goes back into its standard column after the card it follows there
+    (`playLay`). `sanitizeChar` keeps only known cards, each once across L, R and hide.
+  - **Arrange** (button above the right column; `UI.playArr`, never saved): ⠿ drag handle (desktop), ↑/↓ within the column
+    (stepping over cards not drawn, `playStep` with `UI.playShown`), →/← to the other column at the same height (counted in
+    drawn cards), Hide, a "Hidden cards" row with + Name to bring one back, Reset layout, Done, and a "Drop here" area at the
+    bottom of each column (desktop). Cards any character can come to have (Spheres, Mount, Companions, Potions) show as stubs
+    while arranging; Persona and Sequence only when drawn. Hiding only takes a card off the page; its modifiers still count.
+  - **Pinned:** the Possession and shapeshift-form strips stay at the top of the right column (they change everything else).
+  - **Folding:** ▾/▸ on every card at any time (not while arranging); per browser and character like companion cards
+    (`spheres-play-fold:<id>`), never in the character, so read-only viewers can fold (`RO_OK.pFold`). A folded Hit Points card
+    keeps "cur / max" in its heading. Read-only viewers see the owner's layout and no Arrange button.
+  - **Phones:** the columns stack, left first (the existing `.cols` wrap); no handles or drop areas (`pointer:coarse`).
+  - Ability Scores and Defense got a `cardhead` like the other cards (needed for the fold button).
+  - Tests: 21 in `check.js` ("Arranging the Play page": standard order for old saves, fold kept out of the character, ↑, →,
+    Hide/+, drag onto a card and onto "Drop here", reload, Reset, a broken layout, a phone). After it: `engine-check.js` 337,
+    `check.js` 613, `fuzz-check.js` 29, `talents-check.js` 66, `config-check.js` 14, `csp-check.js` 6, `rules-check.js` 90,
+    `party-check.js` 38, `save-check.js` 12 passed.
+  - **Next (agreed 2026-11-21):** a character portrait as one more Play card (`art`, top of the right column by default),
+    uploaded on the Notes tab and shrunk on the device to about 300×400 (around 30 KB) inside the character; a round version
+    on party cards and in the Characters list.
 - **Heading capitals (2026-11-21, from a player's review; owner chose "lists and game terms").** Headings that list
   several things capitalize each one, and Pathfinder game terms are capitalized as in the books; headings that read as a
   sentence, and two-word names that aren't rules terms ("Session notes", "Worn items", "Temporary talents"), stay as they were.

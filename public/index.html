@@ -131,6 +131,12 @@ details.arch{margin:4px 0 4px 10px}
 .col{flex:1 1 480px;min-width:0;display:flex;flex-direction:column;gap:var(--gap)}
 .card{background:var(--panel);border:1px solid var(--rule);border-radius:8px;padding:16px 18px;min-width:0}
 .cardhead{display:flex;flex-wrap:wrap;gap:8px;align-items:baseline;justify-content:space-between;margin-bottom:8px}
+.phead{display:inline-flex;flex-wrap:wrap;align-items:baseline;gap:6px;min-width:0} .phead .pctl{gap:4px}
+.pfold{padding:0 6px;min-height:0;line-height:1.4;font-size:12px}
+.pcard.folded>:not(.cardhead){display:none} .pcard.folded>.cardhead{margin-bottom:0}
+.parr{justify-content:flex-end;margin:var(--gap) 0 calc(-1*var(--gap) + 4px)} .parrbar{margin-top:var(--gap)}
+.pend{border:1px dashed var(--soft);border-radius:8px;padding:10px;text-align:center;color:var(--faint);font-size:13px}
+@media (pointer:coarse){.pend{display:none}}
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(124px,1fr));gap:8px}
 .tile{background:var(--raised);border:1px solid var(--rule);border-radius:var(--r);padding:8px 10px;text-align:left;min-height:0;display:flex;flex-direction:column;gap:1px;color:var(--ink);position:relative}
 button.tile{cursor:pointer}
@@ -808,7 +814,7 @@ function blankChar(){
     abil:{str:10,dex:10,con:10,int:10,wis:10,cha:10},racial:{str:0,dex:0,con:0,int:0,wis:0,cha:0},
     castAbil:'wis',pracAbil:'wis',pracMore:[],opAbil:'',hpAb:'con',classes:{},levels:[],extraPicks:[],bonusFeats:0,skillPerLevel:0,bonusRanks:0,
     skillRanks:{},skillClass:{},skillLabel:{craft:'',perform:'',prof:'',art:'',lore:''},
-    mods:[],groups:[],conds:{},negLevels:0,abilDmg:{str:0,dex:0,con:0,int:0,wis:0,cha:0},abilDrain:{str:0,dex:0,con:0,int:0,wis:0,cha:0},noAb:{},meta:{},forms:[],shape:null,shapeOpt:{},history:[],tempSrc:[],deathOpt:{},loreOpt:{},seq:{n:0},leadOpt:{},deck:{},ws:wsBlank(),pers:{list:[],active:'',qc:0,borrow:[]},histSnap:null,histDb:0,skillAbil:{},sphOrder:[],
+    mods:[],groups:[],conds:{},negLevels:0,abilDmg:{str:0,dex:0,con:0,int:0,wis:0,cha:0},abilDrain:{str:0,dex:0,con:0,int:0,wis:0,cha:0},noAb:{},meta:{},forms:[],shape:null,shapeOpt:{},history:[],tempSrc:[],deathOpt:{},loreOpt:{},seq:{n:0},play:{L:[],R:[],hide:[]},leadOpt:{},deck:{},ws:wsBlank(),pers:{list:[],active:'',qc:0,borrow:[]},histSnap:null,histDb:0,skillAbil:{},sphOrder:[],
     resources:[],actions:[],weapons:[],
     armor:{name:'',bonus:0,enh:0,maxDex:99,acp:0,type:'none',asf:0,mw:false,wt:0,mat:''},shield:{name:'',bonus:0,enh:0,acp:0,maxDex:99,mw:false,asf:0,wt:0,mat:'',tower:false},quadruped:false,
     gear:[],containers:[],bodyType:'humanoid',tabsOff:{},possess:null,possessLvl:'',possessCollective:false,possessOpt:{},slotExtra:{},carry:{str:0,mult:1},money:{pp:0,gp:0,sp:0,cp:0},hp:{dmg:0,temp:0,non:0},
@@ -1719,6 +1725,9 @@ function sanitizeChar(o){
   b.parties=(Array.isArray(o.parties)?o.parties:[]).filter(function(x){ return x&&typeof x.pid==='string'&&typeof x.code==='string'&&typeof x.uid==='string'; }).map(function(x){ return {pid:x.pid,code:x.code,name:String(x.name||'').slice(0,80),uid:x.uid}; });
   if(['int','wis','cha','highest'].indexOf(b.castAbil)<0) b.castAbil='wis';
   if(AB.indexOf(b.pracAbil)<0) b.pracAbil='wis';
+  /* Play page layout: known cards only, each once across both columns and the hidden list */
+  (function(){ var P=b.play&&typeof b.play==='object'&&!Array.isArray(b.play)?b.play:{}, seen={}, pk=function(a){ return (Array.isArray(a)?a:[]).filter(function(k){ if(typeof k!=='string'||!own(PLAY_N,k)||seen[k]) return false; seen[k]=1; return true; }); };
+    b.play={L:pk(P.L),R:pk(P.R),hide:pk(P.hide)}; })();
   b.pracMore=(Array.isArray(b.pracMore)?b.pracMore:[]).filter(function(a,i,arr){ return AB.indexOf(a)>=0&&a!==b.pracAbil&&arr.indexOf(a)===i; });
   if(['int','wis','cha'].indexOf(b.opAbil)<0) b.opAbil='';
   if(['con','cha','none'].indexOf(b.hpAb)<0) b.hpAb='con';
@@ -2256,7 +2265,7 @@ function publishCopies(c){ if(!CL.user||!window.SheetCloud||!window.SheetCloud.s
       pubWarn('m'+lk,'Couldn’t update '+(c.name||'this character')+' in the party “'+p.name+'” ('+(e&&e.code||'offline')+'). The character itself is saved.'); throw e; }); PUB.mp[lk].catch(function(){}); });
     pubThrottle('sp:'+lk,30000,function(){ (PUB.mp[lk]||Promise.resolve()).then(function(){ return window.SheetCloud.sheetPut(p.pid,key,R()); }).catch(function(){}); }); }); }
 /* ---------- read-only viewer (a share link, or a GM opening a party member) ---------- */
-var RO_OK={why:1,sphToggle:1,allSk:1,fhelp:1,roExit:1,signIn:1,roCopy:1,cFold:1,cFoldAll:1,cFilterOff:1,cExport:1,cMore:1};
+var RO_OK={why:1,sphToggle:1,allSk:1,fhelp:1,roExit:1,signIn:1,roCopy:1,cFold:1,cFoldAll:1,cFilterOff:1,cExport:1,cMore:1,pFold:1};
 function roOpen(c,info){ var c1=safeChar(c); if(!c1){ alertBox(DAMAGED); return; } histNow(); if(pushT&&!UI.ro) cloudPush(); if(!UI.ro) UI.roPrev={ch:ch,hist:hist,tab:UI.tab,home:UI.home}; ch=c1; hist=[]; redoH=[]; UI.ro=info; UI.home=false; UI.tab='sheet'; paint(); window.scrollTo(0,0); }
 function roExit(){ var p=UI.roPrev||{}; UI.ro=null; UI.roPrev=null; ch=p.ch||null; hist=p.hist||[]; redoH=[]; UI.tab=p.tab||'sheet'; UI.home=!ch||!!p.home; paint(); window.scrollTo(0,0); }
 /* nothing in a viewed sheet can be changed: fields off, buttons other than looking (breakdowns, folding) off */
@@ -2526,10 +2535,55 @@ function startHTML(){
     '<section class="card"><h2>Or look around with an example</h2><p class="note">Two 12th-level characters that show what the sheet does. Change anything; it’s yours to play with.</p><div class="row"><button data-a="example" data-k="incanter">Ilyra Voss (caster, Incanter 12)</button><button data-a="example" data-k="striker">Tova Rask (martial, Striker 12)</button></div></section></div>';
 }
 
+/* ---------- arranging the Play page (Sheet & Combat) ----------
+   ch.play = {L:[keys], R:[keys], hide:[keys]}: the two columns top to bottom, and the cards taken off the page. Empty L and R
+   mean the standard layout (PLAY_L, PLAY_R), so old saves need no conversion. A card missing from the saved lists (one added
+   in a later version, or one just shown again) goes back into its standard column, after the card it follows there. On a
+   phone the columns stack: left, then right. Possession and a form's strip stay pinned at the top of the right column.
+   UI.playArr: the Arrange view (handles, ↑ ↓ ⇄, Hide, Reset), never saved; there a card that isn't drawn now (no companions,
+   no potions) shows as a stub so it can be placed. Folded cards are per browser and character, like the companion cards
+   (UI.playFold, localStorage 'spheres-play-fold:<id>'), so read-only viewers can fold too. */
+var PLAY_L=['hp','abil','def','sph','mount','comp'], PLAY_R=['pers','seq','buffs','atk','res','cons','acts','log'];
+var PLAY_N={hp:'Hit Points',abil:'Ability Scores',def:'Defense',sph:'Spheres',mount:'Mount',comp:'Companions',pers:'Persona',seq:'Sequence',buffs:'Buffs, Stances & Conditions',atk:'Attacks',res:'Resources',cons:'Potions, Scrolls & Wands',acts:'Actions',log:'Log'};
+/* cards any character can come to have get a stub in the Arrange view; Persona and Sequence (class features) only show when drawn */
+var PLAY_WHEN={sph:'once you have a caster level, martial talents or a tradition',mount:'while a companion is your mount',comp:'while a companion is present',cons:'while you carry potions, scrolls or wands'};
+/* the cards drawn in each column (UI.playShown, from the last paint): ↑ ↓ step over the ones that aren't */
+function playStep(col,k,d){ var sh=UI.playShown||{}, i=col.indexOf(k); for(var j=i+d;j>=0&&j<col.length;j+=d) if(sh[col[j]]) return j; return -1; }
+function playLay(){ var P=ch.play||{}, hide=(P.hide||[]).slice(), L, R;
+  if(!(P.L||[]).length&&!(P.R||[]).length){ L=PLAY_L.slice(); R=PLAY_R.slice(); }
+  else { L=(P.L||[]).slice(); R=(P.R||[]).slice();
+    [[PLAY_L,L],[PLAY_R,R]].forEach(function(x){ x[0].forEach(function(k,i){ if(L.indexOf(k)>=0||R.indexOf(k)>=0) return;
+      var prev=x[0].slice(0,i).reverse().filter(function(p){ return x[1].indexOf(p)>=0; })[0]; x[1].splice(prev?x[1].indexOf(prev)+1:0,0,k); }); }); }
+  var on=function(k){ return hide.indexOf(k)<0; };
+  return {L:L.filter(on),R:R.filter(on),hide:hide}; }
+function playSet(Y){ var same=Y.L.join()===PLAY_L.filter(function(k){ return Y.hide.indexOf(k)<0; }).join()&&Y.R.join()===PLAY_R.filter(function(k){ return Y.hide.indexOf(k)<0; }).join();
+  ch.play={L:same?[]:Y.L.slice(),R:same?[]:Y.R.slice(),hide:Y.hide.slice()}; }
+function playFoldMap(){ if(!UI.playFold||UI.playFold.id!==ch.id){ var m=lsGet('spheres-play-fold:'+ch.id); UI.playFold={id:ch.id,m:m&&typeof m==='object'&&!Array.isArray(m)?m:{}}; } return UI.playFold.m; }
+function playCard(k,html,Y,sum){ var arr=!!UI.playArr&&!UI.ro, col=Y.L.indexOf(k)>=0?Y.L:Y.R, left=col===Y.L, fold=!arr&&!!own(playFoldMap(),k), nm=PLAY_N[k];
+  if(!html){ if(!arr||!PLAY_WHEN[k]) return ''; html='<section class="card"><div class="cardhead"><h2>'+esc(nm)+'</h2></div><p class="note" style="margin:0">Not on the page right now: it shows '+esc(PLAY_WHEN[k]||'when it has something to show')+'.</p></section>'; }
+  var ctl=arr?'<span class="row pctl" style="margin:0">'+dragH('play',k)+
+      '<button class="mini" data-a="pMv" data-k="'+k+'" data-d="-1" title="Move up" aria-label="Move '+esc(nm)+' up"'+(playStep(col,k,-1)<0?' disabled':'')+'>↑</button>'+
+      '<button class="mini" data-a="pMv" data-k="'+k+'" data-d="1" title="Move down" aria-label="Move '+esc(nm)+' down"'+(playStep(col,k,1)<0?' disabled':'')+'>↓</button>'+
+      '<button class="mini" data-a="pSide" data-k="'+k+'" title="To the '+(left?'right':'left')+'-hand column" aria-label="Move '+esc(nm)+' to the '+(left?'right':'left')+'-hand column">'+(left?'→':'←')+'</button>'+
+      '<button class="mini" data-a="pHide" data-k="'+k+'" title="Take it off the page (bring it back from Hidden cards)">Hide</button></span>'
+    :'<button class="mini pfold" data-a="pFold" data-k="'+k+'" aria-expanded="'+!fold+'" title="'+(fold?'Show the whole card':'Fold to its heading')+'" aria-label="'+(fold?'Unfold':'Fold')+' '+esc(nm)+'">'+(fold?'▸':'▾')+'</button>';
+  html=html.replace('<section class="card"',function(){ return '<section class="card pcard'+(fold?' folded':'')+'" id="play-'+k+'"'+(arr?' data-drop="play" data-id="'+k+'"':''); });
+  if(html.indexOf('<div class="cardhead"><h2>')<0) return html;
+  return html.replace('<div class="cardhead"><h2>',function(){ return '<div class="cardhead"><span class="phead">'+(arr?'':ctl)+'<h2>'; })
+    .replace('</h2>',function(){ return '</h2>'+(fold&&sum?'<span class="note">'+sum+'</span>':'')+(arr?ctl:'')+'</span>'; }); }
+function playPage(C,pinned,S){ var Y=playLay(), arr=!!UI.playArr&&!UI.ro, H={}; UI.playShown={};
+  Y.L.concat(Y.R).forEach(function(k){ H[k]=C[k]?C[k]():''; if(H[k]||(arr&&PLAY_WHEN[k])) UI.playShown[k]=1; });
+  var col=function(L,side){ return L.map(function(k){ return playCard(k,H[k],Y,S[k]); }).join('')+(arr?'<div class="pend" data-drop="play" data-id="@'+side+'">Drop here for the bottom of this column</div>':''); };
+  var bar=UI.ro?'':arr?'<section class="card parrbar"><div class="cardhead"><h2>Arrange this page</h2><span class="row" style="margin:0"><button class="mini" data-a="pReset"'+(!(ch.play.L||[]).length&&!(ch.play.R||[]).length&&!(ch.play.hide||[]).length?' disabled':'')+'>Reset layout</button><button data-a="pArr">Done</button></span></div>'+
+      '<p class="note" style="margin:0">'+(FINE?'Drag a card by ⠿, or move it with':'Move a card with')+' ↑ ↓ within its column, and with → ← to the other one. On a phone the two columns stack, left first. Hide takes a card off this page only: what it adds to your numbers still counts. Saved with the character.</p>'+
+      (Y.hide.length?'<div class="row" style="margin:8px 0 0"><span class="note">Hidden cards:</span>'+Y.hide.map(function(k){ return '<button class="mini" data-a="pShow" data-k="'+k+'" title="Put it back on the page">+ '+esc(PLAY_N[k])+'</button>'; }).join('')+'</div>':'')+'</section>'
+    :'<div class="row parr"><button class="mini" data-a="pArr" title="Move, hide or bring back the cards on this page">Arrange</button></div>';
+  return bar+'<div class="cols'+(arr?' arranging':'')+'"><div class="col">'+col(Y.L,'L')+'</div><div class="col">'+pinned+col(Y.R,'R')+'</div></div>'; }
 /* ---------- SHEET & COMBAT ---------- */
 function rSheet(){
-  var HP=hpObj(), PH=possActive()?possHost():null, cur=D.hpMax-n0(HP.dmg), h='<div class="cols"><div class="col">';
-  /* HP */
+  var HP=hpObj(), PH=possActive()?possHost():null, cur=D.hpMax-n0(HP.dmg), C={};
+  /* each card of the Play page draws itself; playPage puts them in the player's order (ch.play) */
+  C.hp=function(){ var h='';
   h+='<section class="card"><div class="cardhead"><h2>Hit Points'+(PH?': '+esc(PH.name||'host'):'')+'</h2><span class="note">'+(cur<=0?(cur<=-D.score.con?'<span class="bad">Dead</span>':cur===0?'<span class="warn">Disabled</span>':HP.stable?'<span class="warn">Stable (unconscious)</span>':'<span class="bad">Dying: Con check each round</span>'):(n0(HP.non)>=cur?'<span class="warn">Staggered or unconscious (nonlethal)</span>':''))+'</span></div>'+
     '<div class="row" style="justify-content:space-between"><span><span class="big">'+cur+'</span> / '+D.hpMax+(n0(HP.temp)?' <span class="tag gold">+'+n0(HP.temp)+' temp</span>':'')+(n0(HP.non)?' <span class="tag">'+n0(HP.non)+' nonlethal</span>':'')+'</span>'+
     '<button class="link" data-a="why" data-k="hp">How it adds up</button></div>'+
@@ -2537,10 +2591,12 @@ function rSheet(){
     '<div class="row"><input type="number" id="amt" min="0" value="'+UI.amt+'" aria-label="Amount"><button data-a="hpDo" data-k="dmg">Damage</button><button data-a="hpDo" data-k="heal">Heal</button><button data-a="hpDo" data-k="temp">Temp hp</button><button data-a="hpDo" data-k="non">Nonlethal</button><button data-a="hpFull"'+(n0(HP.dmg)||n0(HP.non)?'':' disabled')+'>Heal to full</button></div>'+(PH?'<p class="note" style="margin:0">Damage and healing go to the host body. Your own body: '+(D.ownHpMax-n0(ch.hp.dmg))+' / '+D.ownHpMax+' hp.</p>':'')+
     (cur<0&&cur>-D.score.con?'<div class="row">'+fC(PH?'companions.'+ch.companions.indexOf(PH)+'.stable':'hp.stable','Stable (stops the Con checks; no more hp lost)')+'</div>':'')+
     '<div class="row"><span class="note">Negative levels</span><button class="mini" data-a="negAdj" data-n="-1" aria-label="One fewer">−</button><b>'+n0(ch.negLevels)+'</b><button class="mini" data-a="negAdj" data-n="1" aria-label="One more">+</button></div></section>';
+  return h; };
   /* abilities */
-  h+='<section class="card"><h2>Ability Scores</h2><div class="tiles abil" style="margin-top:10px">'+AB.map(function(a){ return tileB(a,ABS[a],scTxt(a),mdTxt(a),trend(a)); }).join('')+'</div></section>';
+  C.abil=function(){ return '<section class="card"><div class="cardhead"><h2>Ability Scores</h2></div><div class="tiles abil">'+AB.map(function(a){ return tileB(a,ABS[a],scTxt(a),mdTxt(a),trend(a)); }).join('')+'</div></section>'; };
   /* defence */
-  h+='<section class="card"><h2>Defense</h2><div class="tiles" style="margin-top:10px">'+
+  C.def=function(){ var h='';
+  h+='<section class="card"><div class="cardhead"><h2>Defense</h2></div><div class="tiles">'+
     tileB('ac','AC',D.ac,'touch '+D.touch+' · flat-footed '+D.ff,trend('ac'))+tileB('fort','Fortitude',sgn(D.fort),'',trend('fort'))+tileB('ref','Reflex',sgn(D.ref),'',trend('ref'))+tileB('will','Will',sgn(D.will),'',trend('will'))+
     tileB('cmd','CMD',D.cmd,'',trend('cmd'))+tileB('init','Initiative',sgn(D.init),'',trend('init'))+tileB('speed','Speed',D.speed+' ft',(D.speed?'run '+D.run+' · charge '+D.charge:Object.keys(D.moves).length?'no land speed':'can’t move'),trend('speed'))+
       Object.keys(D.moves).map(function(m){ return tileB('speed.'+m,{climb:'Climb',swim:'Swim',fly:'Fly',burrow:'Burrow'}[m],D.moves[m]+' ft',m==='fly'?(D.flyMan||'average'):''); }).join('')+
@@ -2551,7 +2607,9 @@ function rSheet(){
   if(sits) h+='<div class="note" style="margin-top:8px">'+sits+'</div>';
   if(!D.host&&!(D.form&&D.form.meld)) h+=apropLine(ch);
   h+=cardNote('defence','Defense notes')+'</section>';
+  return h; };
   /* spheres */
+  C.sph=function(){ var h='';
   var casting=D.castLv>0, martial=clsList().some(function(x){ return x[1].martial!=='none'&&D.cc[x[0]]; })||allPicks(ch).some(function(p){ return p.kind==='talent'&&p.tkind==='combat'; });
   var tl=['casting','martial','trade'].filter(function(k){ return tradOn(ch,k)&&!(k==='martial'&&ch.traditions.mode==='unified'); }).map(function(k){ return (ch.traditions.mode==='unified'&&k==='casting'?'Unified':TRADK[k])+': '+(tradName(ch,k)||'unnamed'); });
   if(casting||martial||tl.length||allPicks(ch).some(function(p){ return p.kind==='talent'&&p.tkind==='skill'; })){
@@ -2562,21 +2620,20 @@ function rSheet(){
     if(allPicks(ch).some(function(p){ return p.kind==='talent'&&p.tkind==='skill'; })) h+=tile('Operative',sgn(D.om),ch.opAbil?ABN[ch.opAbil]:'not chosen: highest mental');
     h+='</div>'+loreLine()+cardNote('spheres','Spellcasting and sphere notes')+'</section>';
   }
-  /* companions */
+  return h; };
+  /* the mount, then the other companions present */
+  C.mount=function(){ var MNT=mountOf(); return MNT?mountCard(MNT,(ch.companions||[]).indexOf(MNT)):''; };
+  C.comp=function(){ var h='';
   var MNT=mountOf(), cps=(ch.companions||[]).map(function(c,i){ return {c:c,i:i}; }).filter(function(x){ return x.c.on!==false&&x.c.kind!=='host'&&!(ch.possess&&ch.possess.host===x.c.id)&&!(MNT&&x.c===MNT); });
-  if(MNT) h+=mountCard(MNT,(ch.companions||[]).indexOf(MNT));
   var LIM=compLimits(), packsDone={};
   if(cps.length) h+='<section class="card"><div class="cardhead"><h2>Companions</h2>'+(LIM?'<span class="tag'+(LIM.over?' bad':'')+'" title="Companion limits (house rule)">'+LIM.active+' / '+LIM.cap+' active · '+LIM.tal+' / '+LIM.talCap+' with talents</span>':'')+'<button class="link" data-tab="comp">Open Companions</button></div>'+cps.map(function(x){
       /* a pack (house rule): one block for all its members, drawn where its first member is */
       if(LIM&&x.c.pack&&!compTalented(x.c)){ if(packsDone[x.c.pack]) return ''; packsDone[x.c.pack]=1; return packBlock(x.c.pack); }
       return '<div style="padding:6px 0;border-bottom:1px solid var(--soft)"><b>'+esc(x.c.name||'Unnamed')+'</b> <span class="note">'+esc(CKN[x.c.kind]||'')+'</span>'+(x.c.shape&&compStats(x.c).form?' <span class="tag gold">In form: '+esc(compStats(x.c).form.name)+'</span>':'')+(reanOn(x.c)&&x.c.rean.left!=null?' <span class="tag">'+esc(shapeLeft(x.c.rean))+' left</span>':'')+compSummary(x.c,x.i,true)+'</div>'; }).join('')+'</section>';
-  h+='</div><div class="col">';
-  /* possession */
-  if(possHost()) h+=possStrip();
-  if(D.form) h+=formStrip();
-  h+=persStrip();
-  h+=seqCard();
+  return h; };
+  C.pers=persStrip; C.seq=seqCard;
   /* toggles */
+  C.buffs=function(){ var h='';
   h+='<section class="card"><div class="cardhead"><h2>Buffs, Stances & Conditions</h2><button class="link" data-tab="mods">Edit</button></div>';
   if((ch.groups||[]).length) h+='<div class="chips">'+ch.groups.filter(function(g){ return !/^pg-/.test(g.id); }).map(function(g){ var n=(ch.mods||[]).filter(function(m){return m.group===g.id&&m.when==='toggle';}).length; return '<button data-a="grp" data-id="'+esc(g.id)+'" aria-pressed="'+!!g.on+'"'+(g.notes?' title="'+esc(g.notes)+'"':'')+'>'+esc(g.name)+(g.notes?' <span aria-hidden="true" style="color:var(--faint)">✎</span>':'')+'<small>'+(g.kind==='stance'?'stance · ':'')+plural(n,'modifier')+'</small></button>'; }).join('')+'</div>'+
     (function(){ var on=ch.groups.filter(function(g){ return g.on&&String(g.notes||'').trim(); }); return on.length?'<p class="note">'+on.map(function(g){ return '<b>'+esc(g.name)+':</b> '+esc(String(g.notes).trim()).replace(/\n+/g,' · '); }).join('<br>')+'</p>':''; })();
@@ -2588,7 +2645,9 @@ function rSheet(){
     '<details class="condpick" data-keep="condpick"><summary>Add a condition…</summary><input type="text" id="condQ" placeholder="Filter (e.g. shak)" aria-label="Filter conditions" value="'+esc(UI.condQ||'')+'"><div class="chips">'+CONDS.filter(function(c){ return !ch.conds[c[0]]; }).map(chip).join('')+'</div></details>';
   if(onC.length) h+='<p class="note">'+onC.map(function(k){ return '<b>'+esc(k)+':</b> '+esc(CONDM[k][2]); }).join(' ')+'</p>';
   h+='</section>';
+  return h; };
   /* offence */
+  C.atk=function(){ var h='';
   h+='<section class="card"><div class="cardhead"><h2>Attacks</h2><span class="note">BAB '+sgn(D.bab)+' · <button class="link" data-a="why" data-k="cmb">CMB '+sgn(D.cmb)+'</button>'+(D.sizeSteps?' · <button class="link" data-a="why" data-k="size">'+esc(SIZES[D.size][0])+'</button>':'')+((ch.weapons||[]).some(function(w){return w.hand==='off';})?' · <button class="mini" data-a="twfToggle" aria-pressed="'+!!(ch.combat||{}).twfOn+'">Two weapons</button>':'')+' · <button class="link" data-tab="gear">Edit</button></span></div>';
   if(D.form&&!D.form.hands&&(ch.weapons||[]).some(function(w){ return w.kind!=='nat1'&&w.kind!=='nat2'&&!D.form.replaced[w.id]; })) h+='<p class="note" style="margin:0 0 6px">This form has no hands: weapons can’t be wielded (Gift of Hands fixes this).</p>';
   if(D.host&&!D.hostHands&&(ch.weapons||[]).length) h+='<p class="note" style="margin:0 0 6px">This body has no hands: your own weapons can’t be used while you’re in it (set its body type on its card if that’s wrong).</p>';
@@ -2598,17 +2657,23 @@ function rSheet(){
   else h+='<p class="empty">No weapons yet: add them on the Gear tab.</p>';
   if(ch.profs) h+='<p class="note"><b>Proficiencies:</b> '+esc(ch.profs)+'</p>';
   h+=cardNote('attacks','Attack notes')+'</section>';
+  return h; };
   /* resources */
+  C.res=function(){ var h='';
   h+='<section class="card"><div class="cardhead"><h2>Resources</h2><span class="row" style="margin:0"><button class="mini" data-a="rest" data-k="short">Short rest</button><button class="mini" data-a="rest" data-k="long">Long rest</button></span></div>';
   if((ch.resources||[]).length) h+='<div class="list">'+ch.resources.map(function(r,i){ var m=D.res[r.id]; var rc=Math.min(n0(r.cur),m.max); return '<div class="li" style="flex-wrap:nowrap"><span style="flex:1 1 auto;min-width:0"><b>'+esc(r.name)+'</b><br><span class="note">'+({long:'resets on a long rest',short:'resets on a short rest',none:'doesn’t reset',short0:'empties on a short or long rest',long0:'empties on a long rest'})[r.reset||'long']+'</span></span>'+
     '<span class="stepper"><button class="mini" data-a="resAdj" data-id="'+esc(r.id)+'" data-n="-1" aria-label="Spend one '+esc(r.name)+'">−</button><input type="number" min="0" max="'+m.max+'" data-f="resources.'+i+'.cur" data-num="1" value="'+rc+'" aria-label="'+esc(r.name)+' now"><span class="note">/ '+m.max+'</span><button class="mini" data-a="resAdj" data-id="'+esc(r.id)+'" data-n="1" aria-label="Regain one '+esc(r.name)+'">+</button></span></div>'; }).join('')+'</div>';
   else h+='<p class="empty">No resources yet: spell points, martial focus, uses per day. Add them on the Actions & Resources tab.</p>';
   h+='</section>';
+  return h; };
   /* potions, scrolls, wands */
+  C.cons=function(){ var h='';
   var cons=(ch.gear||[]).map(function(g,i){ return {g:g,i:i}; }).filter(function(x){ return gCat(x.g)==='consumable'&&(x.g.where||'')!=='stored'; });
   if(cons.length) h+='<section class="card"><div class="cardhead"><h2>Potions, Scrolls & Wands</h2><button class="link" data-tab="gear">Edit</button></div><div class="list">'+cons.map(function(x){ var g=x.g, mx=n0(g.usesMax), left=mx?n0(g.uses):n0(g.qty,1);
     return '<div class="li" style="flex-wrap:nowrap"><span style="flex:1 1 auto;min-width:0"><b>'+esc(g.name||'(unnamed)')+'</b><br><span class="note">'+(mx?left+' / '+mx+' charges':left+' left')+(g.dc?' · DC '+esc(g.dc):'')+(g.where?' · '+esc(whereName(g.where)):'')+'</span></span><button class="mini" data-a="gUse" data-i="'+x.i+'"'+(left>0?'':' disabled')+'>Use</button></div>'; }).join('')+'</div></section>';
+  return h; };
   /* actions */
+  C.acts=function(){ var h='';
   h+='<section class="card"><div class="cardhead"><h2>Actions</h2><button class="link" data-tab="acts">Edit</button></div>';
   var actCard=function(a){ var x=actInfo(a), toff=tempPaused({src:a.name}); if(toff) x.can=false; return '<div class="act"'+(toff?' style="opacity:.55" title="Its temporary talent isn’t active"':'')+'><div class="row" style="margin:0;justify-content:space-between"><b>'+esc(a.name)+'</b><span class="tag">'+esc(a.act||'')+'</span></div>'+
       (x.fx&&x.fx.line?'<span class="fxline">'+esc(x.fx.line)+'</span>':'')+'<span class="note">'+esc(x.bits.join(' · '))+'</span>'+augChips(a)+(x.fx&&x.fx.notes.length?'<span class="note" style="color:var(--gold)">'+esc(x.fx.notes.join(' '))+'</span>':'')+(a.text?'<span class="note">'+esc(a.text)+'</span>':'')+'<div><button class="mini'+(x.can?'':' ')+'" data-a="useAct" data-id="'+esc(a.id)+'"'+(x.can?'':' disabled title="'+(toff?'Its temporary talent isn’t active':'Not enough '+esc(x.resName))+'"')+'>Use</button>'+(toff?' <span class="note">temporary talent not active</span>':'')+'</div></div>'; };
@@ -2616,9 +2681,10 @@ function rSheet(){
     h+=fr.map(function(f){ var l=ch.actions.filter(function(a){ return (a.freq||'')===f[0]; }); return l.length?(any?'<h3>'+esc(f[0]===''?(any?'Other actions':''):f[1])+'</h3>':'')+'<div class="actgrid">'+l.map(actCard).join('')+'</div>':''; }).join(''); }
   else h+='<p class="empty">No actions yet. An action is anything you click in a fight: a charm, a stance, a special attack. Build them on the Actions & Resources tab.</p>';
   h+='</section>';
-  h+='<section class="card"><div class="cardhead"><h2>Log</h2>'+(ch.log.length?'<button class="mini" data-a="clearLog">Clear</button>':'')+'</div><div class="log">'+(ch.log.length?ch.log.slice(0,40).map(function(l){ return '<div><b>'+new Date(l.at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})+'</b>'+esc(l.t)+'</div>'; }).join(''):'<p class="empty">Nothing yet.</p>')+'</div></section>';
-  h+='</div></div>';
-  return h;
+  return h; };
+  C.log=function(){ return '<section class="card"><div class="cardhead"><h2>Log</h2>'+(ch.log.length?'<button class="mini" data-a="clearLog">Clear</button>':'')+'</div><div class="log">'+(ch.log.length?ch.log.slice(0,40).map(function(l){ return '<div><b>'+new Date(l.at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})+'</b>'+esc(l.t)+'</div>'; }).join(''):'<p class="empty">Nothing yet.</p>')+'</div></section>'; };
+  /* possession and a shapeshift form stay at the top of the right-hand column: they change what everything else means */
+  return playPage(C,(possHost()?possStrip():'')+(D.form?formStrip():''),{hp:'<b>'+cur+'</b> / '+D.hpMax});
 }
 function R_note(){ return ch.rules.srDmg?'reduces magic damage':''; }
 /* ---------- sphere effects on actions (optional) ----------
@@ -5294,6 +5360,20 @@ var A={
   cMore:function(el){ var id=el.dataset.id; UI.cmpMore=UI.cmpMore===id?null:id; UI.focusSel='#cmp-'+CSS.escape(id)+' [data-a="cMore"]'; return 'ui'; },
   cFold:function(el){ var id=el.dataset.id; if(!(ch.companions||[]).some(function(c){ return c.id===id; })) return 'skip'; cmpSetFold([id],!own(cmpFoldMap(),id)); return 'ui'; },
   cFoldAll:function(el){ cmpSetFold((ch.companions||[]).filter(function(c){ return cmpShown(c)&&cmpMatch(c); }).map(function(c){ return c.id; }),el.dataset.v==='1'); return 'ui'; },
+  /* arranging the Play page (playLay, playSet) */
+  pArr:function(){ UI.playArr=!UI.playArr; UI.focusSel=UI.playArr?'.parrbar [data-a="pArr"]':'.parr [data-a="pArr"]'; return 'ui'; },
+  pFold:function(el){ var k=el.dataset.k, m=playFoldMap(); if(!own(PLAY_N,k)) return 'skip'; if(m[k]) delete m[k]; else m[k]=1; lsSet('spheres-play-fold:'+ch.id,m); UI.focusSel='#play-'+k+' [data-a="pFold"]'; return 'ui'; },
+  pMv:function(el){ var k=el.dataset.k, Y=playLay(), c=Y.L.indexOf(k)>=0?Y.L:Y.R, i=c.indexOf(k), d=+el.dataset.d<0?-1:1, j=playStep(c,k,d); if(i<0||j<0) return 'skip';
+    c.splice(i,1); c.splice(j,0,k); playSet(Y); UI.focusSel='#play-'+k+' [data-a="pMv"][data-d="'+d+'"]'; },
+  pSide:function(el){ var k=el.dataset.k, Y=playLay(), a=Y.L.indexOf(k)>=0?Y.L:Y.R, b=a===Y.L?Y.R:Y.L, i=a.indexOf(k); if(i<0) return 'skip';
+    /* the same height on the page: after as many drawn cards as were above it */
+    var sh=UI.playShown||{}, n=a.slice(0,i).filter(function(x){ return sh[x]; }).length, at=0; while(at<b.length&&n>0){ if(sh[b[at]]) n--; at++; }
+    a.splice(i,1); b.splice(at,0,k); playSet(Y); UI.focusSel='#play-'+k+' [data-a="pSide"]'; },
+  pHide:function(el){ var k=el.dataset.k, Y=playLay(); if(!own(PLAY_N,k)||Y.hide.indexOf(k)>=0) return 'skip';
+    [Y.L,Y.R].forEach(function(c){ var i=c.indexOf(k); if(i>=0) c.splice(i,1); }); Y.hide.push(k); playSet(Y); UI.focusSel='.parrbar [data-a="pShow"][data-k="'+k+'"]'; },
+  pShow:function(el){ var k=el.dataset.k, Y=playLay(), i=Y.hide.indexOf(k); if(i<0) return 'skip';
+    Y.hide.splice(i,1); ch.play.hide=Y.hide; /* playLay puts it back in its standard column */ playSet(playLay()); UI.focusSel='#play-'+k+' [data-a="pHide"]'; },
+  pReset:function(){ ch.play={L:[],R:[],hide:[]}; UI.focusSel='.parrbar [data-a="pArr"]'; },
   cFilterOff:function(){ UI.cmpQ=''; UI.cmpKind=''; UI.cmpAct=false; var q=$('cmpQ'); if(q) q.value=''; return 'ui'; },
   cMove:function(el){ var i=+el.dataset.i, j=cmpNeighbour(i,+el.dataset.d<0?-1:1), L=ch.companions; if(!L||!L[i]||j<0) return 'skip'; var c=L.splice(i,1)[0]; L.splice(j,0,c); UI.focusSel='#cmp-'+CSS.escape(c.id)+' [data-a="cMove"][data-d="'+(+el.dataset.d<0?-1:1)+'"]'; },
   cCopy:function(el){ var i=+el.dataset.i, c=ch.companions[i]; if(!c) return 'skip';
@@ -6356,6 +6436,10 @@ document.addEventListener('drop',function(e){ var t=dropTarget(e); if(!t||!ch||U
     if(fr.p.kind!=='talent') fr.p.grp=tr.p.grp||''; var sib=pkSiblings(tr.p).filter(function(x){ return x.p!==fr.p; }), at=sib.map(function(x){ return x.p; }).indexOf(tr.p)+(after?1:0); sib.splice(at,0,fr); sib.forEach(function(x,j){ x.p.ord=j; }); }
   else if(D0.type==='cmp'){ var CL=ch.companions||[], cf=CL.filter(function(c){ return c.id===D0.id; })[0], ct=CL.filter(function(c){ return c.id===t.dataset.id; })[0]; if(!cf||!ct) return;
     if(cgrp(ct)) cf.grp=cgrp(ct); else delete cf.grp; CL.splice(CL.indexOf(cf),1); CL.splice(CL.indexOf(ct)+(after?1:0),0,cf); }
+  else if(D0.type==='play'){ var Y=playLay(), tid=t.dataset.id; if(!own(PLAY_N,D0.id)||Y.hide.indexOf(D0.id)>=0) return;
+    [Y.L,Y.R].forEach(function(c){ var i=c.indexOf(D0.id); if(i>=0) c.splice(i,1); });
+    if(tid==='@L'||tid==='@R') (tid==='@L'?Y.L:Y.R).push(D0.id); else { var tc=Y.L.indexOf(tid)>=0?Y.L:Y.R, ti=tc.indexOf(tid); if(ti<0) return; tc.splice(ti+(after?1:0),0,D0.id); }
+    playSet(Y); }
   else if(D0.type==='sph'){ var L0=sphCur().filter(function(k){ return k!==D0.id; }), at=L0.indexOf(t.dataset.id)+(after?1:0); L0.splice(at,0,D0.id); ch.sphOrder=L0; }
   remember(before); save(); paint(); });
 document.addEventListener('change',function(e){ var t=e.target; if(t&&t.id==='hist-lvl'){ UI.histLvl=t.value; paint(); histFilter(); } if(t&&t.id==='cmpKind'){ UI.cmpKind=t.value; paint(); } if(t&&t.id==='cmpAct'){ UI.cmpAct=t.checked; paint(); } });
