@@ -843,6 +843,18 @@ const firebaseConfig = {
 Moved here from "Open items and ideas" on 2026-11-19, word for word. Entry dates are when the work was done; the order is
 roughly newest first, as it was kept. Anything still open from these entries is listed under "Open items and ideas".
 
+- **Heading capitals (2026-11-21, from a player's review; owner chose "lists and game terms").** Headings that list
+  several things capitalize each one, and Pathfinder game terms are capitalized as in the books; headings that read as a
+  sentence, and two-word names that aren't rules terms ("Session notes", "Worn items", "Temporary talents"), stay as they were.
+  - Lists: Buffs, Stances & Conditions; Potions, Scrolls & Wands; Deck Feats and Manipulations; Share and Parties; Feats and
+    Features (print); Wealth and Load; Movement and Defenses; Talents, Feats and Special Abilities and Bonuses and Penalties
+    (companion editor).
+  - Game terms: Ability Scores (Sheet and Build), Hit Points (Sheet, House rules, print), Damage Reduction (Build).
+  - Tab names (`TABS`) and every mention of them in help text: Sheet & Combat, Feats & Features, Actions & Resources, Save & Print.
+  - Not changed: row and option labels (the Gear category "Potions, scrolls and wands", "Hit points (max)" in modifier lists,
+    the level-up steps). Nothing saved changes. Tests find tabs and cards with `has-text`, which ignores case, so none needed edits.
+  - After it: `engine-check.js` 337, `check.js` 592, `fuzz-check.js` 29, `talents-check.js` 66, `config-check.js` 14,
+    `csp-check.js` 6, `rules-check.js` 90, `party-check.js` 38, `save-check.js` 12 passed.
 - **Quick rules fixes (2026-11-19).**
   - **Alternate Justicar, Warleader talents (Righteous Command):** the Warleader sphere and 1 Warleader talent at 1st, then 1
     more at every level. Class list: `bs:'Warleader'` (the sphere goes in the level's talents, like the Commander's), `bt:1`,
