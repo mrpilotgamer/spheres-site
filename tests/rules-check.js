@@ -9,7 +9,7 @@
 const fs = require('fs');
 const path = require('path');
 const { initializeTestEnvironment, assertSucceeds, assertFails } = require('@firebase/rules-unit-testing');
-const { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, query, where, arrayUnion, arrayRemove, Bytes, setLogLevel } = require('firebase/firestore');
+const { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, query, where, arrayUnion, arrayRemove, Bytes, getCountFromServer, setLogLevel } = require('firebase/firestore');
 setLogLevel('silent'); /* refused writes are expected here; don't print each one */
 
 let pass = 0, fail = 0;
@@ -34,6 +34,25 @@ const CODE = 'PlayerCode-0123456789', GMCODE = 'GmCode-0123456789abcd', z = Byte
   await check('another player can’t read it', assertFails(getDoc(doc(other, 'users/pl1/characters/c1'))));
   await check('another player can’t write it', assertFails(setDoc(doc(other, 'users/pl1/characters/c1'), { z })));
   await check('signed out can’t read it', assertFails(getDoc(doc(anon, 'users/pl1/characters/c1'))));
+
+  console.log('Portraits beside the sheet, and the Characters list index (2026-11-22)');
+  const img = Bytes.fromUint8Array(new Uint8Array(1000)), bigImg = Bytes.fromUint8Array(new Uint8Array(170000));
+  await check('a character saves with its portrait as bytes', assertSucceeds(setDoc(doc(pl, 'users/pl1/characters/c2'), { z, enc: 'gzip', img, name: 'Tova' })));
+  await check('a portrait over 160 KB is refused', assertFails(setDoc(doc(pl, 'users/pl1/characters/c3'), { z, img: bigImg })));
+  await check('a portrait that isn’t bytes is refused', assertFails(setDoc(doc(pl, 'users/pl1/characters/c3'), { z, img: 'data:image/webp;base64,AAAA' })));
+  await check('a share carries a portrait', assertSucceeds(setDoc(doc(pl, 'shares/pl1_S9'), { owner: 'pl1', z, img, name: 'Tova' })));
+  await check('a share with an oversized portrait is refused', assertFails(setDoc(doc(pl, 'shares/pl1_S8'), { owner: 'pl1', z, img: bigImg })));
+  await check('the player writes their list index', assertSucceeds(setDoc(doc(pl, 'users/pl1/index/chars'), { v: 1, chars: { c1: { name: 'Tova', savedAt: 1 } } })));
+  await check('…and updates one entry', assertSucceeds(setDoc(doc(pl, 'users/pl1/index/chars'), { chars: { c2: { name: 'Ilyra' } } }, { merge: true })));
+  await check('the player reads their list index', assertSucceeds(getDoc(doc(pl, 'users/pl1/index/chars'))));
+  await check('the player counts their characters', assertSucceeds(getCountFromServer(collection(pl, 'users/pl1/characters'))));
+  await check('another player can’t read the index', assertFails(getDoc(doc(other, 'users/pl1/index/chars'))));
+  await check('another player can’t write the index', assertFails(setDoc(doc(other, 'users/pl1/index/chars'), { v: 1, chars: {} })));
+  await check('another player can’t count the characters', assertFails(getCountFromServer(collection(other, 'users/pl1/characters'))));
+  await check('an index with other fields is refused', assertFails(setDoc(doc(pl, 'users/pl1/index/chars'), { v: 1, chars: {}, x: 1 })));
+  await check('an index whose chars isn’t a map is refused', assertFails(setDoc(doc(pl, 'users/pl1/index/chars'), { v: 1, chars: 'x' })));
+  await check('other documents beside the index are closed', assertFails(setDoc(doc(pl, 'users/pl1/index/other'), { v: 1, chars: {} })));
+  await check('the user document itself stays closed', assertFails(setDoc(doc(pl, 'users/pl1'), { a: 1 })));
 
   console.log('Share links');
   await check('the owner creates a share', assertSucceeds(setDoc(doc(pl, 'shares/pl1_S1'), { owner: 'pl1', z, name: 'Tova' })));

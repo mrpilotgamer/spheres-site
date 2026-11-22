@@ -246,6 +246,28 @@ const T0 = Date.now();
       check(`an old casting switch (${k}) turns on “Divided casting scores”, and is gone`, `${r.divCast} ${k in r}`, 'true false');
     }
     check('a save with none of the old switches does not turn it on', !!(await S({ rules: { maxFirst: true } })).rules.divCast, false);
+
+    /* what goes to the database (cloudPack): library text of base-sphere abilities left out, sanitize puts it back */
+    const P = o => page.evaluate(o => window.SheetEngine.cloudPack(o), o);
+    const abs = c => { const out = []; (function w(v) { if (Array.isArray(v)) v.forEach(w); else if (v && typeof v === 'object') { if (Array.isArray(v.abilities) && typeof v.sphere === 'string') out.push(...v.abilities); Object.values(v).forEach(w); } })(c); return out; };
+    for (const [k, c] of Object.entries(ex)) {
+      const packed = await P(c);
+      check(`${k}: the database copy leaves out library ability text`, abs(packed).some(a => a && typeof a === 'object' && !('text' in a)), true);
+      check(`${k}: the database copy is smaller`, JSON.stringify(packed).length < JSON.stringify(c).length * 0.8, true);
+      check(`${k}: opening the database copy gives back the same character`, JSON.stringify(await S(packed)) === JSON.stringify(await S(c)), true);
+    }
+    {
+      const c = copy(ex.incanter), all = abs(c), a0 = all.find(a => a && a.text);
+      a0.text = 'My own wording.'; const e0 = all.find(a => a && a !== a0 && a.text); e0.text = '';
+      const packed = await P(c), back = abs(await S(packed));
+      check('an edited ability keeps its own text in the database copy', abs(packed).some(a => a && a.text === 'My own wording.'), true);
+      check('an ability whose text was emptied stays empty', back.some(a => a && a.name === e0.name && a.text === ''), true);
+      check('…and the sheet doesn\'t refill it', back.filter(a => a && a.name === e0.name && a.text !== '').length, all.filter(a => a && a.name === e0.name && a.text !== '').length);
+      check('an ability not in the library (no text) stays without text', (await S({ levels: [{ picks: [{ kind: 'talent', name: 'Destruction sphere', sphere: 'Destruction', role: 'sphere', abilities: [{ name: 'Homebrew Blast' }] }] }] })).levels[0].picks[0].abilities[0].text, '');
+      const pic = 'data:image/webp;base64,UklGRg==';
+      const pp = await P(Object.assign(copy(ex.striker), { art: { img: pic, th: pic } }));
+      check('the portrait leaves the database JSON (it goes beside it as bytes)', `${'img' in pp.art} ${pp.art.th === pic}`, 'false true');
+    }
     const damaged = [
       ['a null drawback', { traditions: { casting: { on: true, drawbacks: [null], boons: [null] } } }],
       ['a companion with no abilities', { companions: [{ kind: 'cohort', abil: null, mods: 'x' }] }],
