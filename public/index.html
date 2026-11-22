@@ -133,7 +133,10 @@ details.arch{margin:4px 0 4px 10px}
 .cardhead{display:flex;flex-wrap:wrap;gap:8px;align-items:baseline;justify-content:space-between;margin-bottom:8px}
 .phead{display:inline-flex;flex-wrap:wrap;align-items:baseline;gap:6px;min-width:0} .phead .pctl{gap:4px}
 .pfold{padding:0 6px;min-height:0;line-height:1.4;font-size:12px}
-.pcard.folded>:not(.cardhead){display:none} .pcard.folded>.cardhead{margin-bottom:0}
+.pcard.folded>:not(.cardhead){display:none}
+.artimg{display:block;width:100%;max-width:240px;aspect-ratio:3/4;object-fit:cover;margin:0 auto;border-radius:8px;border:1px solid var(--rule)} .artimg.small{max-width:150px;margin:0}
+.athumb{width:44px;height:44px;border-radius:50%;object-fit:cover;flex:none;border:1px solid var(--rule)} .athumb.sm{width:28px;height:28px} .athumb.big{width:72px;height:72px}
+.artcv{display:block;width:min(270px,100%);height:auto;aspect-ratio:3/4;margin:0 auto 10px;border-radius:8px;border:1px solid var(--rule2);cursor:grab;touch-action:none;background:var(--soft)} .pcard.folded>.cardhead{margin-bottom:0}
 .parr{justify-content:flex-end;margin:var(--gap) 0 calc(-1*var(--gap) + 4px)} .parrbar{margin-top:var(--gap)}
 .pend{border:1px dashed var(--soft);border-radius:8px;padding:10px;text-align:center;color:var(--faint);font-size:13px}
 @media (pointer:coarse){.pend{display:none}}
@@ -394,7 +397,7 @@ if (/^https?:$/.test(location.protocol) && !window.SheetCloud) {
       redirectResult: () => U.getRedirectResult(auth),
       current: () => { const u = auth.currentUser; return u ? { uid: u.uid, name: u.displayName || "", email: u.email || "", photo: u.photoURL || "" } : null; },
       onUser: cb => U.onAuthStateChanged(auth, u => cb(u ? { uid: u.uid, name: u.displayName || "", email: u.email || "", photo: u.photoURL || "" } : null)),
-      list: () => F.getDocs(col()).then(s => s.docs.map(d => { const x = d.data(); return { id: d.id, name: x.name || "", summary: x.summary || "", savedAt: x.savedAt || 0, meta: x.meta || {}, level: x.level || 0, parties: Array.isArray(x.parties) ? x.parties : [] }; })),
+      list: () => F.getDocs(col()).then(s => s.docs.map(d => { const x = d.data(); return { id: d.id, name: x.name || "", summary: x.summary || "", pic: typeof x.pic === "string" ? x.pic : "", savedAt: x.savedAt || 0, meta: x.meta || {}, level: x.level || 0, parties: Array.isArray(x.parties) ? x.parties : [] }; })),
       /* characters are saved gzip-compressed (field z) when the browser can; older uncompressed saves (field json) still open */
       get: id => F.getDoc(ref(id)).then(async d => { if (!d.exists()) return null; const x = d.data(); if (x.z && !x.json) x.json = await gunz(x.z.toUint8Array()); return x; }),
       put: async (id, rec) => {
@@ -814,7 +817,7 @@ function blankChar(){
     abil:{str:10,dex:10,con:10,int:10,wis:10,cha:10},racial:{str:0,dex:0,con:0,int:0,wis:0,cha:0},
     castAbil:'wis',pracAbil:'wis',pracMore:[],opAbil:'',hpAb:'con',classes:{},levels:[],extraPicks:[],bonusFeats:0,skillPerLevel:0,bonusRanks:0,
     skillRanks:{},skillClass:{},skillLabel:{craft:'',perform:'',prof:'',art:'',lore:''},
-    mods:[],groups:[],conds:{},negLevels:0,abilDmg:{str:0,dex:0,con:0,int:0,wis:0,cha:0},abilDrain:{str:0,dex:0,con:0,int:0,wis:0,cha:0},noAb:{},meta:{},forms:[],shape:null,shapeOpt:{},history:[],tempSrc:[],deathOpt:{},loreOpt:{},seq:{n:0},play:{L:[],R:[],hide:[]},leadOpt:{},deck:{},ws:wsBlank(),pers:{list:[],active:'',qc:0,borrow:[]},histSnap:null,histDb:0,skillAbil:{},sphOrder:[],
+    mods:[],groups:[],conds:{},negLevels:0,abilDmg:{str:0,dex:0,con:0,int:0,wis:0,cha:0},abilDrain:{str:0,dex:0,con:0,int:0,wis:0,cha:0},noAb:{},meta:{},forms:[],shape:null,shapeOpt:{},history:[],tempSrc:[],deathOpt:{},loreOpt:{},seq:{n:0},play:{L:[],R:[],hide:[]},art:{img:'',th:''},leadOpt:{},deck:{},ws:wsBlank(),pers:{list:[],active:'',qc:0,borrow:[]},histSnap:null,histDb:0,skillAbil:{},sphOrder:[],
     resources:[],actions:[],weapons:[],
     armor:{name:'',bonus:0,enh:0,maxDex:99,acp:0,type:'none',asf:0,mw:false,wt:0,mat:''},shield:{name:'',bonus:0,enh:0,acp:0,maxDex:99,mw:false,asf:0,wt:0,mat:'',tower:false},quadruped:false,
     gear:[],containers:[],bodyType:'humanoid',tabsOff:{},possess:null,possessLvl:'',possessCollective:false,possessOpt:{},slotExtra:{},carry:{str:0,mult:1},money:{pp:0,gp:0,sp:0,cp:0},hp:{dmg:0,temp:0,non:0},
@@ -1725,6 +1728,8 @@ function sanitizeChar(o){
   b.parties=(Array.isArray(o.parties)?o.parties:[]).filter(function(x){ return x&&typeof x.pid==='string'&&typeof x.code==='string'&&typeof x.uid==='string'; }).map(function(x){ return {pid:x.pid,code:x.code,name:String(x.name||'').slice(0,80),uid:x.uid}; });
   if(['int','wis','cha','highest'].indexOf(b.castAbil)<0) b.castAbil='wis';
   if(AB.indexOf(b.pracAbil)<0) b.pracAbil='wis';
+  /* portrait: both pictures valid, or none */
+  b.art=b.art&&artOk(b.art.img,ART_MAX)&&artOk(b.art.th,ART_TMAX)?{img:b.art.img,th:b.art.th}:{img:'',th:''};
   /* Play page layout: known cards only, each once across both columns and the hidden list */
   (function(){ var P=b.play&&typeof b.play==='object'&&!Array.isArray(b.play)?b.play:{}, seen={}, pk=function(a){ return (Array.isArray(a)?a:[]).filter(function(k){ if(typeof k!=='string'||!own(PLAY_N,k)||seen[k]) return false; seen[k]=1; return true; }); };
     b.play={L:pk(P.L),R:pk(P.R),hide:pk(P.hide)}; })();
@@ -2122,8 +2127,8 @@ function setSynced(id,t){ if(!CL.user||typeof t!=='number') return; var m=lsGet(
 /* both copies changed since they were last the same: this device has edits the account never got, and the account has newer ones */
 function syncConflict(loc,cl){ if(!loc||!cl) return false; var t=syncedAt(loc.id); return t!=null&&(cl.savedAt||0)>(loc.savedAt||0)&&(loc.savedAt||0)>t&&(cl.savedAt||0)>t; }
 function sentSig(c){ return {k:(CL.user&&CL.user.uid||'')+'/'+c.id, v:JSON.stringify(Object.assign({},c,{savedAt:0}))}; }
-function cloudRec(c){ return {app:'spheres-sheet',v:1,json:JSON.stringify(c),name:c.name||'',summary:[classLineOf(c),c.race].filter(Boolean).join(' · '),savedAt:c.savedAt||Date.now(),meta:metaOf(c),level:(c.levels||[]).length,parties:partyNames(c)}; }
-function listRec(c,rec){ return {id:c.id,name:rec.name,summary:rec.summary,savedAt:rec.savedAt,meta:rec.meta,level:rec.level,parties:rec.parties||[]}; }
+function cloudRec(c){ return {app:'spheres-sheet',v:1,json:JSON.stringify(c),name:c.name||'',summary:[classLineOf(c),c.race].filter(Boolean).join(' · '),pic:artOk((c.art||{}).th,ART_TMAX)?c.art.th:'',savedAt:c.savedAt||Date.now(),meta:metaOf(c),level:(c.levels||[]).length,parties:partyNames(c)}; }
+function listRec(c,rec){ return {id:c.id,name:rec.name,summary:rec.summary,pic:rec.pic||'',savedAt:rec.savedAt,meta:rec.meta,level:rec.level,parties:rec.parties||[]}; }
 function kb(n){ return Math.round(n/1024)+' KB'; }
 var SIZE_WARN=750000, SIZE_MAX=990000; CL.size={}; CL.warned={};
 /* a plain-language reason when the account refuses a character */
@@ -2165,7 +2170,7 @@ function syncOpen(){
     else { if(r) setSynced(id,r.savedAt); setStat('Saved to your account'); }
   }).catch(function(e){ setStat(e&&e.code==='sheet/too-big'?'Your account’s copy is too big to open here. Saving on this device.':'Couldn’t reach your account ('+(e&&e.code||'offline')+'). Saving on this device.',true); });
 }
-function localChars(){ var out=[]; try{ for(var i=0;i<localStorage.length;i++){ var k=localStorage.key(i); if(k.indexOf(KEY+':')!==0||/:(last|tab)$/.test(k)) continue; var o=lsGet(k); if(o&&o.app==='spheres-sheet'&&o.id) out.push({id:o.id,name:o.name||'',summary:[classLineOf(sanitizeChar(o)),o.race].filter(Boolean).join(' · '),savedAt:o.savedAt||0,meta:metaOf(o),level:(o.levels||[]).length,parties:partyNames(o)}); } }catch(e){} return out; }
+function localChars(){ var out=[]; try{ for(var i=0;i<localStorage.length;i++){ var k=localStorage.key(i); if(k.indexOf(KEY+':')!==0||/:(last|tab)$/.test(k)) continue; var o=lsGet(k); if(o&&o.app==='spheres-sheet'&&o.id) out.push({id:o.id,name:o.name||'',summary:[classLineOf(sanitizeChar(o)),o.race].filter(Boolean).join(' · '),pic:o.art&&artOk(o.art.th,ART_TMAX)?o.art.th:'',savedAt:o.savedAt||0,meta:metaOf(o),level:(o.levels||[]).length,parties:partyNames(o)}); } }catch(e){} return out; }
 /* ---------- organizing characters: campaign, status, pin (stored on the character as ch.meta and beside it in the account) ---------- */
 var STATUSES=[['active','Active'],['npc','NPC'],['concept','Concept'],['retired','Retired'],['dead','Dead']], STATN={}; STATUSES.forEach(function(x){ STATN[x[0]]=x[1]; });
 var ARCHIVED={retired:1,dead:1};
@@ -2185,10 +2190,10 @@ function charStore(c,where){ c.savedAt=Date.now(); if(ch&&ch.id===c.id){ ch=sani
 function setMeta(ids,patch){ return Promise.all(ids.map(function(id){ return charFull(id).then(function(c){ if(!c) return; c.meta=Object.assign(metaOf(c),patch); return charStore(c); }); }))
   .catch(function(e){ alertBox(cloudErrMsg(e)); }).then(function(){ paint(); }); }
 /* locAt / cloudAt: when this device's copy and the account's copy were saved (to show "not yet in your account") */
-function homeList(){ var map={}, add=function(x,where){ var m=map[x.id]||(map[x.id]={id:x.id,name:x.name,summary:x.summary,savedAt:-1,cloud:false,local:false,meta:{},level:0,parties:[],locAt:0,cloudAt:0}); m[where]=true; m[where==='cloud'?'cloudAt':'locAt']=Math.max(m[where==='cloud'?'cloudAt':'locAt'],x.savedAt||0); if((x.savedAt||0)>m.savedAt){ m.savedAt=x.savedAt||0; m.name=x.name; m.summary=x.summary; m.meta=metaOf(x); m.level=x.level||0; m.parties=x.parties||[]; } };
+function homeList(){ var map={}, add=function(x,where){ var m=map[x.id]||(map[x.id]={id:x.id,name:x.name,summary:x.summary,pic:x.pic||'',savedAt:-1,cloud:false,local:false,meta:{},level:0,parties:[],locAt:0,cloudAt:0}); m[where]=true; m[where==='cloud'?'cloudAt':'locAt']=Math.max(m[where==='cloud'?'cloudAt':'locAt'],x.savedAt||0); if((x.savedAt||0)>m.savedAt){ m.savedAt=x.savedAt||0; m.name=x.name; m.summary=x.summary; m.pic=x.pic||''; m.meta=metaOf(x); m.level=x.level||0; m.parties=x.parties||[]; } };
   if(CL.user&&CL.list) CL.list.forEach(function(x){ add(x,'cloud'); });
   localChars().forEach(function(x){ add(x,'local'); });
-  if(ch&&!UI.ro&&!map[ch.id]&&(ch.levels||[]).length) add({id:ch.id,name:ch.name,summary:[classLineOf(ch),ch.race].filter(Boolean).join(' · '),savedAt:ch.savedAt||0,meta:metaOf(ch),level:ch.levels.length,parties:partyNames(ch)},'local');
+  if(ch&&!UI.ro&&!map[ch.id]&&(ch.levels||[]).length) add({id:ch.id,name:ch.name,summary:[classLineOf(ch),ch.race].filter(Boolean).join(' · '),pic:artOk((ch.art||{}).th,ART_TMAX)?ch.art.th:'',savedAt:ch.savedAt||0,meta:metaOf(ch),level:ch.levels.length,parties:partyNames(ch)},'local');
   return Object.keys(map).map(function(k){ var m=map[k]; if(m.savedAt<0) m.savedAt=0; return m; }); }
 function campaigns(list){ var o={}; (list||homeList()).forEach(function(x){ if(x.meta.campaign) o[x.meta.campaign]=1; }); return Object.keys(o).sort(function(a,b){ return a.localeCompare(b); }); }
 function openChar(c,push){ var c1=safeChar(c); if(!c1){ alertBox(DAMAGED); return; } histNow(); if(pushT&&ch&&ch.id!==c.id) cloudPush(); ch=c1; hist=[]; redoH=[]; UI.home=false; UI.tab='sheet'; lsSet(KEY+':'+ch.id,ch); lsSet(KEY+':last',ch.id); if(push) cloudPush(); else if(CL.user) setStat('Saved to your account'); paint(); window.scrollTo(0,0); }
@@ -2255,7 +2260,7 @@ function partySummary(){ var HP=hpObj(), PH=possHost(), cut=function(v,n){ retur
     hp:{cur:D.hpMax-n0(HP.dmg),max:D.hpMax,temp:n0(HP.temp),non:n0(HP.non)},ac:D.ac,touch:D.touch,ff:D.ff,cmd:D.cmd,fort:D.fort,ref:D.ref,will:D.will,init:D.init,perc:(D.skills.perc||{}).total||0,
     conds:Object.keys(ch.conds||{}).filter(function(k){ return ch.conds[k]; }),buffs:(ch.groups||[]).filter(function(g){ return g.on; }).map(function(g){ return g.name; }),
     res:(ch.resources||[]).map(function(r){ var mx=D.res[r.id]?D.res[r.id].max:0; return {n:r.name,cur:Math.min(n0(r.cur),mx),max:mx}; }),
-    form:cut(D.form?D.form.name:'',200),host:cut(PH?(PH.name||'a host'):'',200),neg:n0(ch.negLevels),accent:cut(themePal(ch.theme).gold,20)}; }
+    form:cut(D.form?D.form.name:'',200),host:cut(PH?(PH.name||'a host'):'',200),neg:n0(ch.negLevels),accent:cut(themePal(ch.theme).gold,20),pic:artOk((ch.art||{}).th,ART_TMAX)?ch.art.th:''}; }
 function publishCopies(c){ if(!CL.user||!window.SheetCloud||!window.SheetCloud.sharePut||UI.ro) return; var rec=null, R=function(){ return rec||(rec=copyRec(c)); };
   if(c.share&&mine(c.share)) pubThrottle('sh:'+c.share.id,60000,function(){ window.SheetCloud.sharePut(c.share.id,R()).catch(function(e){ pubWarn('sh'+c.id,'Couldn’t update the share link for '+(c.name||'this character')+' ('+(e&&e.code||'offline')+'). The character itself is saved.'); }); });
   if(c!==ch) return; var sm=null, key=memberKey(c);
@@ -2315,12 +2320,12 @@ function closeParty(){ partyReq++; if(UI.partyUnsub){ UI.partyUnsub(); UI.partyU
 var STALE_MS=10*60000;
 function memberCard(m,compact){ var L=function(x){ return Array.isArray(x)?x.slice(0,60):[]; }; m=Object.assign({},m,{conds:L(m.conds),buffs:L(m.buffs),res:L(m.res).filter(function(r){ return r&&typeof r==='object'; })}); ['name','player','cls','race','form','host','key'].forEach(function(k){ m[k]=m[k]==null?'':String(m[k]).slice(0,200); }); var hp=m.hp&&typeof m.hp==='object'?m.hp:{}, cur=n0(hp.cur), mx=n0(hp.max), pct=mx?Math.max(0,Math.min(100,cur/mx*100)):0, acc=HEX6.test(m.accent||'')?m.accent:'var(--gold)', t=function(k,v,n){ return '<div class="tile"><span class="k">'+k+'</span><span class="v">'+esc(v)+'</span>'+(n?'<span class="n">'+esc(n)+'</span>':'')+'</div>'; };
   var stale=Date.now()-n0(m.updatedAt)>STALE_MS, when='<span class="note">'+esc(m.player||'')+' · '+esc(ago(m.updatedAt))+'</span>'+(stale?' <span class="tag" title="No update from this sheet for a while: the player may be offline, so the numbers may be old">not live</span>':'');
-  if(compact) return '<section class="card pcard compact'+(stale?' stale':'')+'" style="border-left:3px solid '+acc+'"><div class="row" style="margin:0;justify-content:space-between;align-items:baseline"><b>'+esc(m.name||'Unnamed')+'</b>'+when+'</div>'+
+  if(compact) return '<section class="card pcard compact'+(stale?' stale':'')+'" style="border-left:3px solid '+acc+'"><div class="row" style="margin:0;justify-content:space-between;align-items:center"><span class="row" style="margin:0;gap:8px">'+artThumb(m.pic,'sm','')+'<b>'+esc(m.name||'Unnamed')+'</b></span>'+when+'</div>'+
     '<div class="row" style="margin:2px 0 0;justify-content:space-between"><span><b>'+cur+'</b> / '+mx+' hp'+(n0(hp.temp)?' <span class="tag gold">+'+n0(hp.temp)+'</span>':'')+(cur<=0?' <span class="'+(cur<0?'bad':'warn')+'">'+(cur<0?'Dying':'Disabled')+'</span>':'')+'</span><span class="note">AC '+n0(m.ac)+' · Init '+sgn(n0(m.init))+' · Perc '+sgn(n0(m.perc))+'</span></div>'+
     '<div class="bar"><i class="'+(pct<=25?'crit':pct<=50?'low':'')+'" style="width:'+pct+'%"></i></div>'+
     ((m.conds||[]).length?'<div class="chips" style="margin-top:4px">'+m.conds.map(function(c){ return '<span class="tag pcond">'+esc(c)+'</span>'; }).join('')+'</div>':'')+
     '<div class="row" style="margin:4px 0 0;justify-content:flex-end"><button class="mini" data-a="partyView" data-k="'+esc(m.key)+'">Open sheet</button></div></section>';
-  return '<section class="card pcard'+(stale?' stale':'')+'" style="border-top:3px solid '+acc+'"><div class="cardhead" style="margin-bottom:2px"><h2>'+esc(m.name||'Unnamed')+'</h2><span>'+when+'</span></div>'+
+  return '<section class="card pcard'+(stale?' stale':'')+'" style="border-top:3px solid '+acc+'"><div class="cardhead" style="margin-bottom:2px;align-items:center"><span class="row" style="margin:0;gap:10px">'+artThumb(m.pic,'','')+'<h2>'+esc(m.name||'Unnamed')+'</h2></span><span>'+when+'</span></div>'+
     '<p class="note" style="margin:0 0 6px">'+esc([m.cls,m.race].filter(Boolean).join(' · '))+'</p>'+
     '<div class="row" style="margin:0;justify-content:space-between"><span><span class="big">'+cur+'</span> / '+mx+' hp'+(n0(hp.temp)?' <span class="tag gold">+'+n0(hp.temp)+' temp</span>':'')+(n0(hp.non)?' <span class="tag">'+n0(hp.non)+' nonlethal</span>':'')+'</span>'+(cur<=0?'<span class="'+(cur<0?'bad':'warn')+'">'+(cur<0?'Dying':'Disabled')+'</span>':'')+'</div>'+
     '<div class="bar"><i class="'+(pct<=25?'crit':pct<=50?'low':'')+'" style="width:'+pct+'%"></i></div>'+
@@ -2481,7 +2486,7 @@ function render(){
 /* signed in, on this device and in the account, and this device's copy is newer: 'saving' while a save is on its way, else true */
 function charUnsent(x){ if(!CL.user||!CL.list||!x.cloud||!x.local||x.locAt<=x.cloudAt) return false; return ch&&ch.id===x.id&&(pushT||pushing||pushQ.some(function(q){ return q.id===x.id; }))?'saving':true; }
 function charRow(x){ var cur=ch&&ch.id===x.id, m=x.meta, unsent=charUnsent(x), find=[x.name,x.summary,m.campaign,STATN[m.status]].join(' ').toLowerCase();
-  return '<div class="charrow'+(cur?' cur':'')+'" data-find="'+esc(find)+'"><button class="pin'+(m.pin?' on':'')+'" data-a="pinChar" data-id="'+esc(x.id)+'" aria-pressed="'+m.pin+'" title="'+(m.pin?'Unpin':'Pin to the top')+'" aria-label="'+(m.pin?'Unpin ':'Pin ')+esc(x.name||'character')+'">'+(m.pin?'★':'☆')+'</button>'+
+  return '<div class="charrow'+(cur?' cur':'')+'" data-find="'+esc(find)+'"><button class="pin'+(m.pin?' on':'')+'" data-a="pinChar" data-id="'+esc(x.id)+'" aria-pressed="'+m.pin+'" title="'+(m.pin?'Unpin':'Pin to the top')+'" aria-label="'+(m.pin?'Unpin ':'Pin ')+esc(x.name||'character')+'">'+(m.pin?'★':'☆')+'</button>'+artThumb(x.pic,'','')+
     '<span style="flex:1 1 220px"><b style="font-size:16px">'+esc(x.name||'Unnamed character')+'</b>'+(cur?' <span class="tag gold">open</span>':'')+(m.status!=='active'?' <span class="tag">'+esc(STATN[m.status])+'</span>':'')+'<br><span class="note">'+esc(x.summary||'No levels yet')+(x.savedAt?' · saved '+esc(new Date(x.savedAt).toLocaleString([], {dateStyle:'medium',timeStyle:'short'})):'')+'</span><br>'+
       (m.pin&&m.campaign?'<span class="tag">'+esc(m.campaign)+'</span> ':'')+(x.cloud?'<span class="tag">In your account</span> ':'')+(x.local?'<span class="tag">On this device</span>':'')+
       (unsent==='saving'?' <span class="tag">Saving…</span>':unsent?' <span class="tag bad" title="This device has changes your account doesn’t have yet">Not yet in your account</span>':'')+'</span>'+
@@ -2543,10 +2548,10 @@ function startHTML(){
    UI.playArr: the Arrange view (handles, ↑ ↓ ⇄, Hide, Reset), never saved; there a card that isn't drawn now (no companions,
    no potions) shows as a stub so it can be placed. Folded cards are per browser and character, like the companion cards
    (UI.playFold, localStorage 'spheres-play-fold:<id>'), so read-only viewers can fold too. */
-var PLAY_L=['hp','abil','def','sph','mount','comp'], PLAY_R=['pers','seq','buffs','atk','res','cons','acts','log'];
-var PLAY_N={hp:'Hit Points',abil:'Ability Scores',def:'Defense',sph:'Spheres',mount:'Mount',comp:'Companions',pers:'Persona',seq:'Sequence',buffs:'Buffs, Stances & Conditions',atk:'Attacks',res:'Resources',cons:'Potions, Scrolls & Wands',acts:'Actions',log:'Log'};
+var PLAY_L=['hp','abil','def','sph','mount','comp'], PLAY_R=['art','pers','seq','buffs','atk','res','cons','acts','log'];
+var PLAY_N={art:'Portrait',hp:'Hit Points',abil:'Ability Scores',def:'Defense',sph:'Spheres',mount:'Mount',comp:'Companions',pers:'Persona',seq:'Sequence',buffs:'Buffs, Stances & Conditions',atk:'Attacks',res:'Resources',cons:'Potions, Scrolls & Wands',acts:'Actions',log:'Log'};
 /* cards any character can come to have get a stub in the Arrange view; Persona and Sequence (class features) only show when drawn */
-var PLAY_WHEN={sph:'once you have a caster level, martial talents or a tradition',mount:'while a companion is your mount',comp:'while a companion is present',cons:'while you carry potions, scrolls or wands'};
+var PLAY_WHEN={art:'once you add a picture on the Notes tab',sph:'once you have a caster level, martial talents or a tradition',mount:'while a companion is your mount',comp:'while a companion is present',cons:'while you carry potions, scrolls or wands'};
 /* the cards drawn in each column (UI.playShown, from the last paint): ↑ ↓ step over the ones that aren't */
 function playStep(col,k,d){ var sh=UI.playShown||{}, i=col.indexOf(k); for(var j=i+d;j>=0&&j<col.length;j+=d) if(sh[col[j]]) return j; return -1; }
 function playLay(){ var P=ch.play||{}, hide=(P.hide||[]).slice(), L, R;
@@ -2632,6 +2637,7 @@ function rSheet(){
       return '<div style="padding:6px 0;border-bottom:1px solid var(--soft)"><b>'+esc(x.c.name||'Unnamed')+'</b> <span class="note">'+esc(CKN[x.c.kind]||'')+'</span>'+(x.c.shape&&compStats(x.c).form?' <span class="tag gold">In form: '+esc(compStats(x.c).form.name)+'</span>':'')+(reanOn(x.c)&&x.c.rean.left!=null?' <span class="tag">'+esc(shapeLeft(x.c.rean))+' left</span>':'')+compSummary(x.c,x.i,true)+'</div>'; }).join('')+'</section>';
   return h; };
   C.pers=persStrip; C.seq=seqCard;
+  C.art=function(){ var A=ch.art||{}; return artOk(A.img,ART_MAX)?'<section class="card"><div class="cardhead"><h2>Portrait</h2><button class="link" data-tab="notes">Change</button></div><img class="artimg" src="'+esc(A.img)+'" alt="Portrait of '+esc(ch.name||'this character')+'"></section>':''; };
   /* toggles */
   C.buffs=function(){ var h='';
   h+='<section class="card"><div class="cardhead"><h2>Buffs, Stances & Conditions</h2><button class="link" data-tab="mods">Edit</button></div>';
@@ -5055,11 +5061,53 @@ function containersCard(){
   return h+'</section>';
 }
 /* ---------- NOTES ---------- */
+/* ---------- portrait (Notes tab; a card on the Play page, party cards, the Characters list) ----------
+   ch.art = {img, th}: data URLs made on this device (artPick → artCrop): img the 3:4 portrait at ART_W×ART_H (WebP, JPEG where the
+   browser can't write WebP, about 20–50 KB), th a ART_T px square from the top of it for the round thumbnails. Both live inside the
+   character, so share links, party sheets, files and copies carry them; the thumbnail also goes to the party summary (memberSum,
+   firestore.rules memberOk 'pic') and beside the account copy (cloudRec 'pic') for the Characters list. sanitizeChar keeps only
+   artOk ones. Nothing is uploaded anywhere else, and the original file is never kept (Replace picks a new one). */
+var ART_W=360, ART_H=480, ART_T=96, ART_MAX=200000, ART_TMAX=8000;
+var ART_RE=/^data:image\/(webp|jpeg|png);base64,[A-Za-z0-9+\/]+={0,2}$/;
+function artOk(s,max){ return typeof s==='string'&&s.length<=max&&ART_RE.test(s); }
+function artThumb(src,cls,label){ return artOk(src,ART_TMAX)?'<img class="athumb'+(cls?' '+cls:'')+'" src="'+esc(src)+'" alt="'+esc(label||'')+'"'+(label?'':' aria-hidden="true"')+'>':''; }
+function artEncode(cv,max){ var q=[0.85,0.75,0.6,0.45], out='';
+  for(var i=0;i<q.length;i++){ out=cv.toDataURL('image/webp',q[i]); if(out.indexOf('data:image/webp')!==0) out=cv.toDataURL('image/jpeg',q[i]); if(out.length<=max) return out; }
+  return out.length<=max?out:''; }
+/* the picture-placing dialog: drag (or the arrow keys) to move, the slider to zoom; resolves {img, th} or null */
+function artCrop(im){ var w=im.naturalWidth, hh=im.naturalHeight, base=Math.max(ART_W/w,ART_H/hh), S={z:1,cx:w/2,cy:hh/2};
+  var frame=function(){ var sc=base*S.z, sw=ART_W/sc, sh=ART_H/sc; S.cx=Math.min(Math.max(S.cx,sw/2),w-sw/2); S.cy=Math.min(Math.max(S.cy,sh/2),hh-sh/2); return {x:S.cx-sw/2,y:S.cy-sh/2,w:sw,h:sh,sc:sc}; };
+  var draw=function(cv){ var f=frame(), g=cv.getContext('2d'); g.imageSmoothingQuality='high'; g.clearRect(0,0,cv.width,cv.height); g.drawImage(im,f.x,f.y,f.w,f.h,0,0,cv.width,cv.height); return f; };
+  return modal({title:'Place the portrait',html:'<canvas id="artCv" class="artcv" width="'+ART_W+'" height="'+ART_H+'" tabindex="0" aria-label="The portrait as it will show. Drag it, or use the arrow keys, to move the picture"></canvas>'+
+      '<label class="fld"><span>Zoom</span><input type="range" id="artZ" min="1" max="4" step="0.01" value="1"></label>'+
+      '<p class="note">Drag the picture (or use the arrow keys) to choose what shows. The round thumbnail on party cards and in your Characters list is the top of it. It’s saved inside the character at '+ART_W+' × '+ART_H+', so anyone who can see this character sees it.</p>',
+    buttons:[{label:'Cancel',value:null},{label:'Use this picture',value:'ok',primary:true}],
+    onOpen:function(root){ var cv=root.querySelector('#artCv'), z=root.querySelector('#artZ'), drag=null; draw(cv);
+      z.addEventListener('input',function(){ S.z=+z.value||1; draw(cv); });
+      cv.addEventListener('pointerdown',function(e){ drag={x:e.clientX,y:e.clientY}; try{ cv.setPointerCapture(e.pointerId); }catch(x){} });
+      cv.addEventListener('pointermove',function(e){ if(!drag) return; var k=ART_W/cv.getBoundingClientRect().width/(base*S.z); S.cx-=(e.clientX-drag.x)*k; S.cy-=(e.clientY-drag.y)*k; drag={x:e.clientX,y:e.clientY}; draw(cv); });
+      cv.addEventListener('pointerup',function(){ drag=null; }); cv.addEventListener('pointercancel',function(){ drag=null; });
+      cv.addEventListener('keydown',function(e){ var d={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]}[e.key]; if(!d) return; e.preventDefault(); var st=20/(base*S.z); S.cx+=d[0]*st; S.cy+=d[1]*st; draw(cv); }); },
+    read:function(){ var big=document.createElement('canvas'); big.width=ART_W; big.height=ART_H; var f=draw(big);
+      var sm=document.createElement('canvas'); sm.width=sm.height=ART_T; var g=sm.getContext('2d'); g.imageSmoothingQuality='high'; g.drawImage(big,0,0,ART_W,ART_W,0,0,ART_T,ART_T);
+      return {img:artEncode(big,ART_MAX),th:artEncode(sm,ART_TMAX)}; }
+  }).then(function(r){ return r.value&&r.data&&r.data.img&&r.data.th?r.data:null; }); }
+function artPick(){ return new Promise(function(resolve){ var inp=document.createElement('input'); inp.type='file'; inp.accept='image/png,image/jpeg,image/webp,image/gif'; inp.hidden=true;
+    inp.addEventListener('change',function(){ var f=inp.files&&inp.files[0]; inp.remove(); resolve(f||null); }); inp.addEventListener('cancel',function(){ inp.remove(); resolve(null); });
+    document.body.appendChild(inp); inp.click(); })
+  .then(function(f){ if(!f) return null; if(f.size>40e6){ alertBox('That picture is over 40 MB. Pick a smaller one.'); return null; }
+    var url=URL.createObjectURL(f); return new Promise(function(ok){ var im=new Image(); im.onload=function(){ ok(im); }; im.onerror=function(){ ok(null); }; im.src=url; })
+      .then(function(im){ URL.revokeObjectURL(url); if(!im||!im.naturalWidth){ alertBox('That file couldn’t be read as a picture. PNG, JPG, WebP and GIF work.'); return null; } return artCrop(im); }); }); }
+function artCard(){ var A=ch.art||{};
+  return '<section class="card"><div class="cardhead"><h2>Portrait</h2>'+(artOk(A.img,ART_MAX)?'<span class="row" style="margin:0"><button class="mini" data-a="artSet">Replace…</button><button class="mini" data-a="artDel">Remove</button></span>':'')+'</div>'+
+    (artOk(A.img,ART_MAX)?'<div class="row" style="align-items:flex-start;gap:14px"><img class="artimg small" src="'+esc(A.img)+'" alt="Portrait of '+esc(ch.name||'this character')+'">'+artThumb(A.th,'big','')+'</div>'
+      :'<p class="note">A picture of your character: on the Play page (move or hide it with Arrange there), on party cards and in your Characters list.</p><button data-a="artSet">Add a picture…</button>')+
+    '<p class="note" style="margin-bottom:0">PNG, JPG, WebP or GIF (an animated one keeps its first frame). It’s shrunk on this device and saved inside the character, so share links, parties and exported files carry it.</p></section>'; }
 function rNotes(){
   var h='<div class="cols"><div class="col">';
   h+='<section class="card"><h2>Notes</h2>'+[['look','Appearance'],['story','Background'],['goals','Goals']].map(function(n){ return '<label class="fld"><span>'+n[1]+'</span><textarea data-f="notes.'+n[0]+'" rows="'+(n[0]==='story'?5:3)+'">'+esc(ch.notes[n[0]]||'')+'</textarea></label>'+
       (n[0]==='story'?'<details data-keep="bgq"><summary style="font-size:13px">Need ideas? Background questions</summary><ul style="margin:6px 0;padding-left:20px;font-size:14px">'+BGQ.map(function(q){ return '<li>'+esc(q)+'</li>'; }).join('')+'</ul><button class="mini" data-a="bgPrompts">Add them to Background</button></details>':''); }).join('')+'</section>';
-  h+='</div><div class="col"><section class="card"><h2>Session notes</h2><label class="fld"><span>What happened, who you met, loot to split</span><textarea data-f="notes.session" rows="14">'+esc(ch.notes.session||'')+'</textarea></label></section></div></div>';
+  h+='</div><div class="col">'+artCard()+'<section class="card"><h2>Session notes</h2><label class="fld"><span>What happened, who you met, loot to split</span><textarea data-f="notes.session" rows="14">'+esc(ch.notes.session||'')+'</textarea></label></section></div></div>';
   return h;
 }
 
@@ -5360,6 +5408,9 @@ var A={
   cMore:function(el){ var id=el.dataset.id; UI.cmpMore=UI.cmpMore===id?null:id; UI.focusSel='#cmp-'+CSS.escape(id)+' [data-a="cMore"]'; return 'ui'; },
   cFold:function(el){ var id=el.dataset.id; if(!(ch.companions||[]).some(function(c){ return c.id===id; })) return 'skip'; cmpSetFold([id],!own(cmpFoldMap(),id)); return 'ui'; },
   cFoldAll:function(el){ cmpSetFold((ch.companions||[]).filter(function(c){ return cmpShown(c)&&cmpMatch(c); }).map(function(c){ return c.id; }),el.dataset.v==='1'); return 'ui'; },
+  /* portrait (artPick, artCrop) */
+  artSet:function(){ return artPick().then(function(r){ if(!r) return null; return function(){ ch.art={img:r.img,th:r.th}; UI.toast='Portrait saved'; }; }); },
+  artDel:function(){ if(!artOk((ch.art||{}).img,ART_MAX)) return 'skip'; ch.art={img:'',th:''}; UI.toast='Portrait removed'; UI.focusSel='[data-a="artSet"]'; },
   /* arranging the Play page (playLay, playSet) */
   pArr:function(){ UI.playArr=!UI.playArr; UI.focusSel=UI.playArr?'.parrbar [data-a="pArr"]':'.parr [data-a="pArr"]'; return 'ui'; },
   pFold:function(el){ var k=el.dataset.k, m=playFoldMap(); if(!own(PLAY_N,k)) return 'skip'; if(m[k]) delete m[k]; else m[k]=1; lsSet('spheres-play-fold:'+ch.id,m); UI.focusSel='#play-'+k+' [data-a="pFold"]'; return 'ui'; },

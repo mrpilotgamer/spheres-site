@@ -843,6 +843,31 @@ const firebaseConfig = {
 Moved here from "Open items and ideas" on 2026-11-19, word for word. Entry dates are when the work was done; the order is
 roughly newest first, as it was kept. Anything still open from these entries is listed under "Open items and ideas".
 
+- **Portrait (2026-11-22, from a player's review; owner chose "inside the character" over separate storage).** Code: the block
+  "portrait" before `rNotes` (`artCard`, `artPick`, `artCrop`, `artEncode`, `artOk`, `artThumb`), actions `artSet artDel`,
+  `C.art` in `rSheet`, CSS `.artimg .athumb .artcv`.
+  - **Saved:** `ch.art = {img, th}` (new, in `blankChar`; old saves get empty strings). `img` is a 3:4 picture at 360×480
+    (`ART_W`, `ART_H`), `th` a 96 px square (`ART_T`) cut from its top for the round thumbnails. Both are data URLs made on the
+    device: WebP, or JPEG where the browser can't write WebP, stepping the quality down until `img` is under 200,000 characters
+    and `th` under 8,000 (`artEncode`). Real photos come out around 20–50 KB. `sanitizeChar` keeps them only if both pass
+    `artOk` (PNG, JPEG or WebP base64, under the limits); anything else (an SVG, a link, markup, too big) is dropped.
+  - **Adding one:** Notes tab, Portrait card (right column, above Session notes): "Add a picture…" / Replace… / Remove (with
+    Undo). The file picker takes PNG, JPG, WebP and GIF (first frame), up to 40 MB; a file that isn't a picture says so. The
+    "Place the portrait" dialog shows the 3:4 frame: drag (or arrow keys) to move, a Zoom slider (1–4×). The original file is
+    never kept.
+  - **Where it shows:** a Portrait card on the Play page (`art`, first in `PLAY_R`, so the top of the right column, beside
+    Hit Points and above Buffs; existing custom layouts get it there too), drawn only when there is a picture, with "Change"
+    linking to Notes; while arranging it shows as a stub. Round thumbnail in the Characters list (`localChars`, `homeList`,
+    the account list via a `pic` field beside the account copy in `cloudRec`) and on party cards (`memberSum` → `pic`).
+  - **Database rules:** `memberOk` allows `pic`: empty, or up to 8,000 characters matching a PNG/JPEG/WebP base64 data URL.
+    Character documents had no field list, so `pic` there needed no change. The deploy publishes the rules before the site.
+  - Tests: 16 in `check.js` ("Portrait": old saves, a non-picture file, Cancel, the saved sizes and type, the crop's middle
+    by pixel colour, Notes, Play, Characters list, Remove and Undo, a script link, an SVG and an oversized picture dropped),
+    7 in `rules-check.js` (the `pic` field). The arranging checks now expect the Portrait stub. After it: `engine-check.js` 337,
+    `check.js` 628, `fuzz-check.js` 29, `talents-check.js` 66, `config-check.js` 14, `csp-check.js` 6, `rules-check.js` 97,
+    `party-check.js` 38, `save-check.js` 12 passed.
+  - **Not built:** pictures for companions; the portrait on the printed sheet; a bigger view on click. A party card with a
+    thumbnail is covered by the rules check and the Characters list check, not by an end-to-end party test.
 - **Arranging the Play page (2026-11-21, from a player's review; owner: "like the talents and companions organization").**
   Code: the block "arranging the Play page" before `rSheet`; `rSheet` now builds one function per card (`C.hp`, `C.abil`, …)
   and `playPage` draws them in the player's order. Actions `pArr pFold pMv pSide pHide pShow pReset`, the `play` branch of the
@@ -867,9 +892,7 @@ roughly newest first, as it was kept. Anything still open from these entries is 
     Hide/+, drag onto a card and onto "Drop here", reload, Reset, a broken layout, a phone). After it: `engine-check.js` 337,
     `check.js` 613, `fuzz-check.js` 29, `talents-check.js` 66, `config-check.js` 14, `csp-check.js` 6, `rules-check.js` 90,
     `party-check.js` 38, `save-check.js` 12 passed.
-  - **Next (agreed 2026-11-21):** a character portrait as one more Play card (`art`, top of the right column by default),
-    uploaded on the Notes tab and shrunk on the device to about 300×400 (around 30 KB) inside the character; a round version
-    on party cards and in the Characters list.
+  - The portrait followed on 2026-11-22 (see "Portrait").
 - **Heading capitals (2026-11-21, from a player's review; owner chose "lists and game terms").** Headings that list
   several things capitalize each one, and Pathfinder game terms are capitalized as in the books; headings that read as a
   sentence, and two-word names that aren't rules terms ("Session notes", "Worn items", "Temporary talents"), stay as they were.

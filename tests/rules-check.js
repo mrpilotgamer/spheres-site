@@ -101,6 +101,15 @@ const CODE = 'PlayerCode-0123456789', GMCODE = 'GmCode-0123456789abcd', z = Byte
   await check('a member whose id doesn’t match its character is refused', assertFails(setDoc(doc(pl, 'parties/gm1_P4/members/pl1_c1'), { owner: 'pl1', code: CODE, charId: 'c2' })));
   await check('a member with a non-list conditions field is refused', assertFails(setDoc(doc(pl, 'parties/gm1_P4/members/pl1_c1'), { owner: 'pl1', code: CODE, charId: 'c1', conds: 'boom' })));
   await check('a well-formed member joins', assertSucceeds(setDoc(doc(pl, 'parties/gm1_P4/members/pl1_c1'), { owner: 'pl1', code: CODE, charId: 'c1', name: 'Tova', conds: ['Shaken'], hp: { cur: 1, max: 2 } })));
+  /* the portrait's round thumbnail (pic): empty, or a small base64 PNG, JPEG or WebP */
+  const M = extra => setDoc(doc(pl, 'parties/gm1_P4/members/pl1_c1'), Object.assign({ owner: 'pl1', code: CODE, charId: 'c1', name: 'Tova' }, extra));
+  await check('a member with a thumbnail updates', assertSucceeds(M({ pic: 'data:image/webp;base64,UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoBAAEAAwA0JaQAA3AA/vuUAAA=' })));
+  await check('…an empty thumbnail is fine', assertSucceeds(M({ pic: '' })));
+  await check('…an SVG “thumbnail” is refused (it could carry script)', assertFails(M({ pic: 'data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=' })));
+  await check('…so is a link instead of a picture', assertFails(M({ pic: 'javascript:alert(1)' })));
+  await check('…so is one with markup after the picture', assertFails(M({ pic: 'data:image/png;base64,AAAA"><script>' })));
+  await check('…so is one over 8000 characters', assertFails(M({ pic: 'data:image/png;base64,' + 'A'.repeat(8000) })));
+  await check('…so is a thumbnail that isn’t text', assertFails(M({ pic: 5 })));
   await check('a share copy with an extra field is refused', assertFails(setDoc(doc(pl, 'shares/pl1_S9'), { owner: 'pl1', z, junk: 1 })));
   await check('a share id must start with its owner', assertFails(setDoc(doc(pl, 'shares/S9'), { owner: 'pl1', z })));
   await check('after Stop sharing, someone else can’t take the link', assertFails(setDoc(doc(other, 'shares/pl1_S1'), { owner: 'pl2', z })));
