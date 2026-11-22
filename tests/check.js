@@ -1577,6 +1577,63 @@ function check(what, got, want) {
     check('an old save without the list still works (Con: 10 + 2 + 3)', (await tile('Martial DC')).split(' ')[0], '15');
   }
 
+  console.log('Arranging the Play page: order, columns, hiding, folding');
+  {
+    const ID = 'zz-play', saved = () => page.evaluate(id => JSON.parse(localStorage.getItem('spheres-sheet-v1:' + id)).play, ID);
+    const order = (p = page) => p.evaluate(() => [...document.querySelectorAll('.cols>.col')].map(c => [...c.querySelectorAll(':scope>.pcard')].map(e => e.id.slice(5)).join(',')).join(' | '));
+    const load = async play => { await page.evaluate(([id, play]) => { localStorage.setItem('spheres-sheet-v1:' + id, JSON.stringify(Object.assign({ app: 'spheres-sheet', v: 1, id, name: 'Layout',
+      classes: { c1: { name: 'Hero', hd: 8, bab: '3/4', good: ['will'], skills: 4, talents: 'none' } }, levels: [{ cls: 'c1', hp: 5, picks: [] }] }, play === undefined ? {} : { play })));
+      localStorage.setItem('spheres-sheet-v1:last', JSON.stringify(id)); localStorage.removeItem('spheres-play-fold:' + id); }, [ID, play]); await page.reload(); await settle(); await go('Play', 'Sheet'); };
+    const STD = 'hp,abil,def | buffs,atk,res,acts,log';
+    await load(undefined);
+    check('an old save (no layout) shows the standard order; cards with nothing to show stay off', await order(), STD);
+    check('…and loads with an empty layout', JSON.stringify(await saved()), '{"L":[],"R":[],"hide":[]}');
+    check('no move buttons until Arrange', [await page.locator('[data-a="pMv"]').count(), await page.locator('.parr [data-a="pArr"]').count()].join(' '), '0 1');
+    /* folding: any time, per browser, never in the character */
+    await page.locator('#play-hp [data-a="pFold"]').click(); await settle();
+    check('folding Hit Points leaves the heading and the hp (5 / 5)', [await page.locator('#play-hp.folded').count(), await page.locator('#play-hp [data-a="hpDo"]').first().isVisible(), (await page.locator('#play-hp .phead .note').innerText()).trim()].join(' · '), '1 · false · 5 / 5');
+    check('…kept in this browser, not in the character', [await page.evaluate(id => localStorage.getItem('spheres-play-fold:' + id), ID), JSON.stringify(await saved())].join(' · '), '{"hp":1} · {"L":[],"R":[],"hide":[]}');
+    await page.locator('#play-hp [data-a="pFold"]').click(); await settle();
+    /* the Arrange view */
+    await page.locator('[data-a="pArr"]').click(); await settle();
+    check('Arrange: stubs for cards any character can get, none for Persona or Sequence', await order(), 'hp,abil,def,sph,mount,comp | buffs,atk,res,cons,acts,log');
+    check('…first card can’t go up, last can’t go down', [await page.locator('#play-hp [data-a="pMv"][data-d="-1"]').isDisabled(), await page.locator('#play-log [data-a="pMv"][data-d="1"]').isDisabled()].join(' '), 'true true');
+    await page.locator('#play-def [data-a="pMv"][data-d="-1"]').click(); await settle();
+    check('↑ moves Defense above Ability Scores, and it’s saved', [await order(), (await saved()).L.join(',')].join(' · '), 'hp,def,abil,sph,mount,comp | buffs,atk,res,cons,acts,log · hp,def,abil,sph,mount,comp');
+    await page.locator('#play-atk [data-a="pSide"]').click(); await settle();
+    check('→/← moves Attacks to the other column at the same height', await order(), 'hp,atk,def,abil,sph,mount,comp | buffs,res,cons,acts,log');
+    await page.locator('#play-log [data-a="pHide"]').click(); await settle();
+    check('Hide takes Log off the page and lists it under Hidden cards', [await page.locator('#play-log').count(), await page.locator('.parrbar [data-a="pShow"]').innerText(), (await saved()).hide.join(',')].join(' · '), '0 · + Log · log');
+    await page.locator('#play-def .drag').dragTo(page.locator('#play-buffs'), { targetPosition: { x: 40, y: 5 } }); await settle();
+    check('dragging Defense onto the top of Buffs puts it there', await order(), 'hp,atk,abil,sph,mount,comp | def,buffs,res,cons,acts');
+    /* a tall window, so both ends of the drag are on screen (a drag that scrolls the page drops nothing in headless Chromium) */
+    await page.setViewportSize({ width: 1280, height: 2400 }); await page.locator('#play-hp .drag').dragTo(page.locator('.pend[data-id="@R"]')); await settle(); await page.setViewportSize({ width: 1280, height: 1000 });
+    check('…and onto “Drop here” at the bottom of a column', await order(), 'atk,abil,sph,mount,comp | def,buffs,res,cons,acts,hp');
+    await page.locator('.parrbar [data-a="pShow"][data-k="log"]').click(); await settle();
+    check('+ Log puts it back after the card it follows in the standard layout', await order(), 'atk,abil,sph,mount,comp | def,buffs,res,cons,acts,log,hp');
+    await page.locator('[data-a="pArr"]').first().click(); await settle();
+    check('Done: the stubs go and no move buttons are left', [await order(), await page.locator('[data-a="pMv"]').count()].join(' · '), 'atk,abil | def,buffs,res,acts,log,hp · 0');
+    await page.reload(); await settle(); await go('Play', 'Sheet');
+    check('the layout survives a reload', await order(), 'atk,abil | def,buffs,res,acts,log,hp');
+    await page.locator('[data-a="pArr"]').click(); await settle(); await page.locator('[data-a="pReset"]').click(); await settle();
+    check('Reset layout: back to the standard order, nothing hidden', [await order(), JSON.stringify(await saved()), await page.locator('[data-a="pReset"]').isDisabled()].join(' · '), 'hp,abil,def,sph,mount,comp | buffs,atk,res,cons,acts,log · {"L":[],"R":[],"hide":[]} · true');
+    await page.locator('[data-a="pArr"]').first().click(); await settle();
+    /* hostile or broken layouts from a file: unknown cards and repeats dropped, missing ones back in their standard place */
+    await load({ L: ['log', 'log', 'zz', 5, '<b>'], R: ['hp'], hide: 'atk' });
+    check('a broken layout loads cleanly', [await order(), JSON.stringify(await saved())].join(' · '), 'abil,def,log | buffs,atk,res,acts,hp · {"L":["log"],"R":["hp"],"hide":[]}');
+    /* a phone: one column, left first; no drop areas, no drag handles */
+    const pcx = await newCtx({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true }), ph = await pcx.newPage(), pErr = []; ph.on('pageerror', e => pErr.push(e.message));
+    await ph.goto(FILE); await ph.evaluate(c => { localStorage.setItem('spheres-sheet-v1:zz-play', c); localStorage.setItem('spheres-sheet-v1:last', JSON.stringify('zz-play')); }, await page.evaluate(() => localStorage.getItem('spheres-sheet-v1:zz-play')));
+    await ph.reload(); await settle(ph); await ph.locator('[data-a="pArr"]').click(); await settle(ph);
+    const ys = await ph.evaluate(() => ['abil', 'log', 'hp'].map(k => Math.round(document.getElementById('play-' + k).getBoundingClientRect().top)));
+    check('phone: the columns stack, left one first', ys[0] < ys[1] && ys[1] < ys[2], true);
+    check('phone: no drag handles or drop areas, nothing wider than the screen', [await ph.locator('.drag:visible').count(), await ph.locator('.pend:visible').count(), await ph.evaluate(() => document.documentElement.scrollWidth <= innerWidth)].join(' '), '0 0 true');
+    await ph.locator('#play-def [data-a="pMv"][data-d="-1"]').click(); await settle(ph);
+    check('phone: ↑ works', await order(ph), 'def,abil,sph,mount,comp,log | buffs,atk,res,cons,acts,hp');
+    check('no page errors on the phone', pErr.length ? pErr.join(' | ') : 'none', 'none');
+    await pcx.close();
+  }
+
   console.log('Times taken on tradition talents; mass level-up');
   /* wiki text from the local talent files, never the live site (these sections open talent boxes that load it) */
   const localTalents = route => { const f = decodeURIComponent(route.request().url().slice(SITE.length));
