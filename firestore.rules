@@ -26,10 +26,12 @@ service cloud.firestore {
     function num(d, f) { return !(f in d) || d[f] is number; }
     function memberOk(d, key) {
       return d.keys().hasOnly(['name', 'player', 'cls', 'lvl', 'race', 'hp', 'ac', 'touch', 'ff', 'cmd', 'fort', 'ref', 'will',
-          'init', 'perc', 'conds', 'buffs', 'res', 'form', 'host', 'neg', 'accent', 'code', 'charId', 'owner', 'updatedAt'])
+          'init', 'perc', 'conds', 'buffs', 'res', 'form', 'host', 'neg', 'accent', 'pic', 'code', 'charId', 'owner', 'updatedAt'])
         && d.charId is string && d.charId.size() <= 100 && key == request.auth.uid + '_' + d.charId
         && str(d, 'name', 200) && str(d, 'player', 100) && str(d, 'cls', 300) && str(d, 'race', 100)
         && str(d, 'form', 200) && str(d, 'host', 200) && str(d, 'accent', 20) && str(d, 'code', 64)
+        // the portrait's round thumbnail: empty, or a small base64 picture
+        && str(d, 'pic', 8000) && (d.get('pic', '') == '' || d.get('pic', '').matches('data:image/(webp|jpeg|png);base64,[A-Za-z0-9+/]+={0,2}'))
         && num(d, 'lvl') && num(d, 'ac') && num(d, 'touch') && num(d, 'ff') && num(d, 'cmd') && num(d, 'fort')
         && num(d, 'ref') && num(d, 'will') && num(d, 'init') && num(d, 'perc') && num(d, 'neg')
         && (!('hp' in d) || (d.hp is map && d.hp.keys().hasOnly(['cur', 'max', 'temp', 'non'])))

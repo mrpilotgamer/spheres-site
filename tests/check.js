@@ -1594,30 +1594,30 @@ function check(what, got, want) {
     check('folding Hit Points leaves the heading and the hp (5 / 5)', [await page.locator('#play-hp.folded').count(), await page.locator('#play-hp [data-a="hpDo"]').first().isVisible(), (await page.locator('#play-hp .phead .note').innerText()).trim()].join(' · '), '1 · false · 5 / 5');
     check('…kept in this browser, not in the character', [await page.evaluate(id => localStorage.getItem('spheres-play-fold:' + id), ID), JSON.stringify(await saved())].join(' · '), '{"hp":1} · {"L":[],"R":[],"hide":[]}');
     await page.locator('#play-hp [data-a="pFold"]').click(); await settle();
-    /* the Arrange view */
-    await page.locator('[data-a="pArr"]').click(); await settle();
-    check('Arrange: stubs for cards any character can get, none for Persona or Sequence', await order(), 'hp,abil,def,sph,mount,comp | buffs,atk,res,cons,acts,log');
+    /* the Arrange view; a tall window, so both ends of a drag are on screen (a drag that scrolls the page drops nothing in headless Chromium) */
+    await page.setViewportSize({ width: 1280, height: 2400 }); await page.locator('[data-a="pArr"]').click(); await settle();
+    check('Arrange: stubs for cards any character can get (Portrait first on the right), none for Persona or Sequence', await order(), 'hp,abil,def,sph,mount,comp | art,buffs,atk,res,cons,acts,log');
     check('…first card can’t go up, last can’t go down', [await page.locator('#play-hp [data-a="pMv"][data-d="-1"]').isDisabled(), await page.locator('#play-log [data-a="pMv"][data-d="1"]').isDisabled()].join(' '), 'true true');
     await page.locator('#play-def [data-a="pMv"][data-d="-1"]').click(); await settle();
-    check('↑ moves Defense above Ability Scores, and it’s saved', [await order(), (await saved()).L.join(',')].join(' · '), 'hp,def,abil,sph,mount,comp | buffs,atk,res,cons,acts,log · hp,def,abil,sph,mount,comp');
+    check('↑ moves Defense above Ability Scores, and it’s saved', [await order(), (await saved()).L.join(',')].join(' · '), 'hp,def,abil,sph,mount,comp | art,buffs,atk,res,cons,acts,log · hp,def,abil,sph,mount,comp');
     await page.locator('#play-atk [data-a="pSide"]').click(); await settle();
-    check('→/← moves Attacks to the other column at the same height', await order(), 'hp,atk,def,abil,sph,mount,comp | buffs,res,cons,acts,log');
+    check('→/← moves Attacks to the other column at the same height', await order(), 'hp,def,atk,abil,sph,mount,comp | art,buffs,res,cons,acts,log');
     await page.locator('#play-log [data-a="pHide"]').click(); await settle();
     check('Hide takes Log off the page and lists it under Hidden cards', [await page.locator('#play-log').count(), await page.locator('.parrbar [data-a="pShow"]').innerText(), (await saved()).hide.join(',')].join(' · '), '0 · + Log · log');
     await page.locator('#play-def .drag').dragTo(page.locator('#play-buffs'), { targetPosition: { x: 40, y: 5 } }); await settle();
-    check('dragging Defense onto the top of Buffs puts it there', await order(), 'hp,atk,abil,sph,mount,comp | def,buffs,res,cons,acts');
-    /* a tall window, so both ends of the drag are on screen (a drag that scrolls the page drops nothing in headless Chromium) */
-    await page.setViewportSize({ width: 1280, height: 2400 }); await page.locator('#play-hp .drag').dragTo(page.locator('.pend[data-id="@R"]')); await settle(); await page.setViewportSize({ width: 1280, height: 1000 });
-    check('…and onto “Drop here” at the bottom of a column', await order(), 'atk,abil,sph,mount,comp | def,buffs,res,cons,acts,hp');
+    check('dragging Defense onto the top of Buffs puts it there', await order(), 'hp,atk,abil,sph,mount,comp | art,def,buffs,res,cons,acts');
+    await page.locator('#play-hp .drag').dragTo(page.locator('.pend[data-id="@R"]')); await settle();
+    check('…and onto “Drop here” at the bottom of a column', await order(), 'atk,abil,sph,mount,comp | art,def,buffs,res,cons,acts,hp');
     await page.locator('.parrbar [data-a="pShow"][data-k="log"]').click(); await settle();
-    check('+ Log puts it back after the card it follows in the standard layout', await order(), 'atk,abil,sph,mount,comp | def,buffs,res,cons,acts,log,hp');
+    check('+ Log puts it back after the card it follows in the standard layout', await order(), 'atk,abil,sph,mount,comp | art,def,buffs,res,cons,acts,log,hp');
     await page.locator('[data-a="pArr"]').first().click(); await settle();
     check('Done: the stubs go and no move buttons are left', [await order(), await page.locator('[data-a="pMv"]').count()].join(' · '), 'atk,abil | def,buffs,res,acts,log,hp · 0');
     await page.reload(); await settle(); await go('Play', 'Sheet');
     check('the layout survives a reload', await order(), 'atk,abil | def,buffs,res,acts,log,hp');
     await page.locator('[data-a="pArr"]').click(); await settle(); await page.locator('[data-a="pReset"]').click(); await settle();
-    check('Reset layout: back to the standard order, nothing hidden', [await order(), JSON.stringify(await saved()), await page.locator('[data-a="pReset"]').isDisabled()].join(' · '), 'hp,abil,def,sph,mount,comp | buffs,atk,res,cons,acts,log · {"L":[],"R":[],"hide":[]} · true');
+    check('Reset layout: back to the standard order, nothing hidden', [await order(), JSON.stringify(await saved()), await page.locator('[data-a="pReset"]').isDisabled()].join(' · '), 'hp,abil,def,sph,mount,comp | art,buffs,atk,res,cons,acts,log · {"L":[],"R":[],"hide":[]} · true');
     await page.locator('[data-a="pArr"]').first().click(); await settle();
+    await page.setViewportSize({ width: 1280, height: 1000 });
     /* hostile or broken layouts from a file: unknown cards and repeats dropped, missing ones back in their standard place */
     await load({ L: ['log', 'log', 'zz', 5, '<b>'], R: ['hp'], hide: 'atk' });
     check('a broken layout loads cleanly', [await order(), JSON.stringify(await saved())].join(' · '), 'abil,def,log | buffs,atk,res,acts,hp · {"L":["log"],"R":["hp"],"hide":[]}');
@@ -1629,9 +1629,57 @@ function check(what, got, want) {
     check('phone: the columns stack, left one first', ys[0] < ys[1] && ys[1] < ys[2], true);
     check('phone: no drag handles or drop areas, nothing wider than the screen', [await ph.locator('.drag:visible').count(), await ph.locator('.pend:visible').count(), await ph.evaluate(() => document.documentElement.scrollWidth <= innerWidth)].join(' '), '0 0 true');
     await ph.locator('#play-def [data-a="pMv"][data-d="-1"]').click(); await settle(ph);
-    check('phone: ↑ works', await order(ph), 'def,abil,sph,mount,comp,log | buffs,atk,res,cons,acts,hp');
+    check('phone: ↑ works', await order(ph), 'def,abil,sph,mount,comp,log | art,buffs,atk,res,cons,acts,hp');
     check('no page errors on the phone', pErr.length ? pErr.join(' | ') : 'none', 'none');
     await pcx.close();
+  }
+
+  console.log('Portrait: Notes tab, Play card, Characters list');
+  {
+    const ID = 'zz-art', art = () => page.evaluate(id => JSON.parse(localStorage.getItem('spheres-sheet-v1:' + id)).art, ID);
+    const put = async extra => { await page.evaluate(([id, extra]) => { localStorage.setItem('spheres-sheet-v1:' + id, JSON.stringify(Object.assign({ app: 'spheres-sheet', v: 1, id, name: 'Painted',
+      classes: { c1: { name: 'Hero', hd: 8, bab: '3/4', good: ['will'], skills: 4, talents: 'none' } }, levels: [{ cls: 'c1', hp: 5, picks: [] }] }, extra)));
+      localStorage.setItem('spheres-sheet-v1:last', JSON.stringify(id)); }, [ID, extra]); await page.reload(); await settle(); };
+    /* a 600×400 test picture: red left half, blue right half */
+    const png = Buffer.from((await page.evaluate(() => { const c = document.createElement('canvas'); c.width = 600; c.height = 400; const g = c.getContext('2d'); g.fillStyle = '#d00'; g.fillRect(0, 0, 300, 400); g.fillStyle = '#00d'; g.fillRect(300, 0, 300, 400); return c.toDataURL('image/png'); })).split(',')[1], 'base64');
+    const pick = async files => { const fc = page.waitForEvent('filechooser'); await page.locator('[data-a="artSet"]').first().click(); await (await fc).setFiles(files); };
+    await put({});
+    await go('Play', 'Sheet');
+    check('an old save has no portrait and no Portrait card', [JSON.stringify(await art()), await page.locator('#play-art').count()].join(' · '), '{"img":"","th":""} · 0');
+    await go('Character', 'Notes');
+    check('the Notes tab offers “Add a picture…”', await page.locator('[data-a="artSet"]').innerText(), 'Add a picture…');
+    await pick({ name: 'notes.txt', mimeType: 'image/png', buffer: Buffer.from('not a picture') }); await untilDialog();
+    check('a file that isn’t a picture says so, and nothing is saved', [/couldn’t be read as a picture/.test(await page.locator('.dlg').innerText()), JSON.stringify(await art())].join(' · '), 'true · {"img":"","th":""}');
+    await page.locator('.dlg button').first().click(); await untilNoDialog();
+    await pick({ name: 'hero.png', mimeType: 'image/png', buffer: png }); await until('the placing dialog', () => !!document.querySelector('#artCv'));
+    await page.locator('.dlg button', { hasText: 'Cancel' }).click(); await untilNoDialog();
+    check('Cancel in the placing dialog saves nothing', JSON.stringify(await art()), '{"img":"","th":""}');
+    await pick({ name: 'hero.png', mimeType: 'image/png', buffer: png }); await until('the placing dialog', () => !!document.querySelector('#artCv'));
+    await page.locator('.dlg button.primary').click(); await untilNoDialog(); await settle();
+    const A = await art();
+    check('saved: a 3:4 picture and a thumbnail, small enough', [/^data:image\/(webp|jpeg);base64,/.test(A.img), A.img.length < 200000, /^data:image\/(webp|jpeg);base64,/.test(A.th), A.th.length < 8000].join(' '), 'true true true true');
+    /* zoom 1, centred: the 3:4 frame of a 3:2 picture shows its middle, red on the left and blue on the right */
+    const px = await page.evaluate(src => new Promise(ok => { const im = new Image(); im.onload = () => { const c = document.createElement('canvas'); c.width = im.width; c.height = im.height; const g = c.getContext('2d'); g.drawImage(im, 0, 0);
+      const at = (x, y) => { const d = g.getImageData(x, y, 1, 1).data; return d[0] > 150 && d[2] < 80 ? 'red' : d[2] > 150 && d[0] < 80 ? 'blue' : 'other'; }; ok([im.width + '×' + im.height, at(40, 240), at(320, 240)].join(' ')); }; im.src = src; }), A.img);
+    check('it’s 360×480 and shows the middle of the picture (red left, blue right)', px, '360×480 red blue');
+    check('the Notes tab shows it with Replace… and Remove', [await page.locator('img.artimg').count(), await page.locator('[data-a="artSet"]').innerText(), await page.locator('[data-a="artDel"]').count()].join(' · '), '1 · Replace… · 1');
+    await go('Play', 'Sheet');
+    check('the Play page shows it at the top of the right-hand column', await page.evaluate(() => { const c = document.querySelectorAll('.cols>.col')[1]; const f = c.querySelector(':scope>.pcard'); return f && f.id + ' ' + !!f.querySelector('img.artimg'); }), 'play-art true');
+    check('…with the character’s name in its alt text', await page.locator('#play-art img').getAttribute('alt'), 'Portrait of Painted');
+    await home();
+    check('the Characters list shows the round thumbnail', await page.locator('.charrow img.athumb').count(), '1');
+    await page.locator('.charrow [data-a="openChar"]').first().click(); await settle(); await go('Character', 'Notes');
+    await page.locator('[data-a="artDel"]').click(); await settle();
+    check('Remove takes it away (and says so with an Undo)', [JSON.stringify(await art()), /Portrait removed/.test(await page.locator('#toast').innerText())].join(' · '), '{"img":"","th":""} · true');
+    await page.locator('#toast button', { hasText: 'Undo' }).click(); await settle();
+    check('…Undo brings it back', (await art()).img === A.img, true);
+    /* bad pictures in a file are dropped, never drawn */
+    await put({ art: { img: 'javascript:alert(1)', th: A.th } }); await go('Play', 'Sheet');
+    check('a portrait that isn’t a plain picture is dropped on loading', [JSON.stringify(await art()), await page.locator('#play-art').count()].join(' · '), '{"img":"","th":""} · 0');
+    await put({ art: { img: 'data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=', th: 'data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=' } }); await go('Play', 'Sheet');
+    check('…so is an SVG one (it could carry script)', JSON.stringify(await art()), '{"img":"","th":""}');
+    await put({ art: { img: 'data:image/png;base64,' + 'A'.repeat(250000), th: A.th } }); await go('Play', 'Sheet');
+    check('…and one bigger than the limit', JSON.stringify(await art()), '{"img":"","th":""}');
   }
 
   console.log('Times taken on tradition talents; mass level-up');
