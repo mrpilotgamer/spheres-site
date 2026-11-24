@@ -389,6 +389,53 @@ if (/^https?:$/.test(location.protocol) && !window.SheetCloud) {
       return out + dec.decode();
     };
     const ref = id => F.doc(db, "users", auth.currentUser.uid, "characters", id);
+    const tooBig = (size, limit, raw) => Object.assign(new Error("too big"), { code: "sheet/too-big", size: size, limit: limit, raw: raw });
+    /* the portrait (art.img, a base64 data URL) is stored beside the JSON as raw bytes, field img (2026-11-22): about a
+       quarter smaller, and gzip can't shrink a picture anyway. Reading puts it back into the JSON, so callers see the
+       whole character as before. Its type is read from the picture's own first bytes. */
+    const IMG_MAX = 160000;
+    const imgBytes = url => { const m = /^data:image\/(webp|jpeg|png);base64,([A-Za-z0-9+\/]+={0,2})$/.exec(url || ""); try { return m ? F.Bytes.fromBase64String(m[2]) : null; } catch (e) { return null; } };
+    const imgType = u => u[0] === 0xFF && u[1] === 0xD8 ? "jpeg" : u[0] === 0x89 && u[1] === 0x50 ? "png" : u[0] === 0x52 && u[1] === 0x49 && u[8] === 0x57 && u[9] === 0x45 ? "webp" : "";
+    const artInto = (json, url) => { try { const o = JSON.parse(json); if (o && typeof o === "object" && !Array.isArray(o)) { o.art = Object.assign({}, o.art && typeof o.art === "object" && !Array.isArray(o.art) ? o.art : {}, { img: url }); return JSON.stringify(o); } } catch (e) {} return json; };
+    const withImg = x => { const b = x.img; delete x.img; if (!b || typeof b.toUint8Array !== "function" || typeof x.json !== "string") return x;
+      const t = imgType(b.toUint8Array()); if (t) x.json = artInto(x.json, "data:image/" + t + ";base64," + b.toBase64()); return x; };
+    /* the stored form of a character: z (gzip) when the browser can, else json; plus img. plain: the format from before
+       2026-11-01 (json, picture inside), for rules that haven't been updated. Sizes are checked against the rules' limits. */
+    async function packRec(rec, plain) {
+      let json = rec.json || "", img = !plain && rec.img ? imgBytes(rec.img) : null;
+      if (img && img.toUint8Array().length > IMG_MAX) img = null;
+      if (rec.img && !img) json = artInto(json, rec.img);
+      const n = img ? img.toUint8Array().length : 0;
+      if (!plain && window.CompressionStream) {
+        const z = await gz(json); if (z.length + n >= LIMIT_Z) throw tooBig(z.length + n, LIMIT_Z, json.length + n);
+        const o = { z: F.Bytes.fromUint8Array(z), enc: "gzip" }; if (img) o.img = img; return { o: o, size: z.length + n, raw: json.length + n, compressed: true };
+      }
+      if (json.length >= LIMIT_JSON) throw tooBig(json.length, LIMIT_JSON, json.length);
+      return { o: { json: json }, size: json.length, raw: json.length, compressed: false };
+    }
+    /* the Characters list reads one small document, users/{uid}/index/chars = {v, chars: {id: what the list shows}},
+       instead of every character (2026-11-22). A count of the characters checks it each time: if they disagree (no index
+       yet, or a save or delete that missed it), the characters are read once as before and the index is written again.
+       A save updates its entry only when something the list shows changed, or the entry's savedAt is 10 minutes old,
+       so it doesn't double the writes; the page itself keeps the exact times it saved (syncedAt). */
+    const idxRef = () => F.doc(db, "users", auth.currentUser.uid, "index", "chars");
+    const IDX_FRESH = 600000, IDX_MAX = 900000; let IDX = null;
+    const rowOf = (id, x) => ({ id: id, name: typeof x.name === "string" ? x.name : "", summary: typeof x.summary === "string" ? x.summary : "", pic: typeof x.pic === "string" ? x.pic : "", savedAt: typeof x.savedAt === "number" ? x.savedAt : 0,
+      meta: x.meta && typeof x.meta === "object" && !Array.isArray(x.meta) ? x.meta : {}, level: typeof x.level === "number" ? x.level : 0, parties: Array.isArray(x.parties) ? x.parties : [] });
+    const entryOf = x => { const r = rowOf("", x); delete r.id; return r; };
+    const sameEntry = (a, b) => !!a && JSON.stringify(Object.assign({}, a, { savedAt: 0 })) === JSON.stringify(Object.assign({}, b, { savedAt: 0 })) && b.savedAt - (a.savedAt || 0) < IDX_FRESH;
+    /* near the database's 1 MB per document, the oldest characters' thumbnails stay out of the index */
+    const fit = chars => { let n = JSON.stringify(chars).length; if (n < IDX_MAX) return chars;
+      Object.keys(chars).sort((a, b) => (chars[a].savedAt || 0) - (chars[b].savedAt || 0)).forEach(id => { if (n >= IDX_MAX && chars[id].pic) { n -= chars[id].pic.length; chars[id] = Object.assign({}, chars[id], { pic: "" }); } }); return chars; };
+    async function idxPut(id, rec) {
+      const uid = auth.currentUser.uid, mine = IDX && IDX.uid === uid ? IDX.chars : null; let e = entryOf(rec);
+      if (mine && sameEntry(mine[id], e)) return;
+      if (mine) e = fit(Object.assign({}, mine, { [id]: e }))[id];
+      await F.setDoc(idxRef(), { v: 1, chars: { [id]: e }, updatedAt: F.serverTimestamp() }, { merge: true });
+      if (IDX && IDX.uid === uid) IDX.chars[id] = e;
+    }
+    function idxDel(id) { const uid = auth.currentUser.uid; if (IDX && IDX.uid === uid) delete IDX.chars[id];
+      return F.updateDoc(idxRef(), new F.FieldPath("chars", id), F.deleteField()).catch(() => {}); }
     window.SheetCloud = {
       signIn: () => U.signInWithPopup(auth, prov).catch(e => {
         if (e.code === "auth/popup-blocked" || e.code === "auth/operation-not-supported-in-this-environment") { try { sessionStorage.setItem("sheetAuthRedirect", "1"); } catch (x) {} return U.signInWithRedirect(auth, prov); }
@@ -397,25 +444,31 @@ if (/^https?:$/.test(location.protocol) && !window.SheetCloud) {
       redirectResult: () => U.getRedirectResult(auth),
       current: () => { const u = auth.currentUser; return u ? { uid: u.uid, name: u.displayName || "", email: u.email || "", photo: u.photoURL || "" } : null; },
       onUser: cb => U.onAuthStateChanged(auth, u => cb(u ? { uid: u.uid, name: u.displayName || "", email: u.email || "", photo: u.photoURL || "" } : null)),
-      list: () => F.getDocs(col()).then(s => s.docs.map(d => { const x = d.data(); return { id: d.id, name: x.name || "", summary: x.summary || "", pic: typeof x.pic === "string" ? x.pic : "", savedAt: x.savedAt || 0, meta: x.meta || {}, level: x.level || 0, parties: Array.isArray(x.parties) ? x.parties : [] }; })),
-      /* characters are saved gzip-compressed (field z) when the browser can; older uncompressed saves (field json) still open */
-      get: id => F.getDoc(ref(id)).then(async d => { if (!d.exists()) return null; const x = d.data(); if (x.z && !x.json) x.json = await gunz(x.z.toUint8Array()); return x; }),
-      put: async (id, rec) => {
-        const json = rec.json || "";
-        if (window.CompressionStream) {
-          const z = await gz(json);
-          if (z.length >= LIMIT_Z) throw Object.assign(new Error("too big"), { code: "sheet/too-big", size: z.length, limit: LIMIT_Z, raw: json.length });
-          const out = Object.assign({}, rec, { z: F.Bytes.fromUint8Array(z), enc: "gzip", updatedAt: F.serverTimestamp() }); delete out.json;
-          try { await F.setDoc(ref(id), out); return { size: z.length, raw: json.length, compressed: true }; }
-          catch (e) { if (e.code !== "permission-denied" || json.length >= LIMIT_JSON) throw e; /* rules not updated yet: fall back to the old format */ }
-        }
-        if (json.length >= LIMIT_JSON) throw Object.assign(new Error("too big"), { code: "sheet/too-big", size: json.length, limit: LIMIT_JSON, raw: json.length });
-        await F.setDoc(ref(id), Object.assign({}, rec, { updatedAt: F.serverTimestamp() })); return { size: json.length, raw: json.length, compressed: false };
+      list: async () => {
+        const uid = auth.currentUser.uid;
+        const [ix, n] = await Promise.all([F.getDoc(idxRef()).catch(() => null), F.getCountFromServer(col()).then(s => s.data().count).catch(() => -1)]);
+        const c0 = ix && ix.exists() ? ix.data().chars : null;
+        if (c0 && typeof c0 === "object" && !Array.isArray(c0) && Object.keys(c0).length === n) { IDX = { uid: uid, chars: c0 }; return Object.keys(c0).map(id => rowOf(id, c0[id] || {})); }
+        const rows = (await F.getDocs(col())).docs.map(d => rowOf(d.id, d.data())), built = {};
+        rows.forEach(r => { built[r.id] = entryOf(r); }); fit(built);
+        F.setDoc(idxRef(), { v: 1, chars: built, updatedAt: F.serverTimestamp() }).then(() => { IDX = { uid: uid, chars: built }; }, e => console.warn("Couldn't write the character index:", e));
+        return rows;
       },
-      del: id => F.deleteDoc(ref(id)),
+      /* characters are saved gzip-compressed (field z) when the browser can; older uncompressed saves (field json) still open */
+      get: id => readCopy(ref(id)),
+      put: async (id, rec) => {
+        const base = Object.assign({}, rec, { updatedAt: F.serverTimestamp() }); delete base.json; delete base.img;
+        let p = await packRec(rec, false);
+        try { await F.setDoc(ref(id), Object.assign({}, base, p.o)); }
+        catch (e) { if (e.code !== "permission-denied" || !p.compressed) throw e; /* rules not updated yet: fall back to the old format */
+          p = await packRec(rec, true); await F.setDoc(ref(id), Object.assign({}, base, p.o)); }
+        idxPut(id, rec).catch(e => console.warn("Couldn't update the character index:", e));
+        return { size: p.size, raw: p.raw, compressed: p.compressed };
+      },
+      del: id => F.deleteDoc(ref(id)).then(() => idxDel(id)),
       /* ---- read-only share links (shares/{id}) and parties (parties/{id}, with members/ and sheets/) ---- */
       shareGet: id => readCopy(F.doc(db, "shares", id)),
-      sharePut: async (id, rec) => F.setDoc(F.doc(db, "shares", id), Object.assign(await pack(rec.json), { owner: auth.currentUser.uid, name: rec.name || "", summary: rec.summary || "", savedAt: rec.savedAt || 0, updatedAt: F.serverTimestamp() })),
+      sharePut: async (id, rec) => F.setDoc(F.doc(db, "shares", id), Object.assign(await pack(rec), { owner: auth.currentUser.uid, name: rec.name || "", summary: rec.summary || "", savedAt: rec.savedAt || 0, updatedAt: F.serverTimestamp() })),
       shareDel: id => F.deleteDoc(F.doc(db, "shares", id)),
       partyCreate: async name => { const r = F.doc(db, "parties", auth.currentUser.uid + "_" + rnd()); await F.setDoc(r, { name: name, gms: [auth.currentUser.uid], owner: auth.currentUser.uid, code: rnd(), gmCode: rnd(), by: auth.currentUser.displayName || "", createdAt: F.serverTimestamp() }); return r.id; },
       partyNewGMCode: pid => { const c = rnd(); return F.updateDoc(F.doc(db, "parties", pid), { gmCode: c }).then(() => c); },
@@ -430,7 +483,7 @@ if (/^https?:$/.test(location.protocol) && !window.SheetCloud) {
         catch (e) { await F.updateDoc(P, { closing: false }).catch(() => {}); throw e; } },
       memberPut: (pid, key, data) => F.setDoc(F.doc(db, "parties", pid, "members", key), Object.assign({}, data, { owner: auth.currentUser.uid, updatedAt: F.serverTimestamp() })),
       memberDel: (pid, key) => F.deleteDoc(F.doc(db, "parties", pid, "members", key)),
-      sheetPut: async (pid, key, rec) => F.setDoc(F.doc(db, "parties", pid, "sheets", key), Object.assign(await pack(rec.json), { owner: auth.currentUser.uid, name: rec.name || "", savedAt: rec.savedAt || 0, updatedAt: F.serverTimestamp() })),
+      sheetPut: async (pid, key, rec) => F.setDoc(F.doc(db, "parties", pid, "sheets", key), Object.assign(await pack(rec), { owner: auth.currentUser.uid, name: rec.name || "", savedAt: rec.savedAt || 0, updatedAt: F.serverTimestamp() })),
       sheetGet: (pid, key) => readCopy(F.doc(db, "parties", pid, "sheets", key)),
       sheetDel: (pid, key) => F.deleteDoc(F.doc(db, "parties", pid, "sheets", key)),
       watchMembers: (pid, cb, err) => F.onSnapshot(F.collection(db, "parties", pid, "members"), s => cb(s.docs.map(d => { const x = d.data(); return Object.assign({ key: d.id }, x, { updatedAt: x.updatedAt && x.updatedAt.toMillis ? x.updatedAt.toMillis() : Date.now() }); })), err),
@@ -441,12 +494,8 @@ if (/^https?:$/.test(location.protocol) && !window.SheetCloud) {
     function rnd() { const a = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789", r = crypto.getRandomValues(new Uint8Array(22)); let s = ""; r.forEach(b => s += a[b % a.length]); return s; }
     window.SheetCloud.rnd = rnd;
     /* a character copy, gzip-compressed when the browser can (same size limits as account saves) */
-    async function pack(json) {
-      if (window.CompressionStream) { const z = await gz(json); if (z.length >= LIMIT_Z) throw Object.assign(new Error("too big"), { code: "sheet/too-big", size: z.length, limit: LIMIT_Z, raw: json.length }); return { z: F.Bytes.fromUint8Array(z), enc: "gzip" }; }
-      if (json.length >= LIMIT_JSON) throw Object.assign(new Error("too big"), { code: "sheet/too-big", size: json.length, limit: LIMIT_JSON, raw: json.length });
-      return { json: json };
-    }
-    function readCopy(r) { return F.getDoc(r).then(async d => { if (!d.exists()) return null; const x = d.data(); if (x.z && !x.json) x.json = await gunz(x.z.toUint8Array()); return x; }); }
+    async function pack(rec) { return (await packRec(rec, false)).o; }
+    function readCopy(r) { return F.getDoc(r).then(async d => { if (!d.exists()) return null; const x = d.data(); if (x.z && !x.json) x.json = await gunz(x.z.toUint8Array()); return withImg(x); }); }
     window.dispatchEvent(new Event("sheet-cloud-ready"));
   }).catch(e => { console.warn("Cloud saving unavailable:", e); window.dispatchEvent(new Event("sheet-cloud-failed")); });
 }
@@ -1728,6 +1777,8 @@ function sanitizeChar(o){
   b.parties=(Array.isArray(o.parties)?o.parties:[]).filter(function(x){ return x&&typeof x.pid==='string'&&typeof x.code==='string'&&typeof x.uid==='string'; }).map(function(x){ return {pid:x.pid,code:x.code,name:String(x.name||'').slice(0,80),uid:x.uid}; });
   if(['int','wis','cha','highest'].indexOf(b.castAbil)<0) b.castAbil='wis';
   if(AB.indexOf(b.pracAbil)<0) b.pracAbil='wis';
+  /* base-sphere abilities saved without their library text (cloudPack): the text comes back from the library */
+  abilWalk(b,abilRefill);
   /* portrait: both pictures valid, or none */
   b.art=b.art&&artOk(b.art.img,ART_MAX)&&artOk(b.art.th,ART_TMAX)?{img:b.art.img,th:b.art.th}:{img:'',th:''};
   /* Play page layout: known cards only, each once across both columns and the hidden list */
@@ -2127,7 +2178,18 @@ function setSynced(id,t){ if(!CL.user||typeof t!=='number') return; var m=lsGet(
 /* both copies changed since they were last the same: this device has edits the account never got, and the account has newer ones */
 function syncConflict(loc,cl){ if(!loc||!cl) return false; var t=syncedAt(loc.id); return t!=null&&(cl.savedAt||0)>(loc.savedAt||0)&&(loc.savedAt||0)>t&&(cl.savedAt||0)>t; }
 function sentSig(c){ return {k:(CL.user&&CL.user.uid||'')+'/'+c.id, v:JSON.stringify(Object.assign({},c,{savedAt:0}))}; }
-function cloudRec(c){ return {app:'spheres-sheet',v:1,json:JSON.stringify(c),name:c.name||'',summary:[classLineOf(c),c.race].filter(Boolean).join(' · '),pic:artOk((c.art||{}).th,ART_TMAX)?c.art.th:'',savedAt:c.savedAt||Date.now(),meta:metaOf(c),level:(c.levels||[]).length,parties:partyNames(c)}; }
+/* what goes to the database (account, share link, party sheet) is smaller than the character in memory (2026-11-22):
+   - a base-sphere ability whose text is exactly the library's (#baseLib, via libText) is sent as {name} alone, and
+     sanitizeChar puts the text back (abilRefill). Edited abilities keep their own text.
+   - the portrait (art.img) leaves the JSON and travels beside it as raw bytes (rec.img → SheetCloud's 'img' field),
+     about a quarter smaller than base64 inside gzip; SheetCloud puts it back into the JSON when reading.
+   The device copy (localStorage) and Save file keep the whole character. */
+function abilWalk(o,fn){ if(Array.isArray(o)) o.forEach(function(x){ abilWalk(x,fn); }); else if(o&&typeof o==='object'){ if(Array.isArray(o.abilities)&&typeof o.sphere==='string') fn(o); Object.keys(o).forEach(function(k){ var v=o[k]; if(v&&typeof v==='object') abilWalk(v,fn); }); } }
+function abilTrim(p){ p.abilities=p.abilities.map(function(a){ if(!a||typeof a!=='object'||typeof a.text!=='string'||!a.text||a.text!==libText(p.sphere,a.name)) return a; var b=Object.assign({},a); delete b.text; return b; }); }
+function abilRefill(p){ p.abilities.forEach(function(a){ if(a&&typeof a==='object'&&!Array.isArray(a)&&a.text===undefined&&typeof a.name==='string') a.text=libText(p.sphere,a.name); }); }
+function cloudPack(c){ var x=JSON.parse(JSON.stringify(c)); abilWalk(x,abilTrim); if(x.art&&typeof x.art==='object') delete x.art.img; return x; }
+function cloudRec(c){ var img=artOk((c.art||{}).img,ART_MAX)&&artOk((c.art||{}).th,ART_TMAX)?c.art.img:'';
+  return {app:'spheres-sheet',v:1,json:JSON.stringify(cloudPack(c)),img:img,name:c.name||'',summary:[classLineOf(c),c.race].filter(Boolean).join(' · '),pic:artOk((c.art||{}).th,ART_TMAX)?c.art.th:'',savedAt:c.savedAt||Date.now(),meta:metaOf(c),level:(c.levels||[]).length,parties:partyNames(c)}; }
 function listRec(c,rec){ return {id:c.id,name:rec.name,summary:rec.summary,pic:rec.pic||'',savedAt:rec.savedAt,meta:rec.meta,level:rec.level,parties:rec.parties||[]}; }
 function kb(n){ return Math.round(n/1024)+' KB'; }
 var SIZE_WARN=750000, SIZE_MAX=990000; CL.size={}; CL.warned={};
@@ -2191,7 +2253,8 @@ function setMeta(ids,patch){ return Promise.all(ids.map(function(id){ return cha
   .catch(function(e){ alertBox(cloudErrMsg(e)); }).then(function(){ paint(); }); }
 /* locAt / cloudAt: when this device's copy and the account's copy were saved (to show "not yet in your account") */
 function homeList(){ var map={}, add=function(x,where){ var m=map[x.id]||(map[x.id]={id:x.id,name:x.name,summary:x.summary,pic:x.pic||'',savedAt:-1,cloud:false,local:false,meta:{},level:0,parties:[],locAt:0,cloudAt:0}); m[where]=true; m[where==='cloud'?'cloudAt':'locAt']=Math.max(m[where==='cloud'?'cloudAt':'locAt'],x.savedAt||0); if((x.savedAt||0)>m.savedAt){ m.savedAt=x.savedAt||0; m.name=x.name; m.summary=x.summary; m.pic=x.pic||''; m.meta=metaOf(x); m.level=x.level||0; m.parties=x.parties||[]; } };
-  if(CL.user&&CL.list) CL.list.forEach(function(x){ add(x,'cloud'); });
+  /* the account list's savedAt can lag a few minutes (SheetCloud's index), but this device knows when it last saved there */
+  if(CL.user&&CL.list) CL.list.forEach(function(x){ var t=syncedAt(x.id); add(t!=null&&t>(x.savedAt||0)?Object.assign({},x,{savedAt:t}):x,'cloud'); });
   localChars().forEach(function(x){ add(x,'local'); });
   if(ch&&!UI.ro&&!map[ch.id]&&(ch.levels||[]).length) add({id:ch.id,name:ch.name,summary:[classLineOf(ch),ch.race].filter(Boolean).join(' · '),pic:artOk((ch.art||{}).th,ART_TMAX)?ch.art.th:'',savedAt:ch.savedAt||0,meta:metaOf(ch),level:ch.levels.length,parties:partyNames(ch)},'local');
   return Object.keys(map).map(function(k){ var m=map[k]; if(m.savedAt<0) m.savedAt=0; return m; }); }
@@ -6525,6 +6588,7 @@ window.SheetEngine=Object.freeze({
   blankComp:function(kind){ return blankComp(kind); },
   compStats:function(comp,vars,c){ return engineAs(c||blankChar(),function(d){ return JSON.parse(JSON.stringify(compStats(JSON.parse(JSON.stringify(comp)),Object.assign({},d.V,vars||{})))); }); },
   sanitize:function(o){ return sanitizeChar(JSON.parse(JSON.stringify(o))); },
+  cloudPack:function(o){ return cloudPack(o); },
   examples:function(){ return {incanter:sanitizeChar(exampleIncanter()),striker:sanitizeChar(exampleStriker())}; },
   blank:function(){ return blankChar(); },
   evalF:evalF, fParse:fParse, scaleDice:scaleDice, stackLines:stackLines, drawbackSP:drawbackSP, tierSplit:tierSplit, classTalentSplit:classTalentSplit,

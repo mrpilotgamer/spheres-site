@@ -115,6 +115,8 @@ After companions that don't count (2026-11-14, later): `engine-check.js` 337, `c
 After companion organizing (2026-11-19): `engine-check.js` 337, `check.js` 554 (24 new: "Organizing companions"), `fuzz-check.js` 27
 (with hostile group names, the copy and rename dialogs, folded cards and the search), `talents-check.js` 66, `config-check.js` 12 passed;
 `csp-check.js` and the emulator checks were not run in this session (the database code is unchanged).
+After smaller database copies (2026-11-22): `engine-check.js` 348 (11 new), `check.js` 628, `fuzz-check.js` 29, `talents-check.js` 66,
+`config-check.js` 14, `csp-check.js` 6, `rules-check.js` 113 (16 new), `party-check.js` 38, `save-check.js` 21 (9 new): all passed.
 After companion files (2026-11-19, later): `engine-check.js` 337, `check.js` 573 (19 new: "Companion files"), `fuzz-check.js` 29 (a hostile
 companion file imported into both examples), `talents-check.js` 66, `config-check.js` 12, `csp-check.js` 6 passed; the emulator checks
 were not run (the database code is unchanged).
@@ -318,9 +320,12 @@ Script blocks inside, in order:
 - **Browser storage:** `localStorage` keys `spheres-sheet-v1:<characterId>`, plus `:last` for
   the last character opened.
 - **Google account:** Firestore `users/{uid}/characters/{characterId}` holding
-  `{app, v, z (the character JSON, gzipped, as Bytes), enc:'gzip', name, summary, savedAt, updatedAt}`.
+  `{app, v, z (the character JSON, gzipped, as Bytes), enc:'gzip', img (the portrait, Bytes), name, summary, pic, savedAt, meta, level, parties, updatedAt}`.
   Records saved before 2026-11-01 hold `json` (plain text) instead; they still open, and become `z` on their next save.
   Details in "Compressed account saves and size limits" below.
+  - **Smaller database copies (2026-11-22):** the JSON in `z` (and in share links and party sheets) leaves out base-sphere
+    ability text that matches the library, and the portrait goes in `img` as bytes. See "Smaller database copies" in the Changelog.
+  - **Characters list:** read from one index document, `users/{uid}/index/chars`, instead of every character.
   - Saves are sent about 1.2 seconds after the last change.
   - On sign-in, on opening a character, and when you switch back to the tab, the newer copy
     wins (compared by `savedAt`).
@@ -623,8 +628,8 @@ this file (newest first); an item below names the changelog entry with its detai
   - **Script policy:** the Content-Security-Policy `script-src` list goes out **report-only** (browsers block nothing). Switching
     it to enforcing is not done; watch the console on the live site first. (Feature batch 3; Review fixes, 2026-11-09.)
   - **Roll20 macros:** not yet tested in a real Roll20 game; the Skills macro is the likeliest to need a fix. (Roll20 export.)
-  - **Free-plan savers not done:** a per-user index document (Characters list: 1 read instead of 1 per character; needs a
-    rules change and a backfill), and compressing the copies on the device. (Free-plan savers; Compressed account saves.)
+  - **Free-plan savers not done:** compressing the copies on the device. (Free-plan savers; Compressed account saves.) The
+    per-user index document was done 2026-11-22 (Smaller database copies).
   - **Possession, not built:** Greater Possession (several hosts), casting the host's spells at 18th, the extra spell point
     after a failed attempt, the host's racial skill bonuses, host DR and immunities as numbers. (Possession; Possession gaps closed.)
   - **Shapeshift, not built:** Swarm Shape and other non-transformation forms (use Blank + traits), forms owned by a companion
@@ -708,7 +713,7 @@ this file (newest first); an item below names the changelog entry with its detai
 { "projects": { "default": "spheres-character-sheet" } }
 ```
 
-`firestore.rules` (copied from the site zip on 2026-11-06; if they ever differ, the site zip wins)
+`firestore.rules` (copied from the repository on 2026-11-22; if they ever differ, the repository file wins)
 ```
 rules_version = '2';
 service cloud.firestore {
@@ -716,31 +721,48 @@ service cloud.firestore {
     // Each player can read and write only their own characters: users/{their uid}/characters/{character id}
     match /users/{uid}/characters/{charId} {
       allow read, delete: if request.auth != null && request.auth.uid == uid;
-      // A character is saved either compressed (z: gzip bytes, about 1 MB) or as plain text (json, older versions).
+      // A character is saved either compressed (z: gzip bytes, about 1 MB) or as plain text (json, older versions),
+      // with its portrait beside it as picture bytes (img, since 2026-11-22).
       allow create, update: if request.auth != null && request.auth.uid == uid
         && ((request.resource.data.z is bytes && request.resource.data.z.size() < 1000000)
-            || (request.resource.data.json is string && request.resource.data.json.size() < 900000));
+            || (request.resource.data.json is string && request.resource.data.json.size() < 900000))
+        && imgOk(request.resource.data);
+    }
+    // The Characters list: one document with a short entry per character (users/{uid}/index/chars). Only its player
+    // reads or writes it; the database's own 1 MB limit bounds its size.
+    match /users/{uid}/index/{doc} {
+      allow read, delete: if request.auth != null && request.auth.uid == uid;
+      allow create, update: if request.auth != null && request.auth.uid == uid && doc == 'chars'
+        && request.resource.data.keys().hasOnly(['v', 'chars', 'updatedAt']) && request.resource.data.chars is map;
     }
 
     function signedIn() { return request.auth != null; }
+    // A portrait stored beside the character: picture bytes of sensible size, or none.
+    function imgOk(d) { return !('img' in d) || (d.img is bytes && d.img.size() < 160000); }
     function sizeOk(d) {
       return (d.z is bytes && d.z.size() < 1000000) || (d.json is string && d.json.size() < 900000);
     }
     // A character copy (share link or a party's full sheet): only these fields, short labels.
     function copyOk(d) {
-      return d.keys().hasOnly(['z', 'enc', 'json', 'owner', 'name', 'summary', 'savedAt', 'updatedAt'])
-        && sizeOk(d)
+      return d.keys().hasOnly(['z', 'enc', 'json', 'img', 'owner', 'name', 'summary', 'savedAt', 'updatedAt'])
+        && sizeOk(d) && imgOk(d)
         && (!('name' in d) || (d.name is string && d.name.size() <= 200))
         && (!('summary' in d) || (d.summary is string && d.summary.size() <= 400));
     }
-    // A party member's summary: only these fields, lists and labels of sensible size.
+    // A party member's summary: only these fields, of the right kind, lists and labels of sensible size.
+    function str(d, f, n) { return d.get(f, '') is string && d.get(f, '').size() <= n; }
+    function num(d, f) { return !(f in d) || d[f] is number; }
     function memberOk(d, key) {
       return d.keys().hasOnly(['name', 'player', 'cls', 'lvl', 'race', 'hp', 'ac', 'touch', 'ff', 'cmd', 'fort', 'ref', 'will',
-          'init', 'perc', 'conds', 'buffs', 'res', 'form', 'host', 'neg', 'accent', 'code', 'charId', 'owner', 'updatedAt'])
-        && d.charId is string && key == request.auth.uid + '_' + d.charId
-        && d.get('name', '') is string && d.get('name', '').size() <= 200
-        && d.get('player', '') is string && d.get('player', '').size() <= 100
-        && d.get('cls', '') is string && d.get('cls', '').size() <= 300
+          'init', 'perc', 'conds', 'buffs', 'res', 'form', 'host', 'neg', 'accent', 'pic', 'code', 'charId', 'owner', 'updatedAt'])
+        && d.charId is string && d.charId.size() <= 100 && key == request.auth.uid + '_' + d.charId
+        && str(d, 'name', 200) && str(d, 'player', 100) && str(d, 'cls', 300) && str(d, 'race', 100)
+        && str(d, 'form', 200) && str(d, 'host', 200) && str(d, 'accent', 20) && str(d, 'code', 64)
+        // the portrait's round thumbnail: empty, or a small base64 picture
+        && str(d, 'pic', 8000) && (d.get('pic', '') == '' || d.get('pic', '').matches('data:image/(webp|jpeg|png);base64,[A-Za-z0-9+/]+={0,2}'))
+        && num(d, 'lvl') && num(d, 'ac') && num(d, 'touch') && num(d, 'ff') && num(d, 'cmd') && num(d, 'fort')
+        && num(d, 'ref') && num(d, 'will') && num(d, 'init') && num(d, 'perc') && num(d, 'neg')
+        && (!('hp' in d) || (d.hp is map && d.hp.keys().hasOnly(['cur', 'max', 'temp', 'non'])))
         && d.get('conds', []) is list && d.get('conds', []).size() <= 60
         && d.get('buffs', []) is list && d.get('buffs', []).size() <= 60
         && d.get('res', []) is list && d.get('res', []).size() <= 60;
@@ -763,6 +785,10 @@ service cloud.firestore {
     match /parties/{pid} {
       function party() { return get(/databases/$(database)/documents/parties/$(pid)).data; }
       function isGM() { return signedIn() && request.auth.uid in party().gms; }
+      // A party that still exists and isn't being deleted (partyDelete sets "closing" first, so a player's save that lands
+      // while it is being deleted can't leave a member or sheet behind).
+      function partyOpen() { return exists(/databases/$(database)/documents/parties/$(pid)) && party().get('closing', false) != true; }
+      function partyKeys(d) { return d.keys().hasOnly(['name', 'gms', 'owner', 'code', 'gmCode', 'by', 'createdAt', 'gmJoin', 'closing']); }
 
       allow get, list: if signedIn() && request.auth.uid in resource.data.gms;
       // New parties start with the creator's id (so a deleted party can't be re-created by someone holding its invite),
@@ -771,7 +797,8 @@ service cloud.firestore {
         && request.resource.data.gms == [request.auth.uid] && request.resource.data.owner == request.auth.uid
         && request.resource.data.code is string && request.resource.data.code.size() >= 16
         && request.resource.data.gmCode is string && request.resource.data.gmCode.size() >= 16
-        && request.resource.data.name is string && request.resource.data.name.size() <= 120;
+        && request.resource.data.name is string && request.resource.data.name.size() <= 120
+        && partyKeys(request.resource.data);
       // A GM can rename the party and change its codes. The GM list: anyone may add or remove only themselves;
       // only the creator may change it otherwise. The owner never changes. Anyone else can only join as GM with the GM code.
       function gmsOk() {
@@ -781,25 +808,31 @@ service cloud.firestore {
       }
       allow update: if signedIn() && request.resource.data.gms is list
         && request.resource.data.get('owner', '') == resource.data.get('owner', '') && (
-        (request.auth.uid in resource.data.gms && gmsOk()
-          && request.resource.data.code.size() >= 16 && request.resource.data.gmCode.size() >= 16
+        (request.auth.uid in resource.data.gms && gmsOk() && partyKeys(request.resource.data)
+          && request.resource.data.code is string && request.resource.data.code.size() >= 16 && request.resource.data.code.size() <= 64
+          && request.resource.data.gmCode is string && request.resource.data.gmCode.size() >= 16 && request.resource.data.gmCode.size() <= 64
           && request.resource.data.name is string && request.resource.data.name.size() <= 120)
         || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['gms', 'gmJoin'])
           && request.resource.data.gmJoin == resource.data.gmCode
           && request.resource.data.gms == resource.data.gms.concat([request.auth.uid])));
-      allow delete: if signedIn() && request.auth.uid in resource.data.gms;
+      // Only the creator deletes a party; if the creator stopped being a GM (or an older party has no owner), any GM can.
+      allow delete: if signedIn() && (request.auth.uid == resource.data.get('owner', '')
+        || (request.auth.uid in resource.data.gms && !(resource.data.get('owner', '') in resource.data.gms)));
 
       // One summary per character in the party, written by its player, read by the GMs.
       // The document id is "<player uid>_<character id>".
       match /members/{key} {
         allow get, list: if isGM();
+        // Only for a character saved in the player's own account, so one invite code can't make endless member records.
         allow create: if signedIn() && key.matches(request.auth.uid + '_.+')
           && request.resource.data.owner == request.auth.uid
-          && request.resource.data.code == party().code
-          && memberOk(request.resource.data, key);
+          && partyOpen() && request.resource.data.code == party().code
+          && memberOk(request.resource.data, key)
+          && exists(/databases/$(database)/documents/users/$(request.auth.uid)/characters/$(request.resource.data.charId));
+        // The code stays the one it joined with, or becomes the party's current one (opening a newer invite link again).
         allow update: if signedIn() && resource.data.owner == request.auth.uid
-          && request.resource.data.owner == request.auth.uid
-          && request.resource.data.code == resource.data.code
+          && request.resource.data.owner == request.auth.uid && partyOpen()
+          && (request.resource.data.code == resource.data.code || request.resource.data.code == party().code)
           && memberOk(request.resource.data, key);
         allow delete: if signedIn() && (resource.data.owner == request.auth.uid || isGM());
       }
@@ -808,7 +841,7 @@ service cloud.firestore {
         allow get, list: if isGM();
         allow create, update: if signedIn() && key.matches(request.auth.uid + '_.+')
           && request.resource.data.owner == request.auth.uid
-          && exists(/databases/$(database)/documents/parties/$(pid)/members/$(key))
+          && partyOpen() && exists(/databases/$(database)/documents/parties/$(pid)/members/$(key))
           && copyOk(request.resource.data);
         allow delete: if signedIn() && (key.matches(request.auth.uid + '_.+') || isGM());
       }
@@ -843,6 +876,33 @@ const firebaseConfig = {
 Moved here from "Open items and ideas" on 2026-11-19, word for word. Entry dates are when the work was done; the order is
 roughly newest first, as it was kept. Anything still open from these entries is listed under "Open items and ideas".
 
+- **Smaller database copies (2026-11-22, owner's request: keep Firebase use well inside the free plan).** Nothing on screen changes.
+  Code: `abilWalk abilTrim abilRefill cloudPack cloudRec` (main script), `packRec imgBytes imgType artInto withImg idxPut idxDel`
+  and `list` (the SheetCloud module).
+  - **Measured first:** a character is about 5–12 KB gzipped in the database (the examples: Ilyra 11.8 KB, Tova 6.9 KB). The
+    1.2 MB figure is a **Save file** download, which holds the whole page. At 6–8 players the free plan's limits are far away;
+    writes (20,000 a day) are the closest, about 20–25% on a 4-hour game day.
+  - **Library text left out:** a base-sphere ability whose text equals `libText(sphere, name)` is sent as `{name}` alone;
+    `sanitizeChar` fills it back in (`abilRefill`, only where `text` is missing, so an ability emptied on purpose stays empty
+    and edited text is kept). Ilyra 11.8 → 5.4 KB, Tova 6.9 → 4.8 KB gzipped. If the library text is rebuilt, unedited
+    abilities show the new wording. The device copy and Save file still hold the whole text.
+  - **Portrait as bytes:** `cloudRec` sends `art.img` as `rec.img`, out of the JSON; SheetCloud stores it as Bytes in `img`
+    (under 160 KB, `IMG_MAX`; bigger stays inside the JSON) and puts it back into the JSON when reading (`withImg`, type from
+    the picture's first bytes). About a quarter smaller than base64. Account, share link and party sheet copies all do this.
+    The thumbnail `th` stays in the JSON. Rules: `imgOk` on characters and copies; `copyOk` allows `img`.
+  - **Characters list index:** `users/{uid}/index/chars = {v, chars: {id: {name, summary, pic, savedAt, meta, level, parties}}}`.
+    `list()` reads it plus a count of the characters (2 reads instead of one per character, and no character data). If there
+    is no index or the count disagrees, it reads every character as before and writes the index again; that is also the backfill
+    for existing players. `put` updates the entry only when a shown field changed or its savedAt is 10 minutes old (`IDX_FRESH`),
+    so saves aren't doubled; Home takes this device's own last save time (`syncedAt`) when it's newer, so "not yet in your
+    account" stays right. `del` removes the entry. Near 1 MB the oldest thumbnails stay out of the index (`fit`).
+  - **Older open tabs:** a tab still running the previous version shows ability text blank and no portrait for a character the
+    new version saved, until it reloads. The text comes back on the next load either way; the portrait can be lost if that old tab
+    saves the character, a narrow window right after the deploy.
+  - **Tests:** `engine-check.js` (the pack/open round trip, edited and emptied text, the portrait leaving the JSON),
+    `rules-check.js` (portrait size and type, the index: owner only, its fields, the count), `save-check.js` (the stored documents read
+    with the emulator's owner token: no library text, portrait bytes and back, the list read from the index, rebuilt when missing,
+    and a delete removing the entry).
 - **Portrait (2026-11-22, from a player's review; owner chose "inside the character" over separate storage).** Code: the block
   "portrait" before `rNotes` (`artCard`, `artPick`, `artCrop`, `artEncode`, `artOk`, `artThumb`), actions `artSet artDel`,
   `C.art` in `rSheet`, CSS `.artimg .athumb .artcv`.

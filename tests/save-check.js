@@ -111,6 +111,38 @@ async function until(fn, ms = 15000) { const t = Date.now(); for (;;) { try { co
   const want = hp0 - dealt;
   check('the GM sees the latest hit points', await until(async () => Number((await card.locator('.big').innerText()).trim()) === want, 8000) ? want : (await card.locator('.big').innerText()).trim(), want);
 
+  console.log('How a character is stored (2026-11-22)');
+  /* the stored documents themselves, read past the rules with the emulator's owner token */
+  const DOCS = 'http://127.0.0.1:8080/v1/projects/demo-spheres/databases/(default)/documents/';
+  const raw = async p => { const r = await fetch(DOCS + p, { headers: { Authorization: 'Bearer owner' } }); return r.ok ? (await r.json()).fields : null; };
+  const unz = f => JSON.parse(require('zlib').gunzipSync(Buffer.from(f.z.bytesValue, 'base64')).toString('utf8'));
+  const uid = await pl.evaluate(() => window.SheetCloud.current().uid);
+  const tova = (await pl.evaluate(() => window.SheetCloud.list())).find(x => x.name === 'Tova Rask');
+  const tf = tova && await raw(`users/${uid}/characters/${tova.id}`), tj = tf && unz(tf);
+  const abs = []; (function w(v) { if (Array.isArray(v)) v.forEach(w); else if (v && typeof v === 'object') { if (Array.isArray(v.abilities) && typeof v.sphere === 'string') abs.push(...v.abilities); Object.values(v).forEach(w); } })(tj);
+  check('the account copy leaves library ability text out', abs.length > 0 && abs.some(a => a && typeof a === 'object' && !('text' in a)), true);
+  const opened = tova && await pl.evaluate(id => window.SheetCloud.get(id).then(r => JSON.parse(r.json)), tova.id);
+  const back = []; (function w(v) { if (Array.isArray(v)) v.forEach(w); else if (v && typeof v === 'object') { if (Array.isArray(v.abilities) && typeof v.sphere === 'string') back.push(...v.abilities); Object.values(v).forEach(w); } })(await pl.evaluate(c => window.SheetEngine.sanitize(c), opened));
+  check('…and the sheet opens it whole (the text comes back from the library)', `${back.length === abs.length} ${back.every(a => a && typeof a.text === 'string' && a.text.length > 20)}`, 'true true');
+  /* a portrait: a tiny WebP-shaped picture (RIFF....WEBP) */
+  const PIC = 'data:image/webp;base64,' + Buffer.concat([Buffer.from('RIFF'), Buffer.from([20, 0, 0, 0]), Buffer.from('WEBPVP8 '), Buffer.alloc(12, 7)]).toString('base64');
+  await pl.evaluate(pic => window.SheetCloud.put('artTest', { app: 'spheres-sheet', v: 1, json: JSON.stringify({ app: 'spheres-sheet', id: 'artTest', name: 'Pic', art: { th: pic } }), img: pic, name: 'Pic', summary: '', pic: pic, savedAt: Date.now(), meta: {}, level: 0, parties: [] }), PIC);
+  const af = await raw(`users/${uid}/characters/artTest`);
+  check('the portrait is stored as bytes beside the JSON', `${!!(af && af.img && af.img.bytesValue)} ${af ? 'img' in (unz(af).art || {}) : '?'}`, 'true false');
+  check('reading the character puts the portrait back', await pl.evaluate(() => window.SheetCloud.get('artTest').then(r => JSON.parse(r.json).art.img)), PIC);
+  const idx = async () => { const f = await raw(`users/${uid}/index/chars`); return f && f.chars ? Object.keys(f.chars.mapValue.fields || {}).sort().join(',') : 'none'; };
+  const ids = [tova && tova.id, 'artTest'].sort().join(',');
+  check('the Characters list index holds every character', await until(async () => (await idx()) === ids, 5000) ? ids : await idx(), ids);
+  /* a name changed only in the index shows in the list: the list was read from the index, not the characters */
+  await fetch(DOCS + `users/${uid}/index/chars?updateMask.fieldPaths=chars.artTest.name`, { method: 'PATCH', headers: { Authorization: 'Bearer owner', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fields: { chars: { mapValue: { fields: { artTest: { mapValue: { fields: { name: { stringValue: 'From the index' } } } } } } } } }) });
+  check('the list is read from the index', ((await pl.evaluate(() => window.SheetCloud.list())).find(x => x.id === 'artTest') || {}).name, 'From the index');
+  await fetch(DOCS + `users/${uid}/index/chars`, { method: 'DELETE', headers: { Authorization: 'Bearer owner' } });
+  check('without the index, the list reads the characters', (await pl.evaluate(() => window.SheetCloud.list())).map(x => x.id).sort().join(','), ids);
+  check('…and writes the index again', await until(async () => (await idx()) === ids, 5000) ? ids : await idx(), ids);
+  await pl.evaluate(() => window.SheetCloud.del('artTest'));
+  check('deleting a character takes it out of the index', await until(async () => (await idx()) === (tova && tova.id), 5000) ? 'yes' : await idx(), 'yes');
+
   check('no page errors', errors.length ? errors.join(' | ') : 'none', 'none');
   console.log(`\n${pass} passed, ${fail} failed`);
   await browser.close(); server.close(); process.exit(fail ? 1 : 0);

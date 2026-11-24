@@ -4,20 +4,31 @@ service cloud.firestore {
     // Each player can read and write only their own characters: users/{their uid}/characters/{character id}
     match /users/{uid}/characters/{charId} {
       allow read, delete: if request.auth != null && request.auth.uid == uid;
-      // A character is saved either compressed (z: gzip bytes, about 1 MB) or as plain text (json, older versions).
+      // A character is saved either compressed (z: gzip bytes, about 1 MB) or as plain text (json, older versions),
+      // with its portrait beside it as picture bytes (img, since 2026-11-22).
       allow create, update: if request.auth != null && request.auth.uid == uid
         && ((request.resource.data.z is bytes && request.resource.data.z.size() < 1000000)
-            || (request.resource.data.json is string && request.resource.data.json.size() < 900000));
+            || (request.resource.data.json is string && request.resource.data.json.size() < 900000))
+        && imgOk(request.resource.data);
+    }
+    // The Characters list: one document with a short entry per character (users/{uid}/index/chars). Only its player
+    // reads or writes it; the database's own 1 MB limit bounds its size.
+    match /users/{uid}/index/{doc} {
+      allow read, delete: if request.auth != null && request.auth.uid == uid;
+      allow create, update: if request.auth != null && request.auth.uid == uid && doc == 'chars'
+        && request.resource.data.keys().hasOnly(['v', 'chars', 'updatedAt']) && request.resource.data.chars is map;
     }
 
     function signedIn() { return request.auth != null; }
+    // A portrait stored beside the character: picture bytes of sensible size, or none.
+    function imgOk(d) { return !('img' in d) || (d.img is bytes && d.img.size() < 160000); }
     function sizeOk(d) {
       return (d.z is bytes && d.z.size() < 1000000) || (d.json is string && d.json.size() < 900000);
     }
     // A character copy (share link or a party's full sheet): only these fields, short labels.
     function copyOk(d) {
-      return d.keys().hasOnly(['z', 'enc', 'json', 'owner', 'name', 'summary', 'savedAt', 'updatedAt'])
-        && sizeOk(d)
+      return d.keys().hasOnly(['z', 'enc', 'json', 'img', 'owner', 'name', 'summary', 'savedAt', 'updatedAt'])
+        && sizeOk(d) && imgOk(d)
         && (!('name' in d) || (d.name is string && d.name.size() <= 200))
         && (!('summary' in d) || (d.summary is string && d.summary.size() <= 400));
     }
