@@ -117,6 +117,8 @@ After companion organizing (2026-11-19): `engine-check.js` 337, `check.js` 554 (
 `csp-check.js` and the emulator checks were not run in this session (the database code is unchanged).
 After smaller database copies (2026-11-22): `engine-check.js` 348 (11 new), `check.js` 628, `fuzz-check.js` 29, `talents-check.js` 66,
 `config-check.js` 14, `csp-check.js` 6, `rules-check.js` 113 (16 new), `party-check.js` 38, `save-check.js` 21 (9 new): all passed.
+After the index fix (2026-11-24): `save-check.js` 24 (3 new: an unchanged save leaves the index alone, a rename updates it, a stale
+entry is removed), `engine-check.js` 348, `csp-check.js` 6, `party-check.js` 38 passed; `check.js` 628, `fuzz-check.js` 29 passed.
 After companion files (2026-11-19, later): `engine-check.js` 337, `check.js` 573 (19 new: "Companion files"), `fuzz-check.js` 29 (a hostile
 companion file imported into both examples), `talents-check.js` 66, `config-check.js` 12, `csp-check.js` 6 passed; the emulator checks
 were not run (the database code is unchanged).
@@ -896,6 +898,10 @@ roughly newest first, as it was kept. Anything still open from these entries is 
     for existing players. `put` updates the entry only when a shown field changed or its savedAt is 10 minutes old (`IDX_FRESH`),
     so saves aren't doubled; Home takes this device's own last save time (`syncedAt`) when it's newer, so "not yet in your
     account" stays right. `del` removes the entry. Near 1 MB the oldest thumbnails stay out of the index (`fit`).
+  - **Fix after the merge (2026-11-24, found in review):** entries were compared as JSON text, but the database returns map keys
+    sorted, so they never matched and every save rewrote the index (twice the account-save writes). They now compare by value
+    (`canon`). Also, `get` of a character that isn't there removes its index entry, so one stale entry and one missing entry
+    can't cancel out in the count check and hide a character.
   - **Older open tabs:** a tab still running the previous version shows ability text blank and no portrait for a character the
     new version saved, until it reloads. The text comes back on the next load either way; the portrait can be lost if that old tab
     saves the character, a narrow window right after the deploy.

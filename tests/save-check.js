@@ -137,10 +137,24 @@ async function until(fn, ms = 15000) { const t = Date.now(); for (;;) { try { co
   await fetch(DOCS + `users/${uid}/index/chars?updateMask.fieldPaths=chars.artTest.name`, { method: 'PATCH', headers: { Authorization: 'Bearer owner', 'Content-Type': 'application/json' },
     body: JSON.stringify({ fields: { chars: { mapValue: { fields: { artTest: { mapValue: { fields: { name: { stringValue: 'From the index' } } } } } } } } }) });
   check('the list is read from the index', ((await pl.evaluate(() => window.SheetCloud.list())).find(x => x.id === 'artTest') || {}).name, 'From the index');
+  /* a save that changes nothing the list shows doesn't rewrite the index (the entry's key order from the database differs
+     from the page's, so this compares the values, not the text) */
+  const idxAt = async () => { const r = await fetch(DOCS + `users/${uid}/index/chars`, { headers: { Authorization: 'Bearer owner' } }); return r.ok ? (await r.json()).updateTime : 'none'; };
+  const artRec = (name, at) => ({ app: 'spheres-sheet', v: 1, json: JSON.stringify({ app: 'spheres-sheet', id: 'artTest', name: name, art: { th: PIC } }), img: PIC, name: name, summary: 'Wizard 1', pic: PIC, savedAt: at, meta: { campaign: 'Tuesday', status: 'active', pin: true }, level: 1, parties: [{ pid: 'p1', name: 'Group' }] });
+  await pl.evaluate(r => window.SheetCloud.put('artTest', r), artRec('Pic', Date.now())); await wait(800);
+  await pl.evaluate(() => window.SheetCloud.list()); const u0 = await idxAt();
+  await pl.evaluate(r => window.SheetCloud.put('artTest', r), artRec('Pic', Date.now() + 1000)); await wait(800);
+  check('a save that changes nothing on the list leaves the index alone', (await idxAt()) === u0, true);
+  await pl.evaluate(r => window.SheetCloud.put('artTest', r), artRec('Pic renamed', Date.now() + 2000));
+  check('…a renamed character updates it', !!(await until(async () => (await idxAt()) !== u0, 5000)), true);
   await fetch(DOCS + `users/${uid}/index/chars`, { method: 'DELETE', headers: { Authorization: 'Bearer owner' } });
   check('without the index, the list reads the characters', (await pl.evaluate(() => window.SheetCloud.list())).map(x => x.id).sort().join(','), ids);
   check('…and writes the index again', await until(async () => (await idx()) === ids, 5000) ? ids : await idx(), ids);
   await pl.evaluate(() => window.SheetCloud.del('artTest'));
+  await fetch(DOCS + `users/${uid}/index/chars?updateMask.fieldPaths=chars.ghost`, { method: 'PATCH', headers: { Authorization: 'Bearer owner', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fields: { chars: { mapValue: { fields: { ghost: { mapValue: { fields: { name: { stringValue: 'Gone' } } } } } } } } }) });
+  await pl.evaluate(() => window.SheetCloud.get('ghost'));
+  check('opening a character that isn’t there takes it out of the index', await until(async () => !(await idx()).split(',').includes('ghost'), 5000) ? 'yes' : await idx(), 'yes');
   check('deleting a character takes it out of the index', await until(async () => (await idx()) === (tova && tova.id), 5000) ? 'yes' : await idx(), 'yes');
 
   check('no page errors', errors.length ? errors.join(' | ') : 'none', 'none');
