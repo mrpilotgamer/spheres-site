@@ -423,7 +423,9 @@ if (/^https?:$/.test(location.protocol) && !window.SheetCloud) {
     const rowOf = (id, x) => ({ id: id, name: typeof x.name === "string" ? x.name : "", summary: typeof x.summary === "string" ? x.summary : "", pic: typeof x.pic === "string" ? x.pic : "", savedAt: typeof x.savedAt === "number" ? x.savedAt : 0,
       meta: x.meta && typeof x.meta === "object" && !Array.isArray(x.meta) ? x.meta : {}, level: typeof x.level === "number" ? x.level : 0, parties: Array.isArray(x.parties) ? x.parties : [] });
     const entryOf = x => { const r = rowOf("", x); delete r.id; return r; };
-    const sameEntry = (a, b) => !!a && JSON.stringify(Object.assign({}, a, { savedAt: 0 })) === JSON.stringify(Object.assign({}, b, { savedAt: 0 })) && b.savedAt - (a.savedAt || 0) < IDX_FRESH;
+    /* the database hands maps back with their keys sorted, so entries compare by value (keys in a fixed order), not as text */
+    const canon = v => Array.isArray(v) ? "[" + v.map(canon).join(",") + "]" : v && typeof v === "object" ? "{" + Object.keys(v).sort().map(k => JSON.stringify(k) + ":" + canon(v[k])).join(",") + "}" : JSON.stringify(v === undefined ? null : v);
+    const sameEntry = (a, b) => !!a && canon(Object.assign({}, a, { savedAt: 0 })) === canon(Object.assign({}, b, { savedAt: 0 })) && b.savedAt - (a.savedAt || 0) < IDX_FRESH;
     /* near the database's 1 MB per document, the oldest characters' thumbnails stay out of the index */
     const fit = chars => { let n = JSON.stringify(chars).length; if (n < IDX_MAX) return chars;
       Object.keys(chars).sort((a, b) => (chars[a].savedAt || 0) - (chars[b].savedAt || 0)).forEach(id => { if (n >= IDX_MAX && chars[id].pic) { n -= chars[id].pic.length; chars[id] = Object.assign({}, chars[id], { pic: "" }); } }); return chars; };
@@ -455,7 +457,8 @@ if (/^https?:$/.test(location.protocol) && !window.SheetCloud) {
         return rows;
       },
       /* characters are saved gzip-compressed (field z) when the browser can; older uncompressed saves (field json) still open */
-      get: id => readCopy(ref(id)),
+      /* a character that isn't there any more leaves the index too, so the count check can't be fooled by a stale entry */
+      get: id => readCopy(ref(id)).then(x => { if (!x) idxDel(id); return x; }),
       put: async (id, rec) => {
         const base = Object.assign({}, rec, { updatedAt: F.serverTimestamp() }); delete base.json; delete base.img;
         let p = await packRec(rec, false);
