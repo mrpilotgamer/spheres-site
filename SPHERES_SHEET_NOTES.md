@@ -909,6 +909,16 @@ roughly newest first, as it was kept. Anything still open from these entries is 
     `rules-check.js` (portrait size and type, the index: owner only, its fields, the count), `save-check.js` (the stored documents read
     with the emulator's owner token: no library text, portrait bytes and back, the list read from the index, rebuilt when missing,
     and a delete removing the entry).
+- **Portrait: a larger view (2026-11-25, owner: "start with 1", then a separate picture record).** The portrait on the Play page
+  and the Notes tab is a button (`artZoom`, `.artzoom`): a click or Enter opens it in a dialog titled with the character's name
+  (`artView`, `.artbig`: up to 540 px wide and 72% of the window's height), closed with Close or Escape. Nothing is saved or added to
+  Undo; read-only viewers can open it (`RO_OK.artView`). It's the same 360×480 picture, so it's a little soft when enlarged; the
+  sharper one comes with the picture record below. Tests: 3 in `check.js` (opens with the name, Escape, the keyboard). After it:
+  `engine-check.js` 348, `check.js` 631, `fuzz-check.js` 29 (about 5 minutes on the cloud test machine, not 1), `config-check.js`
+  14 passed.
+  - **Planned next (owner chose this order, 2026-11-25):** the pictures move to their own record, written only when the picture
+    changes, so saves get lighter: the character keeps only the thumbnail. The record holds a sharper 720×960 crop for the card
+    and the large view, with room for the whole uncropped picture later.
 - **Portrait (2026-11-22, from a player's review; owner chose "inside the character" over separate storage).** Code: the block
   "portrait" before `rNotes` (`artCard`, `artPick`, `artCrop`, `artEncode`, `artOk`, `artThumb`), actions `artSet artDel`,
   `C.art` in `rSheet`, CSS `.artimg .athumb .artcv`.
@@ -932,7 +942,7 @@ roughly newest first, as it was kept. Anything still open from these entries is 
     7 in `rules-check.js` (the `pic` field). The arranging checks now expect the Portrait stub. After it: `engine-check.js` 337,
     `check.js` 628, `fuzz-check.js` 29, `talents-check.js` 66, `config-check.js` 14, `csp-check.js` 6, `rules-check.js` 97,
     `party-check.js` 38, `save-check.js` 12 passed.
-  - **Not built:** pictures for companions; the portrait on the printed sheet; a bigger view on click. A party card with a
+  - **Not built:** pictures for companions; the portrait on the printed sheet (a bigger view on click: done 2026-11-25). A party card with a
     thumbnail is covered by the rules check and the Characters list check, not by an end-to-end party test.
 - **Arranging the Play page (2026-11-21, from a player's review; owner: "like the talents and companions organization").**
   Code: the block "arranging the Play page" before `rSheet`; `rSheet` now builds one function per card (`C.hp`, `C.abil`, …)

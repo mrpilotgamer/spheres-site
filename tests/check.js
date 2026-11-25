@@ -1665,7 +1665,15 @@ function check(what, got, want) {
     check('the Notes tab shows it with Replace… and Remove', [await page.locator('img.artimg').count(), await page.locator('[data-a="artSet"]').innerText(), await page.locator('[data-a="artDel"]').count()].join(' · '), '1 · Replace… · 1');
     await go('Play', 'Sheet');
     check('the Play page shows it at the top of the right-hand column', await page.evaluate(() => { const c = document.querySelectorAll('.cols>.col')[1]; const f = c.querySelector(':scope>.pcard'); return f && f.id + ' ' + !!f.querySelector('img.artimg'); }), 'play-art true');
-    check('…with the character’s name in its alt text', await page.locator('#play-art img').getAttribute('alt'), 'Portrait of Painted');
+    check('…with the character’s name in its alt text', await page.locator('#play-art img').getAttribute('alt'), 'Portrait of Painted (show it larger)');
+    const undoTxt = async () => (await page.locator('header [data-a="undo"], #main [data-a="undo"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ').trim(), undo0 = await undoTxt();
+    await page.locator('#play-art [data-a="artView"]').click(); await untilDialog();
+    check('clicking it opens it larger, titled with the name', [await page.locator('.dlg h2').innerText(), await page.locator('.dlg img.artbig').getAttribute('src') === A.img, (await page.locator('.dlg img.artbig').boundingBox()).width > 240].join(' · '), 'Painted · true · true');
+    await page.keyboard.press('Escape'); await untilNoDialog();
+    check('…Escape closes it, and nothing was saved or undoable', [await page.locator('.dlg').count(), (await undoTxt()) === undo0].join(' · '), '0 · true');
+    await page.locator('#play-art [data-a="artView"]').focus(); await page.keyboard.press('Enter'); await untilDialog();
+    check('…and it opens from the keyboard too', await page.locator('.dlg img.artbig').count(), '1');
+    await page.locator('.dlg button', { hasText: 'Close' }).click(); await untilNoDialog();
     await home();
     check('the Characters list shows the round thumbnail', await page.locator('.charrow img.athumb').count(), '1');
     await page.locator('.charrow [data-a="openChar"]').first().click(); await settle(); await go('Character', 'Notes');

@@ -134,7 +134,10 @@ details.arch{margin:4px 0 4px 10px}
 .phead{display:inline-flex;flex-wrap:wrap;align-items:baseline;gap:6px;min-width:0} .phead .pctl{gap:4px}
 .pfold{padding:0 6px;min-height:0;line-height:1.4;font-size:12px}
 .pcard.folded>:not(.cardhead){display:none}
-.artimg{display:block;width:100%;max-width:240px;aspect-ratio:3/4;object-fit:cover;margin:0 auto;border-radius:8px;border:1px solid var(--rule)} .artimg.small{max-width:150px;margin:0}
+.artimg{display:block;width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:8px;border:1px solid var(--rule)}
+.artzoom{display:block;width:100%;max-width:240px;margin:0 auto;padding:0;border:0;background:none;cursor:zoom-in;border-radius:8px} .artzoom.small{max-width:150px;margin:0}
+.artzoom:hover .artimg{border-color:var(--gold)} .artzoom:focus-visible{outline:2px solid var(--gold);outline-offset:3px}
+.artbig{display:block;width:min(100%,540px,calc(72vh * .75));height:auto;aspect-ratio:3/4;object-fit:cover;margin:0 auto;border-radius:8px}
 .athumb{width:44px;height:44px;border-radius:50%;object-fit:cover;flex:none;border:1px solid var(--rule)} .athumb.sm{width:28px;height:28px} .athumb.big{width:72px;height:72px}
 .artcv{display:block;width:min(270px,100%);height:auto;aspect-ratio:3/4;margin:0 auto 10px;border-radius:8px;border:1px solid var(--rule2);cursor:grab;touch-action:none;background:var(--soft)} .pcard.folded>.cardhead{margin-bottom:0}
 .parr{justify-content:flex-end;margin:var(--gap) 0 calc(-1*var(--gap) + 4px)} .parrbar{margin-top:var(--gap)}
@@ -2336,7 +2339,7 @@ function publishCopies(c){ if(!CL.user||!window.SheetCloud||!window.SheetCloud.s
       pubWarn('m'+lk,'Couldn’t update '+(c.name||'this character')+' in the party “'+p.name+'” ('+(e&&e.code||'offline')+'). The character itself is saved.'); throw e; }); PUB.mp[lk].catch(function(){}); });
     pubThrottle('sp:'+lk,30000,function(){ (PUB.mp[lk]||Promise.resolve()).then(function(){ return window.SheetCloud.sheetPut(p.pid,key,R()); }).catch(function(){}); }); }); }
 /* ---------- read-only viewer (a share link, or a GM opening a party member) ---------- */
-var RO_OK={why:1,sphToggle:1,allSk:1,fhelp:1,roExit:1,signIn:1,roCopy:1,cFold:1,cFoldAll:1,cFilterOff:1,cExport:1,cMore:1,pFold:1};
+var RO_OK={why:1,sphToggle:1,allSk:1,fhelp:1,roExit:1,signIn:1,roCopy:1,cFold:1,cFoldAll:1,cFilterOff:1,cExport:1,cMore:1,pFold:1,artView:1};
 function roOpen(c,info){ var c1=safeChar(c); if(!c1){ alertBox(DAMAGED); return; } histNow(); if(pushT&&!UI.ro) cloudPush(); if(!UI.ro) UI.roPrev={ch:ch,hist:hist,tab:UI.tab,home:UI.home}; ch=c1; hist=[]; redoH=[]; UI.ro=info; UI.home=false; UI.tab='sheet'; paint(); window.scrollTo(0,0); }
 function roExit(){ var p=UI.roPrev||{}; UI.ro=null; UI.roPrev=null; ch=p.ch||null; hist=p.hist||[]; redoH=[]; UI.tab=p.tab||'sheet'; UI.home=!ch||!!p.home; paint(); window.scrollTo(0,0); }
 /* nothing in a viewed sheet can be changed: fields off, buttons other than looking (breakdowns, folding) off */
@@ -2703,7 +2706,7 @@ function rSheet(){
       return '<div style="padding:6px 0;border-bottom:1px solid var(--soft)"><b>'+esc(x.c.name||'Unnamed')+'</b> <span class="note">'+esc(CKN[x.c.kind]||'')+'</span>'+(x.c.shape&&compStats(x.c).form?' <span class="tag gold">In form: '+esc(compStats(x.c).form.name)+'</span>':'')+(reanOn(x.c)&&x.c.rean.left!=null?' <span class="tag">'+esc(shapeLeft(x.c.rean))+' left</span>':'')+compSummary(x.c,x.i,true)+'</div>'; }).join('')+'</section>';
   return h; };
   C.pers=persStrip; C.seq=seqCard;
-  C.art=function(){ var A=ch.art||{}; return artOk(A.img,ART_MAX)?'<section class="card"><div class="cardhead"><h2>Portrait</h2><button class="link" data-tab="notes">Change</button></div><img class="artimg" src="'+esc(A.img)+'" alt="Portrait of '+esc(ch.name||'this character')+'"></section>':''; };
+  C.art=function(){ var A=ch.art||{}; return artOk(A.img,ART_MAX)?'<section class="card"><div class="cardhead"><h2>Portrait</h2><button class="link" data-tab="notes">Change</button></div>'+artZoom(A.img,'')+'</section>':''; };
   /* toggles */
   C.buffs=function(){ var h='';
   h+='<section class="card"><div class="cardhead"><h2>Buffs, Stances & Conditions</h2><button class="link" data-tab="mods">Edit</button></div>';
@@ -5137,6 +5140,8 @@ var ART_W=360, ART_H=480, ART_T=96, ART_MAX=200000, ART_TMAX=8000;
 var ART_RE=/^data:image\/(webp|jpeg|png);base64,[A-Za-z0-9+\/]+={0,2}$/;
 function artOk(s,max){ return typeof s==='string'&&s.length<=max&&ART_RE.test(s); }
 function artThumb(src,cls,label){ return artOk(src,ART_TMAX)?'<img class="athumb'+(cls?' '+cls:'')+'" src="'+esc(src)+'" alt="'+esc(label||'')+'"'+(label?'':' aria-hidden="true"')+'>':''; }
+/* the portrait as a button: a click (or Enter) opens it larger (artView) */
+function artZoom(src,cls){ return '<button type="button" class="artzoom'+(cls?' '+cls:'')+'" data-a="artView" title="Show it larger"><img class="artimg" src="'+esc(src)+'" alt="Portrait of '+esc(ch.name||'this character')+' (show it larger)"></button>'; }
 function artEncode(cv,max){ var q=[0.85,0.75,0.6,0.45], out='';
   for(var i=0;i<q.length;i++){ out=cv.toDataURL('image/webp',q[i]); if(out.indexOf('data:image/webp')!==0) out=cv.toDataURL('image/jpeg',q[i]); if(out.length<=max) return out; }
   return out.length<=max?out:''; }
@@ -5166,7 +5171,7 @@ function artPick(){ return new Promise(function(resolve){ var inp=document.creat
       .then(function(im){ URL.revokeObjectURL(url); if(!im||!im.naturalWidth){ alertBox('That file couldn’t be read as a picture. PNG, JPG, WebP and GIF work.'); return null; } return artCrop(im); }); }); }
 function artCard(){ var A=ch.art||{};
   return '<section class="card"><div class="cardhead"><h2>Portrait</h2>'+(artOk(A.img,ART_MAX)?'<span class="row" style="margin:0"><button class="mini" data-a="artSet">Replace…</button><button class="mini" data-a="artDel">Remove</button></span>':'')+'</div>'+
-    (artOk(A.img,ART_MAX)?'<div class="row" style="align-items:flex-start;gap:14px"><img class="artimg small" src="'+esc(A.img)+'" alt="Portrait of '+esc(ch.name||'this character')+'">'+artThumb(A.th,'big','')+'</div>'
+    (artOk(A.img,ART_MAX)?'<div class="row" style="align-items:flex-start;gap:14px">'+artZoom(A.img,'small')+artThumb(A.th,'big','')+'</div>'
       :'<p class="note">A picture of your character: on the Play page (move or hide it with Arrange there), on party cards and in your Characters list.</p><button data-a="artSet">Add a picture…</button>')+
     '<p class="note" style="margin-bottom:0">PNG, JPG, WebP or GIF (an animated one keeps its first frame). It’s shrunk on this device and saved inside the character, so share links, parties and exported files carry it.</p></section>'; }
 function rNotes(){
@@ -5475,6 +5480,8 @@ var A={
   cFold:function(el){ var id=el.dataset.id; if(!(ch.companions||[]).some(function(c){ return c.id===id; })) return 'skip'; cmpSetFold([id],!own(cmpFoldMap(),id)); return 'ui'; },
   cFoldAll:function(el){ cmpSetFold((ch.companions||[]).filter(function(c){ return cmpShown(c)&&cmpMatch(c); }).map(function(c){ return c.id; }),el.dataset.v==='1'); return 'ui'; },
   /* portrait (artPick, artCrop) */
+  artView:function(){ var A=ch.art||{}; if(!artOk(A.img,ART_MAX)) return 'skip';
+    modal({title:ch.name||'Portrait',html:'<img class="artbig" src="'+esc(A.img)+'" alt="Portrait of '+esc(ch.name||'this character')+'">',buttons:[{label:'Close',value:null,primary:true}]}); return 'skip'; },
   artSet:function(){ return artPick().then(function(r){ if(!r) return null; return function(){ ch.art={img:r.img,th:r.th}; UI.toast='Portrait saved'; }; }); },
   artDel:function(){ if(!artOk((ch.art||{}).img,ART_MAX)) return 'skip'; ch.art={img:'',th:''}; UI.toast='Portrait removed'; UI.focusSel='[data-a="artSet"]'; },
   /* arranging the Play page (playLay, playSet) */
