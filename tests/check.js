@@ -1634,60 +1634,99 @@ function check(what, got, want) {
     await pcx.close();
   }
 
-  console.log('Portrait: Notes tab, Play card, Characters list');
+  console.log('Portrait: Notes tab, Play card, picture store, large view, files, copies');
   {
-    const ID = 'zz-art', art = () => page.evaluate(id => JSON.parse(localStorage.getItem('spheres-sheet-v1:' + id)).art, ID);
-    const put = async extra => { await page.evaluate(([id, extra]) => { localStorage.setItem('spheres-sheet-v1:' + id, JSON.stringify(Object.assign({ app: 'spheres-sheet', v: 1, id, name: 'Painted',
+    /* each loaded character gets its own id: reloading saves the open one, which would overwrite one with the same id */
+    const ID = 'zz-art'; let CUR = ID, nPut = 0; const art = (id = CUR) => page.evaluate(id => (JSON.parse(localStorage.getItem('spheres-sheet-v1:' + id)) || {}).art, id), NONE = '{"th":"","p":"","old":[]}';
+    const put = async (extra, id) => { CUR = id || ID + '-' + (++nPut); await page.evaluate(([id, extra]) => { localStorage.setItem('spheres-sheet-v1:' + id, JSON.stringify(Object.assign({ app: 'spheres-sheet', v: 1, id, name: 'Painted',
       classes: { c1: { name: 'Hero', hd: 8, bab: '3/4', good: ['will'], skills: 4, talents: 'none' } }, levels: [{ cls: 'c1', hp: 5, picks: [] }] }, extra)));
-      localStorage.setItem('spheres-sheet-v1:last', JSON.stringify(id)); }, [ID, extra]); await page.reload(); await settle(); };
+      localStorage.setItem('spheres-sheet-v1:last', JSON.stringify(id)); }, [CUR, extra]); await page.reload(); await settle(); };
+    /* the picture store on this device (IndexedDB 'spheres-pics'), and what's waiting for an account */
+    const store = p => page.evaluate(p => new Promise(ok => { const r = indexedDB.open('spheres-pics', 1); r.onupgradeneeded = () => r.result.createObjectStore('pics');
+      r.onsuccess = () => { const q = r.result.transaction('pics').objectStore('pics').get(p); q.onsuccess = () => ok(q.result || null); q.onerror = () => ok(null); }; r.onerror = () => ok(null); }), p);
+    const waiting = k => page.evaluate(k => Object.keys(JSON.parse(localStorage.getItem(k)) || {}).join(','), k);
+    const dims = src => page.evaluate(src => new Promise(ok => { const im = new Image(); im.onload = () => ok(im.naturalWidth + '×' + im.naturalHeight); im.onerror = () => ok('none'); im.src = src; }), src);
     /* a 600×400 test picture: red left half, blue right half */
     const png = Buffer.from((await page.evaluate(() => { const c = document.createElement('canvas'); c.width = 600; c.height = 400; const g = c.getContext('2d'); g.fillStyle = '#d00'; g.fillRect(0, 0, 300, 400); g.fillStyle = '#00d'; g.fillRect(300, 0, 300, 400); return c.toDataURL('image/png'); })).split(',')[1], 'base64');
     const pick = async files => { const fc = page.waitForEvent('filechooser'); await page.locator('[data-a="artSet"]').first().click(); await (await fc).setFiles(files); };
-    await put({});
+    const place = async () => { await pick({ name: 'hero.png', mimeType: 'image/png', buffer: png }); await until('the placing dialog', () => !!document.querySelector('#artCv')); await page.locator('.dlg button.primary').click(); await untilNoDialog(); await settle(); };
+    await put({}, ID);
     await go('Play', 'Sheet');
-    check('an old save has no portrait and no Portrait card', [JSON.stringify(await art()), await page.locator('#play-art').count()].join(' · '), '{"img":"","th":""} · 0');
+    check('an old save has no portrait and no Portrait card', [JSON.stringify(await art()), await page.locator('#play-art').count()].join(' · '), NONE + ' · 0');
     await go('Character', 'Notes');
     check('the Notes tab offers “Add a picture…”', await page.locator('[data-a="artSet"]').innerText(), 'Add a picture…');
     await pick({ name: 'notes.txt', mimeType: 'image/png', buffer: Buffer.from('not a picture') }); await untilDialog();
-    check('a file that isn’t a picture says so, and nothing is saved', [/couldn’t be read as a picture/.test(await page.locator('.dlg').innerText()), JSON.stringify(await art())].join(' · '), 'true · {"img":"","th":""}');
+    check('a file that isn’t a picture says so, and nothing is saved', [/couldn’t be read as a picture/.test(await page.locator('.dlg').innerText()), JSON.stringify(await art())].join(' · '), 'true · ' + NONE);
     await page.locator('.dlg button').first().click(); await untilNoDialog();
     await pick({ name: 'hero.png', mimeType: 'image/png', buffer: png }); await until('the placing dialog', () => !!document.querySelector('#artCv'));
     await page.locator('.dlg button', { hasText: 'Cancel' }).click(); await untilNoDialog();
-    check('Cancel in the placing dialog saves nothing', JSON.stringify(await art()), '{"img":"","th":""}');
-    await pick({ name: 'hero.png', mimeType: 'image/png', buffer: png }); await until('the placing dialog', () => !!document.querySelector('#artCv'));
-    await page.locator('.dlg button.primary').click(); await untilNoDialog(); await settle();
-    const A = await art();
-    check('saved: a 3:4 picture and a thumbnail, small enough', [/^data:image\/(webp|jpeg);base64,/.test(A.img), A.img.length < 200000, /^data:image\/(webp|jpeg);base64,/.test(A.th), A.th.length < 8000].join(' '), 'true true true true');
+    check('Cancel in the placing dialog saves nothing', JSON.stringify(await art()), NONE);
+    await place();
+    const A = await art(), S = await store(A.p);
+    check('the character keeps only the thumbnail and the picture’s id', [Object.keys(A).join(','), /^[A-Za-z0-9]{16,40}$/.test(A.p), /^data:image\/(webp|jpeg);base64,/.test(A.th) && A.th.length < 8000, (await page.evaluate(id => localStorage.getItem('spheres-sheet-v1:' + id).length, ID)) < 20000].join(' '), 'th,p,old true true true');
+    check('the picture store on this device has the card, the sharp crop and the whole picture', [Object.keys(S || {}).sort().join(','), await dims(S.c), await dims(S.b), await dims(S.f)].join(' · '), 'b,c,f · 360×480 · 720×960 · 600×400');
+    check('…waiting to go to the account once signed in', await waiting('spheres-pics-up'), A.p);
     /* zoom 1, centred: the 3:4 frame of a 3:2 picture shows its middle, red on the left and blue on the right */
     const px = await page.evaluate(src => new Promise(ok => { const im = new Image(); im.onload = () => { const c = document.createElement('canvas'); c.width = im.width; c.height = im.height; const g = c.getContext('2d'); g.drawImage(im, 0, 0);
-      const at = (x, y) => { const d = g.getImageData(x, y, 1, 1).data; return d[0] > 150 && d[2] < 80 ? 'red' : d[2] > 150 && d[0] < 80 ? 'blue' : 'other'; }; ok([im.width + '×' + im.height, at(40, 240), at(320, 240)].join(' ')); }; im.src = src; }), A.img);
-    check('it’s 360×480 and shows the middle of the picture (red left, blue right)', px, '360×480 red blue');
+      const at = (x, y) => { const d = g.getImageData(x, y, 1, 1).data; return d[0] > 150 && d[2] < 80 ? 'red' : d[2] > 150 && d[0] < 80 ? 'blue' : 'other'; }; ok([at(40, 240), at(320, 240)].join(' ')); }; im.src = src; }), S.c);
+    check('the card shows the middle of the picture (red left, blue right)', px, 'red blue');
     check('the Notes tab shows it with Replace… and Remove', [await page.locator('img.artimg').count(), await page.locator('[data-a="artSet"]').innerText(), await page.locator('[data-a="artDel"]').count()].join(' · '), '1 · Replace… · 1');
-    await go('Play', 'Sheet');
-    check('the Play page shows it at the top of the right-hand column', await page.evaluate(() => { const c = document.querySelectorAll('.cols>.col')[1]; const f = c.querySelector(':scope>.pcard'); return f && f.id + ' ' + !!f.querySelector('img.artimg'); }), 'play-art true');
+    await page.reload(); await settle(); await go('Play', 'Sheet'); await until('the card from the picture store', () => { const i = document.querySelector('#play-art img'); return !!i && !i.classList.contains('wait'); });
+    check('after a reload the Play page draws it from this device, top of the right-hand column', [await page.locator('#play-art img').getAttribute('src') === S.c, await page.evaluate(() => document.querySelectorAll('.cols>.col')[1].querySelector(':scope>.pcard').id)].join(' · '), 'true · play-art');
     check('…with the character’s name in its alt text', await page.locator('#play-art img').getAttribute('alt'), 'Portrait of Painted (show it larger)');
     const undoTxt = async () => (await page.locator('header [data-a="undo"], #main [data-a="undo"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ').trim(), undo0 = await undoTxt();
-    await page.locator('#play-art [data-a="artView"]').click(); await untilDialog();
-    check('clicking it opens it larger, titled with the name', [await page.locator('.dlg h2').innerText(), await page.locator('.dlg img.artbig').getAttribute('src') === A.img, (await page.locator('.dlg img.artbig').boundingBox()).width > 240].join(' · '), 'Painted · true · true');
+    await page.locator('#play-art [data-a="artView"]').click(); await untilDialog(); await until('the sharp crop', () => { const i = document.querySelector('#artBig'); return !!i && i.naturalWidth === 720; });
+    check('clicking it opens the sharp crop, titled with the name', [await page.locator('.dlg h2').innerText(), await dims(await page.locator('#artBig').getAttribute('src')), (await page.locator('#artBig').boundingBox()).width > 240].join(' · '), 'Painted · 720×960 · true');
+    await until('the Whole picture button', () => { const b = document.querySelector('#artWhole'); return !!b && !b.hidden; });
+    await page.locator('#artWhole').click();
+    check('“Whole picture” shows the uncropped picture, and the button switches back', [await dims(await page.locator('#artBig').getAttribute('src')), await page.locator('#artWhole').innerText()].join(' · '), '600×400 · Portrait crop');
     await page.keyboard.press('Escape'); await untilNoDialog();
     check('…Escape closes it, and nothing was saved or undoable', [await page.locator('.dlg').count(), (await undoTxt()) === undo0].join(' · '), '0 · true');
     await page.locator('#play-art [data-a="artView"]').focus(); await page.keyboard.press('Enter'); await untilDialog();
     check('…and it opens from the keyboard too', await page.locator('.dlg img.artbig').count(), '1');
     await page.locator('.dlg button', { hasText: 'Close' }).click(); await untilNoDialog();
+    /* a file carries the parts; loading one puts them in the store under a new id */
+    await go('Advanced', 'Save & Print');
+    const dl = page.waitForEvent('download'); await page.locator('[data-a="exportJson"]').click(); const file = JSON.parse(fs.readFileSync(await (await dl).path(), 'utf8'));
+    check('Export carries the picture inside the file, without the store’s id', [Object.keys(file.art.pics).sort().join(','), file.art.pics.c === S.c, 'p' in file.art].join(' · '), 'b,c,f · true · false');
     await home();
     check('the Characters list shows the round thumbnail', await page.locator('.charrow img.athumb').count(), '1');
     await page.locator('.charrow [data-a="openChar"]').first().click(); await settle(); await go('Character', 'Notes');
+    /* Replace and Remove keep the old picture for Undo; it goes the next time the character is opened */
+    await place(); const A2 = await art();
+    check('Replace gives the new picture its own id and keeps the old one for Undo', [A2.p !== A.p, A2.old.join(','), !!(await store(A.p))].join(' · '), 'true · ' + A.p + ' · true');
+    await page.locator('[data-a="undo"]').first().click(); await settle();
+    check('…Undo brings the old one back', (await art()).p, A.p);
     await page.locator('[data-a="artDel"]').click(); await settle();
-    check('Remove takes it away (and says so with an Undo)', [JSON.stringify(await art()), /Portrait removed/.test(await page.locator('#toast').innerText())].join(' · '), '{"img":"","th":""} · true');
+    check('Remove takes it away (and says so with an Undo)', [JSON.stringify(await art()), /Portrait removed/.test(await page.locator('#toast').innerText())].join(' · '), '{"th":"","p":"","old":["' + A.p + '"]} · true');
     await page.locator('#toast button', { hasText: 'Undo' }).click(); await settle();
-    check('…Undo brings it back', (await art()).img === A.img, true);
+    check('…Undo brings it back', (await art()).p, A.p);
+    await place(); const A3 = await art(); await page.reload(); await settle();
+    check('opened again later, the replaced picture is dropped from this device (and from the account once signed in)', [(await art()).old.length, (await store(A.p)) === null, (await waiting('spheres-pics-del')).split(',').includes(A.p), !!(await store(A3.p))].join(' · '), '0 · true · true · true');
+    /* Duplicate makes a separate picture, so deleting one character never takes the other's */
+    await home(); await page.locator('.charrow [data-a="dupChar"]').first().click(); await untilDialog(); await page.locator('.dlg button.primary').click(); await untilNoDialog();
+    await until('the copy', () => Object.keys(localStorage).filter(k => /^spheres-sheet-v1:/.test(k) && !/:(last|tab)$/.test(k)).length >= 2);
+    const dupId = await page.evaluate(id => Object.keys(localStorage).filter(k => /^spheres-sheet-v1:/.test(k) && !/:(last|tab)$/.test(k)).map(k => k.split(':')[1]).find(k => k !== id && JSON.parse(localStorage.getItem('spheres-sheet-v1:' + k)).name === 'Painted (copy)'), ID);
+    const D2 = await art(dupId);
+    check('Duplicate gets its own copy of the picture', [!!D2.p && D2.p !== A3.p, Object.keys((await store(D2.p)) || {}).sort().join(',')].join(' · '), 'true · b,c,f');
+    await page.locator('.charrow', { hasText: 'Painted (copy)' }).locator('[data-a="removeChar"]').click(); await untilDialog(); await page.locator('.dlg button.danger, .dlg button.primary').last().click(); await untilNoDialog(); await settle();
+    check('deleting the copy drops its picture and leaves the original’s', [(await store(D2.p)) === null, !!(await store(A3.p))].join(' · '), 'true · true');
+    /* older saves (the card inside the character) and files (the parts inside) move into the store when opened */
+    await put({ art: { img: S.c, th: A.th } }); await settle();
+    const L = await art();
+    check('an older save’s picture moves into the store when it’s opened', [Object.keys(L).join(','), !!L.p, ((await store(L.p)) || {}).c === S.c].join(' · '), 'th,p,old · true · true');
+    await put({ art: { pics: file.art.pics, th: A.th } }); await settle();
+    const F2 = await art();
+    check('a file’s picture does too, all three parts', [!!F2.p, Object.keys((await store(F2.p)) || {}).sort().join(',')].join(' · '), 'true · b,c,f');
     /* bad pictures in a file are dropped, never drawn */
     await put({ art: { img: 'javascript:alert(1)', th: A.th } }); await go('Play', 'Sheet');
-    check('a portrait that isn’t a plain picture is dropped on loading', [JSON.stringify(await art()), await page.locator('#play-art').count()].join(' · '), '{"img":"","th":""} · 0');
+    check('a portrait that isn’t a plain picture is dropped on loading', [JSON.stringify(await art()), await page.locator('#play-art').count()].join(' · '), NONE + ' · 0');
     await put({ art: { img: 'data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=', th: 'data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=' } }); await go('Play', 'Sheet');
-    check('…so is an SVG one (it could carry script)', JSON.stringify(await art()), '{"img":"","th":""}');
+    check('…so is an SVG one (it could carry script)', JSON.stringify(await art()), NONE);
     await put({ art: { img: 'data:image/png;base64,' + 'A'.repeat(250000), th: A.th } }); await go('Play', 'Sheet');
-    check('…and one bigger than the limit', JSON.stringify(await art()), '{"img":"","th":""}');
+    check('…and one bigger than the limit', JSON.stringify(await art()), NONE);
+    await put({ art: { p: '../users/x', th: A.th } }); await go('Play', 'Sheet');
+    check('…and a picture id that isn’t one', JSON.stringify(await art()), NONE);
   }
 
   console.log('Times taken on tradition talents; mass level-up');

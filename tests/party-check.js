@@ -64,6 +64,21 @@ async function until(fn, ms = 15000) { const t = Date.now(); for (;;) { try { co
   check('the player sees “Parties you’re in”', !!(await until(() => pl.locator('section', { hasText: 'Parties you’re in' }).locator('[data-a="openChar"]', { hasText: 'Tova Rask' }).count())), 'true');
   await pl.locator('section', { hasText: 'Parties you’re in' }).locator('[data-a="openChar"]').first().click(); await wait(400);
 
+  /* ---------- a portrait: kept in the account as its own documents (pics/<id>-c, -b, -f), read by the GM and share links ---------- */
+  console.log('Portrait');
+  const png = Buffer.from((await pl.evaluate(() => { const c = document.createElement('canvas'); c.width = 600; c.height = 400; const g = c.getContext('2d'); g.fillStyle = '#d00'; g.fillRect(0, 0, 300, 400); g.fillStyle = '#00d'; g.fillRect(300, 0, 300, 400); return c.toDataURL('image/png'); })).split(',')[1], 'base64');
+  await go(pl, 'Character', 'Notes'); const fc = pl.waitForEvent('filechooser'); await pl.click('[data-a="artSet"]'); await (await fc).setFiles({ name: 'tova.png', mimeType: 'image/png', buffer: png });
+  await until(() => pl.locator('#artCv').count()); await dlgBtn(pl, 'Use this picture');
+  const picId = await until(() => pl.evaluate(() => { const id = JSON.parse(localStorage.getItem('spheres-sheet-v1:last')); return ((JSON.parse(localStorage.getItem('spheres-sheet-v1:' + id)) || {}).art || {}).p || null; }));
+  const parts = () => pl.evaluate(p => Promise.all(['c', 'b', 'f'].map(k => window.SheetCloud.picGet(p + '-' + k).then(u => u ? k : '')).concat([Promise.resolve('')])).then(L => L.join('')), picId);
+  check('the picture reaches the account as three parts', await until(async () => (await parts()) === 'cbf', 15000) ? 'cbf' : await parts(), 'cbf');
+  check('…and nothing is left waiting to upload', await until(() => pl.evaluate(() => !Object.keys(JSON.parse(localStorage.getItem('spheres-pics-up')) || {}).length), 10000) ? 'none' : 'some', 'none');
+  /* the character itself saves to the account a moment later */
+  const acctGet = () => pl.evaluate(() => window.SheetCloud.get(JSON.parse(localStorage.getItem('spheres-sheet-v1:last'))).then(r => ({ json: r.json, img: 'img' in r })));
+  await until(async () => (await acctGet()).json.includes(picId), 15000); const acct = await acctGet();
+  check('the account copy of the character holds the id and the thumbnail, not the picture', [JSON.parse(acct.json).art.p === picId, !/"img"/.test(acct.json), acct.json.length < 60000].join(' · '), 'true · true · true');
+  await go(pl, 'Play', 'Sheet');
+
   /* ---------- the GM's live dashboard ---------- */
   console.log('Dashboard');
   await gm.click('[data-a="partyOpen"]');
@@ -76,15 +91,24 @@ async function until(fn, ms = 15000) { const t = Date.now(); for (;;) { try { co
   check('damage shows up live', await until(async () => (await card.locator('.big').innerText()).trim() === '168', 10000) ? '168' : (await card.locator('.big').innerText()), '168');
   if (SHOTS) { await wait(500); await gm.screenshot({ path: SHOTS + '/gm-dashboard.png', fullPage: true }); }
   check('a condition shows up live', !!(await until(() => card.locator('.pcond', { hasText: 'Shaken' }).count(), 10000)), 'true');
+  check('the party card shows the portrait’s thumbnail', !!(await until(() => card.locator('img.athumb').count(), 10000)), 'true');
 
   /* ---------- the GM opens the sheet read-only ---------- */
   console.log('Read-only sheet (GM)');
+  /* the party's copy of the sheet goes out at most every 30 s: wait for the one that knows the portrait */
+  const where = await pl.evaluate(() => { const id = JSON.parse(localStorage.getItem('spheres-sheet-v1:last')), c = JSON.parse(localStorage.getItem('spheres-sheet-v1:' + id)); return { pid: c.parties[0].pid, key: window.SheetCloud.current().uid + '_' + id }; });
+  await until(() => gm.evaluate(([w, p]) => window.SheetCloud.sheetGet(w.pid, w.key).then(r => !!r && r.json.includes(p)), [where, picId]), 45000);
   await card.locator('[data-a="partyView"]').click();
   check('the sheet opens read-only', !!(await until(() => gm.locator('.tag', { hasText: 'Read-only' }).count())), 'true');
   check('it shows Tova', (await gm.locator('#cname').innerText()).trim(), 'Tova Rask');
   check('fields are locked', await gm.locator('#main input:not([disabled])').count(), '0');
   check('no Level up or Undo', await gm.locator('[data-a="levelUp"], [data-a="undo"]').count(), '0');
   check('breakdowns still open', await gm.locator('#main [data-a="why"]:not([disabled])').count() > 0, 'true');
+  const cardLoaded = p => until(() => p.evaluate(() => { const i = document.querySelector('#play-art img'); return !!i && !i.classList.contains('wait') && i.naturalWidth === 360; }), 15000);
+  check('the GM sees the portrait, read from the account', !!(await cardLoaded(gm)), 'true');
+  await gm.click('#play-art [data-a="artView"]');
+  check('…and its large view gets the sharp crop', !!(await until(() => gm.evaluate(() => { const i = document.querySelector('#artBig'); return !!i && i.naturalWidth === 720; }), 15000)), 'true');
+  await gm.keyboard.press('Escape');
   if (SHOTS) await gm.screenshot({ path: SHOTS + '/gm-readonly.png' });
   await gm.click('[data-a="roExit"]');
   check('back to the party', !!(await until(() => gm.locator('.pcard', { hasText: 'Tova Rask' }).count())), 'true');
@@ -99,7 +123,10 @@ async function until(fn, ms = 15000) { const t = Date.now(); for (;;) { try { co
   const anon = await user('anon'); await anon.goto(shareLink);
   check('the share link opens without signing in', !!(await until(() => anon.locator('.tag', { hasText: 'Read-only' }).count(), 15000)), 'true');
   check('it shows Tova', (await anon.locator('#cname').innerText()).trim(), 'Tova Rask');
+  check('the share link shows the portrait, signed out', !!(await cardLoaded(anon)), 'true');
   check('the viewer keeps nothing on that device', await anon.evaluate(() => Object.keys(localStorage).filter(k => k.startsWith('spheres-sheet-v1:')).length), '0');
+  check('…not the picture either', await anon.evaluate(() => new Promise(ok => { const r = indexedDB.open('spheres-pics', 1); r.onupgradeneeded = () => r.result.createObjectStore('pics');
+    r.onsuccess = () => { const q = r.result.transaction('pics').objectStore('pics').count(); q.onsuccess = () => ok(q.result); }; r.onerror = () => ok(-1); })), '0');
   const shareId = shareLink.match(/share=([A-Za-z0-9_]+)/)[1];
   const copy = await anon.evaluate(id => window.SheetCloud.shareGet(id).then(r => r.json), shareId);
   const inviteCode = decodeURIComponent(invite.match(/code=([^&]+)/)[1]);
@@ -151,6 +178,7 @@ async function until(fn, ms = 15000) { const t = Date.now(); for (;;) { try { co
   await pl.click('[data-a="home"]'); await until(() => pl.locator('[data-a="removeChar"]').count());
   await pl.locator('[data-a="removeChar"]').first().click(); await dlgBtn(pl, 'Delete');
   check('deleting the character stops its share link', !!(await until(() => anon.evaluate(id => window.SheetCloud.shareGet(id).then(r => !r), share2), 12000)), 'true');
+  check('…and takes its portrait out of the account', !!(await until(() => anon.evaluate(p => Promise.all(['c', 'b', 'f'].map(k => window.SheetCloud.picGet(p + '-' + k))).then(L => L.every(u => !u)), picId), 12000)), 'true');
   await gm.locator('[data-a="partyOpen"]').first().click().catch(() => {});
   check('…and takes it off the GM’s dashboard', await until(async () => (await gm.locator('.pcard').count()) === 0 && (await gm.locator('h2', { hasText: 'Tuesday group' }).count()) > 0, 12000) ? 'gone' : 'still there', 'gone');
 

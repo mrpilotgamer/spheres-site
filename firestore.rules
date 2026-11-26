@@ -64,6 +64,26 @@ service cloud.firestore {
       allow delete: if signedIn() && resource.data.owner == request.auth.uid;
     }
 
+    // Portraits (2026-11-25): one picture per document, pics/<picture id>-<part>: c the card, b the sharp crop, f the whole
+    // picture. Anyone with the id can read one (like a share link): the id travels only inside the character, so only people
+    // who can see the character have it. Nobody can list them. Only the player who made a picture writes or deletes it, and
+    // its card is made first: the other parts can only be added by the card's owner, so nobody else can slip a picture in.
+    function picOk(d, id) {
+      return d.keys().hasOnly(['owner', 'pic', 'updatedAt']) && d.owner == request.auth.uid && d.pic is bytes
+        && ((id.matches('.*-c') && d.pic.size() < 160000)
+          || (id.matches('.*-b') && d.pic.size() < 460000)
+          || (id.matches('.*-f') && d.pic.size() < 960000));
+    }
+    match /pics/{id} {
+      allow get: if true;
+      allow list: if false;
+      allow create: if signedIn() && id.matches('[A-Za-z0-9]{16,40}-[cbf]') && picOk(request.resource.data, id)
+        && (id.matches('.*-c')
+          || get(/databases/$(database)/documents/pics/$(id.split('-')[0] + '-c')).data.owner == request.auth.uid);
+      allow update: if signedIn() && resource.data.owner == request.auth.uid && picOk(request.resource.data, id);
+      allow delete: if signedIn() && resource.data.owner == request.auth.uid;
+    }
+
     // Parties: only their GMs can read them. Players join a character with the invite code; GMs join with the GM code.
     match /parties/{pid} {
       function party() { return get(/databases/$(database)/documents/parties/$(pid)).data; }

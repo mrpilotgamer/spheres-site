@@ -171,6 +171,31 @@ const CODE = 'PlayerCode-0123456789', GMCODE = 'GmCode-0123456789abcd', z = Byte
     await updateDoc(doc(gm, 'parties/gm1_P6'), { gms: arrayRemove('gm1') }); })()));
   await check('then a remaining GM can delete it', assertSucceeds(deleteDoc(doc(gm2, 'parties/gm1_P6'))));
 
+  console.log('Portraits in their own documents (pics/<id>-c, -b, -f; 2026-11-25)');
+  {
+    const B = n => Bytes.fromUint8Array(new Uint8Array(n)), P = 'pAbCdEfGh2345678JKLMnpqr', put = (db, part, data) => setDoc(doc(db, 'pics/' + P + '-' + part), data);
+    await check('the owner adds the card', assertSucceeds(put(pl, 'c', { owner: 'pl1', pic: B(1000) })));
+    await check('…then the sharp crop and the whole picture', assertSucceeds(Promise.all([put(pl, 'b', { owner: 'pl1', pic: B(400000) }), put(pl, 'f', { owner: 'pl1', pic: B(900000) })])));
+    await check('anyone with the id can read a part, signed out too', assertSucceeds(getDoc(doc(anon, 'pics/' + P + '-c'))));
+    await check('nobody can list them', assertFails(getDocs(collection(anon, 'pics'))));
+    await check('…not even signed in', assertFails(getDocs(collection(other, 'pics'))));
+    await check('another player can’t replace a part', assertFails(put(other, 'b', { owner: 'pl2', pic: B(10) })));
+    await check('…or delete one', assertFails(deleteDoc(doc(other, 'pics/' + P + '-b'))));
+    const Q = 'qAbCdEfGh2345678JKLMnpqr';
+    await check('another player can’t add a part to someone’s picture that lacks it', assertFails((async () => { await setDoc(doc(pl, 'pics/' + Q + '-c'), { owner: 'pl1', pic: B(10) }); await setDoc(doc(other, 'pics/' + Q + '-f'), { owner: 'pl2', pic: B(10) }); })()));
+    await check('a sharp crop without a card first is refused', assertFails(setDoc(doc(pl, 'pics/zAbCdEfGh2345678JKLMnpqr-b'), { owner: 'pl1', pic: B(10) })));
+    await check('a part with someone else as owner is refused', assertFails(setDoc(doc(other, 'pics/rAbCdEfGh2345678JKLMnpqr-c'), { owner: 'pl1', pic: B(10) })));
+    await check('signed out can’t add one', assertFails(setDoc(doc(anon, 'pics/sAbCdEfGh2345678JKLMnpqr-c'), { owner: 'pl1', pic: B(10) })));
+    await check('a card over the size limit is refused', assertFails(setDoc(doc(pl, 'pics/tAbCdEfGh2345678JKLMnpqr-c'), { owner: 'pl1', pic: B(170000) })));
+    await check('…so is a sharp crop over its limit', assertFails(put(pl, 'b', { owner: 'pl1', pic: B(470000) })));
+    await check('a part that isn’t bytes is refused', assertFails(setDoc(doc(pl, 'pics/uAbCdEfGh2345678JKLMnpqr-c'), { owner: 'pl1', pic: 'data:image/png;base64,AAAA' })));
+    await check('a part with an extra field is refused', assertFails(setDoc(doc(pl, 'pics/vAbCdEfGh2345678JKLMnpqr-c'), { owner: 'pl1', pic: B(10), note: 'x' })));
+    await check('an id that isn’t a picture part is refused', assertFails(setDoc(doc(pl, 'pics/wAbCdEfGh2345678JKLMnpqr-x'), { owner: 'pl1', pic: B(10) })));
+    await check('…so is a short id', assertFails(setDoc(doc(pl, 'pics/short-c'), { owner: 'pl1', pic: B(10) })));
+    await check('the owner deletes its parts', assertSucceeds(Promise.all(['c', 'b', 'f'].map(k => deleteDoc(doc(pl, 'pics/' + P + '-' + k))))));
+    await check('after that another player can’t take the id over through a missing part', assertFails(put(other, 'b', { owner: 'pl2', pic: B(10) })));
+  }
+
   console.log('Everything else');
   await check('other collections are closed', assertFails(setDoc(doc(gm, 'secrets/x'), { a: 1 })));
 
