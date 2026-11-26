@@ -137,6 +137,7 @@ details.arch{margin:4px 0 4px 10px}
 .artimg{display:block;width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:8px;border:1px solid var(--rule)}
 .artzoom{display:block;width:100%;max-width:240px;margin:0 auto;padding:0;border:0;background:none;cursor:zoom-in;border-radius:8px} .artzoom.small{max-width:150px;margin:0}
 .artzoom:hover .artimg{border-color:var(--gold)} .artzoom:focus-visible{outline:2px solid var(--gold);outline-offset:3px}
+.artimg.wait{filter:blur(6px);opacity:.8} .artbig.whole{aspect-ratio:auto;object-fit:contain;max-height:72vh;width:auto;max-width:100%}
 .artbig{display:block;width:min(100%,540px,calc(72vh * .75));height:auto;aspect-ratio:3/4;object-fit:cover;margin:0 auto;border-radius:8px}
 .athumb{width:44px;height:44px;border-radius:50%;object-fit:cover;flex:none;border:1px solid var(--rule)} .athumb.sm{width:28px;height:28px} .athumb.big{width:72px;height:72px}
 .artcv{display:block;width:min(270px,100%);height:auto;aspect-ratio:3/4;margin:0 auto 10px;border-radius:8px;border:1px solid var(--rule2);cursor:grab;touch-action:none;background:var(--soft)} .pcard.folded>.cardhead{margin-bottom:0}
@@ -473,6 +474,10 @@ if (/^https?:$/.test(location.protocol) && !window.SheetCloud) {
       },
       del: id => F.deleteDoc(ref(id)).then(() => idxDel(id)),
       /* ---- read-only share links (shares/{id}) and parties (parties/{id}, with members/ and sheets/) ---- */
+      /* the portrait's parts (pics/<id>-c, -b, -f): one picture each, as bytes; anyone with the id reads, only its owner writes */
+      picPut: (id, url) => { const b = imgBytes(url); if (!b) return Promise.reject(new Error("not a picture")); return F.setDoc(F.doc(db, "pics", id), { owner: auth.currentUser.uid, pic: b, updatedAt: F.serverTimestamp() }); },
+      picGet: id => F.getDoc(F.doc(db, "pics", id)).then(d => { const b = d.exists() ? d.data().pic : null; if (!b || typeof b.toUint8Array !== "function") return ""; const t = imgType(b.toUint8Array()); return t ? "data:image/" + t + ";base64," + b.toBase64() : ""; }),
+      picDel: id => F.deleteDoc(F.doc(db, "pics", id)),
       shareGet: id => readCopy(F.doc(db, "shares", id)),
       sharePut: async (id, rec) => F.setDoc(F.doc(db, "shares", id), Object.assign(await pack(rec), { owner: auth.currentUser.uid, name: rec.name || "", summary: rec.summary || "", savedAt: rec.savedAt || 0, updatedAt: F.serverTimestamp() })),
       shareDel: id => F.deleteDoc(F.doc(db, "shares", id)),
@@ -872,7 +877,7 @@ function blankChar(){
     abil:{str:10,dex:10,con:10,int:10,wis:10,cha:10},racial:{str:0,dex:0,con:0,int:0,wis:0,cha:0},
     castAbil:'wis',pracAbil:'wis',pracMore:[],opAbil:'',hpAb:'con',classes:{},levels:[],extraPicks:[],bonusFeats:0,skillPerLevel:0,bonusRanks:0,
     skillRanks:{},skillClass:{},skillLabel:{craft:'',perform:'',prof:'',art:'',lore:''},
-    mods:[],groups:[],conds:{},negLevels:0,abilDmg:{str:0,dex:0,con:0,int:0,wis:0,cha:0},abilDrain:{str:0,dex:0,con:0,int:0,wis:0,cha:0},noAb:{},meta:{},forms:[],shape:null,shapeOpt:{},history:[],tempSrc:[],deathOpt:{},loreOpt:{},seq:{n:0},play:{L:[],R:[],hide:[]},art:{img:'',th:''},leadOpt:{},deck:{},ws:wsBlank(),pers:{list:[],active:'',qc:0,borrow:[]},histSnap:null,histDb:0,skillAbil:{},sphOrder:[],
+    mods:[],groups:[],conds:{},negLevels:0,abilDmg:{str:0,dex:0,con:0,int:0,wis:0,cha:0},abilDrain:{str:0,dex:0,con:0,int:0,wis:0,cha:0},noAb:{},meta:{},forms:[],shape:null,shapeOpt:{},history:[],tempSrc:[],deathOpt:{},loreOpt:{},seq:{n:0},play:{L:[],R:[],hide:[]},art:{th:'',p:'',old:[]},leadOpt:{},deck:{},ws:wsBlank(),pers:{list:[],active:'',qc:0,borrow:[]},histSnap:null,histDb:0,skillAbil:{},sphOrder:[],
     resources:[],actions:[],weapons:[],
     armor:{name:'',bonus:0,enh:0,maxDex:99,acp:0,type:'none',asf:0,mw:false,wt:0,mat:''},shield:{name:'',bonus:0,enh:0,acp:0,maxDex:99,mw:false,asf:0,wt:0,mat:'',tower:false},quadruped:false,
     gear:[],containers:[],bodyType:'humanoid',tabsOff:{},possess:null,possessLvl:'',possessCollective:false,possessOpt:{},slotExtra:{},carry:{str:0,mult:1},money:{pp:0,gp:0,sp:0,cp:0},hp:{dmg:0,temp:0,non:0},
@@ -1786,7 +1791,13 @@ function sanitizeChar(o){
   /* base-sphere abilities saved without their library text (cloudPack): the text comes back from the library */
   abilWalk(b,abilRefill);
   /* portrait: both pictures valid, or none */
-  b.art=b.art&&artOk(b.art.img,ART_MAX)&&artOk(b.art.th,ART_TMAX)?{img:b.art.img,th:b.art.th}:{img:'',th:''};
+  /* portrait: the thumbnail, the picture's id in the store, ids replaced this session; an older save's card (img) or a file's
+     parts (pics) stay until artAdopt moves them into the store. No thumbnail, no picture. */
+  (function(){ var A=b.art&&typeof b.art==='object'&&!Array.isArray(b.art)?b.art:{}, n={th:artOk(A.th,ART_TMAX)?A.th:'',p:typeof A.p==='string'&&PIC_ID.test(A.p)?A.p:'',old:[]};
+    n.old=(Array.isArray(A.old)?A.old:[]).filter(function(x,i,a){ return typeof x==='string'&&PIC_ID.test(x)&&x!==n.p&&a.indexOf(x)===i; }).slice(0,20);
+    if(n.th){ if(artOk(A.img,ART_MAX)) n.img=A.img; var P=picClean(A.pics); if(P.c) n.pics=P; } else n.p='';
+    if(!n.p&&!n.img&&!n.pics) n.th='';
+    b.art=n; })();
   /* Play page layout: known cards only, each once across both columns and the hidden list */
   (function(){ var P=b.play&&typeof b.play==='object'&&!Array.isArray(b.play)?b.play:{}, seen={}, pk=function(a){ return (Array.isArray(a)?a:[]).filter(function(k){ if(typeof k!=='string'||!own(PLAY_N,k)||seen[k]) return false; seen[k]=1; return true; }); };
     b.play={L:pk(P.L),R:pk(P.R),hide:pk(P.hide)}; })();
@@ -2217,7 +2228,7 @@ function cloudPush(c){
   if(pushing){ pushQ=pushQ.filter(function(x){ return x.id!==c.id; }).concat([c]); return; }
   var sig=sentSig(c); if(CL.sent[sig.k]===sig.v){ setStat('Saved to your account'); pushNext(); return; }
   pushing=true; var rec=cloudRec(c);
-  window.SheetCloud.put(c.id,rec).then(function(res){ CL.sent[sig.k]=sig.v; setSynced(c.id,rec.savedAt); sizeNote(c,res); setStat('Saved to your account'); try{ publishCopies(c); }catch(e){} if(CL.list){ CL.list=CL.list.filter(function(x){return x.id!==c.id;}).concat([listRec(c,rec)]); } })
+  window.SheetCloud.put(c.id,rec).then(function(res){ CL.sent[sig.k]=sig.v; setSynced(c.id,rec.savedAt); sizeNote(c,res); setStat('Saved to your account'); try{ publishCopies(c); }catch(e){} picSync(); if(CL.list){ CL.list=CL.list.filter(function(x){return x.id!==c.id;}).concat([listRec(c,rec)]); } })
     .catch(function(e){ setStat(cloudErrMsg(e,c),true); if(e&&e.code==='sheet/too-big'&&!CL.warned['big'+c.id]){ CL.warned['big'+c.id]=1; alertBox(cloudErrMsg(e,c)); } })
     .then(function(){ pushing=false; pushNext(); if(UI.home) paintSoon(); /* the Characters screen's "not yet in your account" tags */ });
 }
@@ -2250,7 +2261,7 @@ function charFull(id){ if(ch&&ch.id===id) return Promise.resolve(JSON.parse(JSON
   if(CL.user&&(CL.list||[]).some(function(x){ return x.id===id; })) return window.SheetCloud.get(id).then(function(r){ var cl=null; try{ cl=r&&r.json?JSON.parse(r.json):null; if(cl) cl.savedAt=r.savedAt; }catch(e){} return loc&&(!cl||(loc.savedAt||0)>=(cl.savedAt||0))?loc:cl; }).catch(function(){ return loc; });
   return Promise.resolve(loc); }
 /* write a changed character back where it lives (this device and/or the account) */
-function charStore(c,where){ c.savedAt=Date.now(); if(ch&&ch.id===c.id){ ch=sanitizeChar(c); save(); return Promise.resolve(); }
+function charStore(c,where){ c.savedAt=Date.now(); artAdopt(c); if(ch&&ch.id===c.id){ ch=sanitizeChar(c); save(); return Promise.resolve(); }
   var hadLoc=!!lsGet(KEY+':'+c.id), inCl=(CL.list||[]).some(function(x){ return x.id===c.id; });
   if(hadLoc||where==='local'||where==='both') lsSet(KEY+':'+c.id,c);
   if(CL.user&&(inCl||where==='both')){ var rec=cloudRec(c); return window.SheetCloud.put(c.id,rec).then(function(){ CL.list=(CL.list||[]).filter(function(x){ return x.id!==c.id; }).concat([listRec(c,rec)]); }); }
@@ -2273,7 +2284,7 @@ window.addEventListener('sheet-cloud-ready',function(){ CL.ready=true; if(LINK&&
     .then(function(){ window.SheetCloud.onUser(function(u){ var was=CL.user; CL.user=u; CL.list=null;
       if(!u&&was&&!CL.signingOut&&Date.now()-(CL.inAt||0)<20000) alertBox('Your browser signed you straight back out: it didn’t keep the sign-in in this site’s storage. In your browser’s site settings for this page, allow cookies and site data (and check you’re not in a private window), then sign in again.');
       if(u&&!was) CL.inAt=Date.now(); if(!u) CL.signingOut=false;
-      if(u){ refreshList(); syncOpen(); CL.parties=null; if(BETA) loadParties(); if(LINK&&LINK.kind!=='share') setTimeout(linkGo,0); if(!was&&(CL.signingIn||redir)){ CL.signingIn=false; redir=false; toast('Signed in as '+(u.name||u.email)+(u.name&&u.email?' ('+u.email+')':'')+'. Your characters now save to your account.'); } }
+      if(u){ refreshList(); syncOpen(); picSync(); CL.parties=null; if(BETA) loadParties(); if(LINK&&LINK.kind!=='share') setTimeout(linkGo,0); if(!was&&(CL.signingIn||redir)){ CL.signingIn=false; redir=false; toast('Signed in as '+(u.name||u.email)+(u.name&&u.email?' ('+u.email+')':'')+'. Your characters now save to your account.'); } }
       else { setStat(''); CL.parties=null; CL.partyErr=''; if(UI.party){ if(UI.partyUnsub){ UI.partyUnsub(); UI.partyUnsub=null; } UI.party=null; UI.home=true; } if(redir){ redir=false; alertBox('Google sent you back without signing you in. This usually means the browser blocked the sign-in'+(INAPP?': you’re in an app’s built-in browser, which Google doesn’t allow. Open the sheet in Chrome or Safari and sign in there.':'. Try again; if it keeps happening, allow pop-ups for this site, or try another browser.')); } }
       paint(); }); }); });
 window.addEventListener('sheet-cloud-failed',function(){ CL.failed=true; if(LINK){ LINK=null; alertBox('Couldn’t reach the server to open that link. Check your connection and open the link again.'); } paint(); });
@@ -2314,7 +2325,7 @@ function unlinkChar(id,copies,inCloud){ var acct=inCloud?window.SheetCloud.get(i
 function memberKey(c){ return CL.user.uid+'_'+c.id; }
 function ago(ms){ var s=Math.max(0,Math.round((Date.now()-ms)/1000)); return s<60?'just now':s<3600?Math.round(s/60)+' min ago':s<86400?Math.round(s/3600)+' h ago':new Date(ms).toLocaleDateString(); }
 /* the copy others see: without share and party details (no invite codes leave the player's own save) */
-function copyRec(c){ var x=Object.assign({},c); delete x.share; delete x.parties; return cloudRec(x); }
+function copyRec(c){ var x=Object.assign({},c); delete x.share; delete x.parties; if(x.art) x.art=Object.assign({},x.art,{old:[]}); return cloudRec(x); }
 /* ---------- publishing copies after an account save ---------- */
 /* party summaries (the GM dashboard) go out at most every 12 s per party; the latest one always gets there, and hiding the tab sends it at once */
 var MEMBER_WAIT=12000;
@@ -2706,7 +2717,7 @@ function rSheet(){
       return '<div style="padding:6px 0;border-bottom:1px solid var(--soft)"><b>'+esc(x.c.name||'Unnamed')+'</b> <span class="note">'+esc(CKN[x.c.kind]||'')+'</span>'+(x.c.shape&&compStats(x.c).form?' <span class="tag gold">In form: '+esc(compStats(x.c).form.name)+'</span>':'')+(reanOn(x.c)&&x.c.rean.left!=null?' <span class="tag">'+esc(shapeLeft(x.c.rean))+' left</span>':'')+compSummary(x.c,x.i,true)+'</div>'; }).join('')+'</section>';
   return h; };
   C.pers=persStrip; C.seq=seqCard;
-  C.art=function(){ var A=ch.art||{}; return artOk(A.img,ART_MAX)?'<section class="card"><div class="cardhead"><h2>Portrait</h2><button class="link" data-tab="notes">Change</button></div>'+artZoom(A.img,'')+'</section>':''; };
+  C.art=function(){ var A=ch.art||{}; return artHas(A)?'<section class="card"><div class="cardhead"><h2>Portrait</h2><button class="link" data-tab="notes">Change</button></div>'+artZoom(A,'')+'</section>':''; };
   /* toggles */
   C.buffs=function(){ var h='';
   h+='<section class="card"><div class="cardhead"><h2>Buffs, Stances & Conditions</h2><button class="link" data-tab="mods">Edit</button></div>';
@@ -5131,27 +5142,87 @@ function containersCard(){
 }
 /* ---------- NOTES ---------- */
 /* ---------- portrait (Notes tab; a card on the Play page, party cards, the Characters list) ----------
-   ch.art = {img, th}: data URLs made on this device (artPick → artCrop): img the 3:4 portrait at ART_W×ART_H (WebP, JPEG where the
-   browser can't write WebP, about 20–50 KB), th a ART_T px square from the top of it for the round thumbnails. Both live inside the
-   character, so share links, party sheets, files and copies carry them; the thumbnail also goes to the party summary (memberSum,
-   firestore.rules memberOk 'pic') and beside the account copy (cloudRec 'pic') for the Characters list. sanitizeChar keeps only
-   artOk ones. Nothing is uploaded anywhere else, and the original file is never kept (Replace picks a new one). */
-var ART_W=360, ART_H=480, ART_T=96, ART_MAX=200000, ART_TMAX=8000;
+   ch.art = {th, p, old}: th a ART_T px square thumbnail (data URL, inside the character: the Characters list, party cards); p the
+   id of the picture in the picture store (since 2026-11-25), so the character itself stays small; old the ids it replaced this
+   session (kept for Undo, dropped the next time the character is opened: artTidy). A picture has up to three parts, made on this
+   device by artCrop: c the card (ART_W×ART_H, the Play page and Notes tab), b a sharper crop (ART_BW×ART_BH, the large view), f the
+   whole uncropped picture (up to ART_FULL px on its longer side, "Whole picture" in the large view).
+   Older characters have the card inside the character (art.img, 2026-11-22) and files carry the parts (art.pics): artAdopt moves
+   either into the store under a new id when the character is opened or stored. Files get the parts back in (artWithPics).
+   The store (pic*): memory, then IndexedDB ('spheres-pics', on this device), then the account: one Firestore document per part,
+   pics/<id>-c, -b, -f (firestore.rules "pics"), written once when the picture is made and deleted when it's replaced, removed or
+   its character deleted. Anyone with the id can read them (like a share link): the id travels only inside the character, so only
+   people who can see the character can. Uploads and deletes wait in localStorage (PIC_UP, PIC_DEL) until signed in (picSync). */
+var ART_W=360, ART_H=480, ART_BW=720, ART_BH=960, ART_FULL=1600, ART_T=96, ART_MAX=200000, ART_TMAX=8000;
+var PIC_K=['c','b','f'], PIC_URLMAX={c:ART_MAX,b:600000,f:1200000}, PIC_ID=/^[A-Za-z0-9]{16,40}$/, PIC_UP='spheres-pics-up', PIC_DEL='spheres-pics-del';
 var ART_RE=/^data:image\/(webp|jpeg|png);base64,[A-Za-z0-9+\/]+={0,2}$/;
 function artOk(s,max){ return typeof s==='string'&&s.length<=max&&ART_RE.test(s); }
+var PICS={mem:{},busy:{},gc:{},dbp:null,syncing:false};
+function picNewId(){ var a='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789', r=crypto.getRandomValues(new Uint8Array(24)), s='p'; r.forEach(function(b){ s+=a[b%a.length]; }); return s; }
+function picDB(){ if(!PICS.dbp){ PICS.dbp=new Promise(function(ok,no){ try{ var r=indexedDB.open('spheres-pics',1); r.onupgradeneeded=function(){ r.result.createObjectStore('pics'); }; r.onsuccess=function(){ ok(r.result); }; r.onerror=function(){ no(r.error); }; }catch(e){ no(e); } }); PICS.dbp.catch(function(){}); } return PICS.dbp; }
+function picIdb(mode,fn){ return picDB().then(function(db){ return new Promise(function(ok,no){ var t=db.transaction('pics',mode), r=fn(t.objectStore('pics')); t.oncomplete=function(){ ok(r&&r.result); }; t.onerror=t.onabort=function(){ no(t.error); }; }); }); }
+function picClean(P){ var o={}; PIC_K.forEach(function(k){ if(P&&artOk(P[k],PIC_URLMAX[k])) o[k]=P[k]; }); return o; }
+function picMark(key,p,on){ var m=lsGet(key); m=m&&typeof m==='object'&&!Array.isArray(m)?m:{}; if(on) m[p]=1; else delete m[p]; lsSet(key,m); }
+/* a new picture: memory at once, then this device, then (signed in) the account */
+function picSave(p,P){ P=picClean(P); PICS.mem[p]=Object.assign(PICS.mem[p]||{},P); picIdb('readwrite',function(s){ return s.put(PICS.mem[p],p); }).catch(function(e){ try{ console.warn('Couldn’t keep the picture on this device:',e); }catch(x){} });
+  picMark(PIC_DEL,p,false); picMark(PIC_UP,p,true); picSync(); }
+/* one part, from memory, this device or the account: '' if it isn't anywhere, null if the account couldn't be asked (yet) */
+function picGet(p,k){ if(!PIC_ID.test(p||'')) return Promise.resolve(''); var M=PICS.mem[p]; if(M&&M[k]) return Promise.resolve(M[k]);
+  var key=p+'-'+k; if(PICS.busy[key]) return PICS.busy[key];
+  return PICS.busy[key]=picIdb('readonly',function(s){ return s.get(p); }).catch(function(){ return null; }).then(function(D){ D=picClean(D);
+      if(Object.keys(D).length) PICS.mem[p]=Object.assign(PICS.mem[p]||{},D); if(D[k]) return D[k];
+      if(!window.SheetCloud||!window.SheetCloud.picGet) return null;
+      return window.SheetCloud.picGet(key).then(function(u){ if(!artOk(u,PIC_URLMAX[k])) return ''; PICS.mem[p]=Object.assign(PICS.mem[p]||{},{[k]:u}); var all=PICS.mem[p];
+        /* someone else's picture (a share link, a party sheet) stays in memory only: a viewer keeps nothing on their device */
+        if(!UI.ro) picIdb('readwrite',function(s){ return s.put(all,p); }).catch(function(){}); return u; }, function(){ return null; }); })
+    .then(function(u){ delete PICS.busy[key]; return u; }); }
+/* every part there is (for files and copies) */
+function picAll(p){ return Promise.all(PIC_K.map(function(k){ return picGet(p,k); })).then(function(L){ var o={}; PIC_K.forEach(function(k,i){ if(L[i]) o[k]=L[i]; }); return o; }); }
+/* for drawing: the part now if it's in memory, else '' and a repaint once it arrives (a part the account doesn't have isn't
+   asked for again this session; one it couldn't be asked about is, on the next repaint) */
+function picNow(p,k){ var M=PICS.mem[p]; if(M&&M[k]) return M[k]; var key=p+'-'+k; PICS.miss=PICS.miss||{}; if(!PICS.busy[key]&&!PICS.miss[key]) picGet(p,k).then(function(u){ if(u) paintSoon(); else if(u==='') PICS.miss[key]=1; }); return ''; }
+/* a picture nobody uses any more: off this device, and off the account (now, or once signed in) */
+function picDrop(p){ if(!PIC_ID.test(p||'')) return; delete PICS.mem[p]; picIdb('readwrite',function(s){ return s.delete(p); }).catch(function(){});
+  picMark(PIC_UP,p,false); picMark(PIC_DEL,p,true); picSync(); }
+/* send waiting uploads (the card first: the rules tie the other parts to it) and deletes, one picture at a time */
+function picSync(){ if(PICS.syncing||!CL.user||!window.SheetCloud||!window.SheetCloud.picPut) return; var up=Object.keys(lsGet(PIC_UP)||{}), del=Object.keys(lsGet(PIC_DEL)||{}); if(!up.length&&!del.length) return;
+  PICS.syncing=true; var SC=window.SheetCloud;
+  var next=function(){ var d=Object.keys(lsGet(PIC_DEL)||{})[0];
+      if(d) return Promise.all(PIC_K.map(function(k){ return SC.picDel(d+'-'+k).catch(function(){}); })).then(function(){ picMark(PIC_DEL,d,false); return next(); });
+      var u=Object.keys(lsGet(PIC_UP)||{})[0]; if(!u) return null;
+      return picAll(u).then(function(P){ if(!P.c){ picMark(PIC_UP,u,false); return next(); }
+        return PIC_K.filter(function(k){ return P[k]; }).reduce(function(a,k){ return a.then(function(){ return SC.picPut(u+'-'+k,P[k]); }); },Promise.resolve())
+          .then(function(){ picMark(PIC_UP,u,false); return next(); }); }); };
+  next().catch(function(e){ try{ console.warn('A portrait didn’t reach your account yet; it will try again:',e); }catch(x){} }).then(function(){ PICS.syncing=false; }); }
+/* the parts carried inside a character (a file, or an older save) go into the store under a new id; true if it changed */
+function artAdopt(c){ var A=c&&c.art; if(!A||!A.th) return false; var P=picClean(A.pics); if(!P.c&&artOk(A.img,ART_MAX)) P.c=A.img; if(!P.c){ var had=!!(A.pics||A.img); delete A.pics; delete A.img; return had; }
+  var p=picNewId(); picSave(p,P); A.p=p; delete A.pics; delete A.img; return true; }
+/* once per session per character: drop the pictures it replaced (Undo can't reach them any more) */
+function artTidy(c){ if(!c||PICS.gc[c.id]) return false; PICS.gc[c.id]=1; var A=c.art||{}; if(!(A.old||[]).length) return false; A.old.forEach(picDrop); A.old=[]; return true; }
+/* a copy for someone's own (Duplicate, Save a copy): its own picture, so deleting either never takes the other's */
+function artClone(c){ var A=c&&c.art; if(!A||!A.p) return Promise.resolve(c); var from=A.p;
+  return picAll(from).then(function(P){ A.old=[]; if(P.c){ A.pics=P; A.p=''; artAdopt(c); } return c; }); }
+/* a character with its picture's parts inside, for a file (Export, Save file, Back up) */
+function artWithPics(c){ var x=JSON.parse(JSON.stringify(c)), A=x.art; if(!A||!A.p){ if(A){ delete A.p; A.old=[]; } return Promise.resolve(x); }
+  return picAll(A.p).then(function(P){ if(P.c) A.pics=P; delete A.p; A.old=[]; return x; }); }
+function artHas(A){ return !!(A&&A.th&&(A.p||A.img||A.pics)); }
+/* the part to draw: the store's, or one still inside the character; the card stands in for a missing sharper part */
+function artSrc(A,k){ if(!A) return ''; var P=A.pics||{}; if(artOk(P[k],PIC_URLMAX[k])) return P[k]; if(k!=='c'&&!A.p) return artSrc(A,'c');
+  if(A.p){ var u=picNow(A.p,k); return u||(k!=='c'?artSrc(A,'c'):''); } return artOk(A.img,ART_MAX)?A.img:''; }
 function artThumb(src,cls,label){ return artOk(src,ART_TMAX)?'<img class="athumb'+(cls?' '+cls:'')+'" src="'+esc(src)+'" alt="'+esc(label||'')+'"'+(label?'':' aria-hidden="true"')+'>':''; }
-/* the portrait as a button: a click (or Enter) opens it larger (artView) */
-function artZoom(src,cls){ return '<button type="button" class="artzoom'+(cls?' '+cls:'')+'" data-a="artView" title="Show it larger"><img class="artimg" src="'+esc(src)+'" alt="Portrait of '+esc(ch.name||'this character')+' (show it larger)"></button>'; }
-function artEncode(cv,max){ var q=[0.85,0.75,0.6,0.45], out='';
+/* the portrait as a button: a click (or Enter) opens it larger (artView). Until the card arrives, the thumbnail stands in. */
+function artZoom(A,cls){ var u=artSrc(A,'c'); return '<button type="button" class="artzoom'+(cls?' '+cls:'')+'" data-a="artView" title="Show it larger"><img class="artimg'+(u?'':' wait')+'" src="'+esc(u||A.th)+'" alt="Portrait of '+esc(ch.name||'this character')+' (show it larger)"></button>'; }
+function artEncode(cv,max){ var q=[0.85,0.75,0.6,0.45,0.3], out='';
   for(var i=0;i<q.length;i++){ out=cv.toDataURL('image/webp',q[i]); if(out.indexOf('data:image/webp')!==0) out=cv.toDataURL('image/jpeg',q[i]); if(out.length<=max) return out; }
   return out.length<=max?out:''; }
-/* the picture-placing dialog: drag (or the arrow keys) to move, the slider to zoom; resolves {img, th} or null */
+/* the picture-placing dialog: drag (or the arrow keys) to move, the slider to zoom; resolves {th, pics:{c, b, f}} or null */
 function artCrop(im){ var w=im.naturalWidth, hh=im.naturalHeight, base=Math.max(ART_W/w,ART_H/hh), S={z:1,cx:w/2,cy:hh/2};
   var frame=function(){ var sc=base*S.z, sw=ART_W/sc, sh=ART_H/sc; S.cx=Math.min(Math.max(S.cx,sw/2),w-sw/2); S.cy=Math.min(Math.max(S.cy,sh/2),hh-sh/2); return {x:S.cx-sw/2,y:S.cy-sh/2,w:sw,h:sh,sc:sc}; };
   var draw=function(cv){ var f=frame(), g=cv.getContext('2d'); g.imageSmoothingQuality='high'; g.clearRect(0,0,cv.width,cv.height); g.drawImage(im,f.x,f.y,f.w,f.h,0,0,cv.width,cv.height); return f; };
+  var canvas=function(W,H){ var cv=document.createElement('canvas'); cv.width=W; cv.height=H; return cv; };
   return modal({title:'Place the portrait',html:'<canvas id="artCv" class="artcv" width="'+ART_W+'" height="'+ART_H+'" tabindex="0" aria-label="The portrait as it will show. Drag it, or use the arrow keys, to move the picture"></canvas>'+
       '<label class="fld"><span>Zoom</span><input type="range" id="artZ" min="1" max="4" step="0.01" value="1"></label>'+
-      '<p class="note">Drag the picture (or use the arrow keys) to choose what shows. The round thumbnail on party cards and in your Characters list is the top of it. It’s saved inside the character at '+ART_W+' × '+ART_H+', so anyone who can see this character sees it.</p>',
+      '<p class="note">Drag the picture (or use the arrow keys) to choose what shows on the Play page. The round thumbnail on party cards and in your Characters list is the top of it; the large view can also show the whole picture. Anyone who can see this character can see it.</p>',
     buttons:[{label:'Cancel',value:null},{label:'Use this picture',value:'ok',primary:true}],
     onOpen:function(root){ var cv=root.querySelector('#artCv'), z=root.querySelector('#artZ'), drag=null; draw(cv);
       z.addEventListener('input',function(){ S.z=+z.value||1; draw(cv); });
@@ -5159,21 +5230,22 @@ function artCrop(im){ var w=im.naturalWidth, hh=im.naturalHeight, base=Math.max(
       cv.addEventListener('pointermove',function(e){ if(!drag) return; var k=ART_W/cv.getBoundingClientRect().width/(base*S.z); S.cx-=(e.clientX-drag.x)*k; S.cy-=(e.clientY-drag.y)*k; drag={x:e.clientX,y:e.clientY}; draw(cv); });
       cv.addEventListener('pointerup',function(){ drag=null; }); cv.addEventListener('pointercancel',function(){ drag=null; });
       cv.addEventListener('keydown',function(e){ var d={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]}[e.key]; if(!d) return; e.preventDefault(); var st=20/(base*S.z); S.cx+=d[0]*st; S.cy+=d[1]*st; draw(cv); }); },
-    read:function(){ var big=document.createElement('canvas'); big.width=ART_W; big.height=ART_H; var f=draw(big);
-      var sm=document.createElement('canvas'); sm.width=sm.height=ART_T; var g=sm.getContext('2d'); g.imageSmoothingQuality='high'; g.drawImage(big,0,0,ART_W,ART_W,0,0,ART_T,ART_T);
-      return {img:artEncode(big,ART_MAX),th:artEncode(sm,ART_TMAX)}; }
-  }).then(function(r){ return r.value&&r.data&&r.data.img&&r.data.th?r.data:null; }); }
+    read:function(){ var cc=canvas(ART_W,ART_H); draw(cc); var bc=canvas(ART_BW,ART_BH); draw(bc);
+      var sm=canvas(ART_T,ART_T), g=sm.getContext('2d'); g.imageSmoothingQuality='high'; g.drawImage(cc,0,0,ART_W,ART_W,0,0,ART_T,ART_T);
+      var fs=Math.min(1,ART_FULL/Math.max(w,hh)), fc=canvas(Math.max(1,Math.round(w*fs)),Math.max(1,Math.round(hh*fs))), fg=fc.getContext('2d'); fg.imageSmoothingQuality='high'; fg.drawImage(im,0,0,fc.width,fc.height);
+      return {th:artEncode(sm,ART_TMAX),pics:{c:artEncode(cc,PIC_URLMAX.c),b:artEncode(bc,PIC_URLMAX.b),f:artEncode(fc,PIC_URLMAX.f)}}; }
+  }).then(function(r){ return r.value&&r.data&&r.data.th&&r.data.pics.c?r.data:null; }); }
 function artPick(){ return new Promise(function(resolve){ var inp=document.createElement('input'); inp.type='file'; inp.accept='image/png,image/jpeg,image/webp,image/gif'; inp.hidden=true;
     inp.addEventListener('change',function(){ var f=inp.files&&inp.files[0]; inp.remove(); resolve(f||null); }); inp.addEventListener('cancel',function(){ inp.remove(); resolve(null); });
     document.body.appendChild(inp); inp.click(); })
   .then(function(f){ if(!f) return null; if(f.size>40e6){ alertBox('That picture is over 40 MB. Pick a smaller one.'); return null; }
     var url=URL.createObjectURL(f); return new Promise(function(ok){ var im=new Image(); im.onload=function(){ ok(im); }; im.onerror=function(){ ok(null); }; im.src=url; })
       .then(function(im){ URL.revokeObjectURL(url); if(!im||!im.naturalWidth){ alertBox('That file couldn’t be read as a picture. PNG, JPG, WebP and GIF work.'); return null; } return artCrop(im); }); }); }
-function artCard(){ var A=ch.art||{};
-  return '<section class="card"><div class="cardhead"><h2>Portrait</h2>'+(artOk(A.img,ART_MAX)?'<span class="row" style="margin:0"><button class="mini" data-a="artSet">Replace…</button><button class="mini" data-a="artDel">Remove</button></span>':'')+'</div>'+
-    (artOk(A.img,ART_MAX)?'<div class="row" style="align-items:flex-start;gap:14px">'+artZoom(A.img,'small')+artThumb(A.th,'big','')+'</div>'
+function artCard(){ var A=ch.art||{}, has=artHas(A);
+  return '<section class="card"><div class="cardhead"><h2>Portrait</h2>'+(has?'<span class="row" style="margin:0"><button class="mini" data-a="artSet">Replace…</button><button class="mini" data-a="artDel">Remove</button></span>':'')+'</div>'+
+    (has?'<div class="row" style="align-items:flex-start;gap:14px">'+artZoom(A,'small')+artThumb(A.th,'big','')+'</div>'
       :'<p class="note">A picture of your character: on the Play page (move or hide it with Arrange there), on party cards and in your Characters list.</p><button data-a="artSet">Add a picture…</button>')+
-    '<p class="note" style="margin-bottom:0">PNG, JPG, WebP or GIF (an animated one keeps its first frame). It’s shrunk on this device and saved inside the character, so share links, parties and exported files carry it.</p></section>'; }
+    '<p class="note" style="margin-bottom:0">PNG, JPG, WebP or GIF (an animated one keeps its first frame). It’s shrunk on this device and kept '+(CL.user?'in your account':'on this device (and in your account once you sign in)')+'; share links, parties and exported files carry it.</p></section>'; }
 function rNotes(){
   var h='<div class="cols"><div class="col">';
   h+='<section class="card"><h2>Notes</h2>'+[['look','Appearance'],['story','Background'],['goals','Goals']].map(function(n){ return '<label class="fld"><span>'+n[1]+'</span><textarea data-f="notes.'+n[0]+'" rows="'+(n[0]==='story'?5:3)+'">'+esc(ch.notes[n[0]]||'')+'</textarea></label>'+
@@ -5480,10 +5552,16 @@ var A={
   cFold:function(el){ var id=el.dataset.id; if(!(ch.companions||[]).some(function(c){ return c.id===id; })) return 'skip'; cmpSetFold([id],!own(cmpFoldMap(),id)); return 'ui'; },
   cFoldAll:function(el){ cmpSetFold((ch.companions||[]).filter(function(c){ return cmpShown(c)&&cmpMatch(c); }).map(function(c){ return c.id; }),el.dataset.v==='1'); return 'ui'; },
   /* portrait (artPick, artCrop) */
-  artView:function(){ var A=ch.art||{}; if(!artOk(A.img,ART_MAX)) return 'skip';
-    modal({title:ch.name||'Portrait',html:'<img class="artbig" src="'+esc(A.img)+'" alt="Portrait of '+esc(ch.name||'this character')+'">',buttons:[{label:'Close',value:null,primary:true}]}); return 'skip'; },
-  artSet:function(){ return artPick().then(function(r){ if(!r) return null; return function(){ ch.art={img:r.img,th:r.th}; UI.toast='Portrait saved'; }; }); },
-  artDel:function(){ if(!artOk((ch.art||{}).img,ART_MAX)) return 'skip'; ch.art={img:'',th:''}; UI.toast='Portrait removed'; UI.focusSel='[data-a="artSet"]'; },
+  /* the large view: the sharp crop (the card until it arrives), and the whole picture when there is one */
+  artView:function(){ var A=ch.art||{}; if(!artHas(A)) return 'skip'; var nm=ch.name||'this character', first=artSrc(A,'b')||artSrc(A,'c')||A.th;
+    modal({title:ch.name||'Portrait',html:'<img class="artbig" id="artBig" src="'+esc(first)+'" alt="Portrait of '+esc(nm)+'"><div class="row" style="justify-content:center;margin:8px 0 0"><button class="mini" id="artWhole" hidden aria-pressed="false">Whole picture</button></div>',buttons:[{label:'Close',value:null,primary:true}],
+      onOpen:function(root){ var im=root.querySelector('#artBig'), wb=root.querySelector('#artWhole'), U={b:'',f:''}, show=function(){ var w=wb.getAttribute('aria-pressed')==='true'; im.classList.toggle('whole',w); wb.textContent=w?'Portrait crop':'Whole picture'; if(w?U.f:U.b) im.src=w?U.f:U.b; };
+        wb.addEventListener('click',function(){ wb.setAttribute('aria-pressed',String(wb.getAttribute('aria-pressed')!=='true')); show(); });
+        var get=function(k){ var P=A.pics||{}; return P[k]?Promise.resolve(P[k]):A.p?picGet(A.p,k):Promise.resolve(''); };
+        get('b').then(function(u){ if(u){ U.b=u; show(); } }); get('f').then(function(u){ if(u){ U.f=u; wb.hidden=false; } }); } }); return 'skip'; },
+  artSet:function(){ return artPick().then(function(r){ if(!r) return null; return function(){ var A=ch.art||{}, old=(A.old||[]).concat(A.p?[A.p]:[]);
+    ch.art={th:r.th,p:'',old:old,pics:r.pics}; artAdopt(ch); UI.toast='Portrait saved'; }; }); },
+  artDel:function(){ var A=ch.art||{}; if(!artHas(A)) return 'skip'; ch.art={th:'',p:'',old:(A.old||[]).concat(A.p?[A.p]:[])}; UI.toast='Portrait removed'; UI.focusSel='[data-a="artSet"]'; },
   /* arranging the Play page (playLay, playSet) */
   pArr:function(){ UI.playArr=!UI.playArr; UI.focusSel=UI.playArr?'.parrbar [data-a="pArr"]':'.parr [data-a="pArr"]'; return 'ui'; },
   pFold:function(el){ var k=el.dataset.k, m=playFoldMap(); if(!own(PLAY_N,k)) return 'skip'; if(m[k]) delete m[k]; else m[k]=1; lsSet('spheres-play-fold:'+ch.id,m); UI.focusSel='#play-'+k+' [data-a="pFold"]'; return 'ui'; },
@@ -5566,9 +5644,9 @@ var A={
     modal({title:'Duplicate '+(x.name||'this character'),html:'<label class="fld"><span>Name of the copy</span><input type="text" name="n" value="'+esc((x.name||'Character')+' (copy)')+'"></label><p class="note">A separate character in the same campaign, e.g. to try another build or keep a snapshot before levelling up. The original isn’t touched.</p>',buttons:[{label:'Cancel',value:null},{label:'Duplicate',value:'ok',primary:true}],read:function(root){ return rd(root).s('n').trim(); }})
     .then(function(r){ if(r.value!=='ok') return; charFull(id).then(function(c){ if(!c){ alertBox('Couldn’t read that character.'); return; }
       var d=sanitizeChar(JSON.parse(JSON.stringify(c))); d.id=uidG(); d.name=r.data||((c.name||'Character')+' (copy)'); d.meta=Object.assign(metaOf(c),{pin:false}); d.log=[{t:'Duplicated from '+(c.name||'a character')+'.',at:Date.now()}].concat(d.log||[]); delete d.share; d.parties=[];
-      return charStore(d,'both').then(function(){ toast('Made '+d.name+'.'); paint(); }); }).catch(function(e){ alertBox('Couldn’t duplicate it: '+(e&&e.code||e)); }); }); return 'skip'; },
+      return artClone(d).then(function(){ return charStore(d,'both'); }).then(function(){ toast('Made '+d.name+'.'); paint(); }); }).catch(function(e){ alertBox('Couldn’t duplicate it: '+(e&&e.code||e)); }); }); return 'skip'; },
   backupAll:function(){ var ids=homeList().map(function(x){ return x.id; }); setStat&&CL.user&&setStat('Gathering characters…');
-    Promise.all(ids.map(charFull)).then(function(cs){ cs=cs.filter(Boolean); download('spheres-characters-'+stamp()+'.json',JSON.stringify({app:'spheres-sheet-backup',v:1,savedAt:Date.now(),chars:cs}),'application/json'); toast('Backed up '+plural(cs.length,'character')+'.'); if(CL.user) setStat('Saved to your account'); })
+    Promise.all(ids.map(charFull)).then(function(cs){ return Promise.all(cs.filter(Boolean).map(artWithPics)); }).then(function(cs){ download('spheres-characters-'+stamp()+'.json',JSON.stringify({app:'spheres-sheet-backup',v:1,savedAt:Date.now(),chars:cs}),'application/json'); toast('Backed up '+plural(cs.length,'character')+'.'); if(CL.user) setStat('Saved to your account'); })
       .catch(function(e){ alertBox('Couldn’t gather every character: '+(e&&e.code||e)); }); return 'skip'; },
   uploadChar:function(el){ var id=el.dataset.id, o=ch&&ch.id===id&&!UI.ro?ch:lsGet(KEY+':'+id); if(!o||!CL.user) return 'skip'; el.disabled=true; var rec=cloudRec(o), sig=sentSig(o);
     window.SheetCloud.put(o.id,rec).then(function(res){ CL.sent[sig.k]=sig.v; setSynced(o.id,rec.savedAt); sizeNote(o,res); toast('Sent '+(o.name||'the character')+' to your account.'); refreshList(); }).catch(function(e){ el.disabled=false; alertBox(cloudErrMsg(e,o)); }); return 'skip'; },
@@ -5576,11 +5654,12 @@ var A={
   removeChar:function(el){ var id=el.dataset.id, inCloud=el.dataset.c==='1', o=lsGet(KEY+':'+id)||((CL.list||[]).filter(function(x){return x.id===id;})[0])||{};
     confirmBox('Delete '+(o.name?'“'+o.name+'”':'this character')+'?',(inCloud?'It’s removed from your Google account and this device. ':'It’s removed from this device. ')+'This can’t be undone, so export it first (Save & Print tab) if you might want it back.','Delete',true).then(function(ok){ if(!ok) return;
       var loc=lsGet(KEY+':'+id), open0=ch&&ch.id===id?ch:null;
+      var dropArt=function(c){ var A=c&&c.art; if(A) [A.p].concat(A.old||[]).forEach(picDrop); }; dropArt(open0); dropArt(loc);
       try{ localStorage.removeItem(KEY+':'+id); }catch(e){}
       if(ch&&ch.id===id){ ch=null; hist=[]; redoH=[]; try{ localStorage.removeItem(KEY+':last'); }catch(e){} }
       var done=function(){ CL.list=(CL.list||[]).filter(function(x){return x.id!==id;}); UI.home=true; paint(); };
       /* its share link and party copies go too, so nobody keeps reading a character its player deleted */
-      if(CL.user) unlinkChar(id,[open0,loc],inCloud).then(function(){ return inCloud?window.SheetCloud.del(id):null; }).then(done).catch(function(e){ alertBox('Couldn’t delete it from your account: '+(e&&e.code||'offline')); done(); });
+      if(CL.user) unlinkChar(id,[open0,loc],inCloud).then(function(){ if(!open0&&!loc&&inCloud) return window.SheetCloud.get(id).then(function(r){ try{ dropArt(JSON.parse(r.json)); }catch(e){} }).catch(function(){}); }).then(function(){ return inCloud?window.SheetCloud.del(id):null; }).then(done).catch(function(e){ alertBox('Couldn’t delete it from your account: '+(e&&e.code||'offline')); done(); });
       else { done(); if([open0,loc].some(function(c){ return c&&(c.share||(c.parties||[]).length); })) alertBox('Its share link and party copies are still online: sign in, then delete them from another copy of the character, or ask the party’s GM to remove it.'); } });
     return 'skip'; },
   tradMode:function(el){ var m=el.dataset.k, T=ch.traditions; if(T.mode===m) return 'skip';
@@ -5763,6 +5842,7 @@ var A={
     var p=UI.roPrev||{}, from=UI.ro.kind==='party'?'a party member’s sheet':'a shared sheet'; UI.ro=null; UI.roPrev=null;
     ch=safeChar(c); if(!ch){ ch=p.ch||null; alertBox(DAMAGED); paint(); return 'skip'; } hist=[]; redoH=[]; UI.home=false; UI.tab='sheet';
     log('Copied from '+from+'. The original isn’t affected.'); save(); paint(); window.scrollTo(0,0);
+    var cp=ch; artClone(cp).then(function(){ if(ch===cp){ save(); paint(); } });
     toast('Saved “'+ch.name+'” to your characters. It’s yours to change; the original isn’t affected.'); return 'skip'; },
   /* Pathfinder 1e point buy for the base scores (before racial adjustments): a running total from 0, no race, no budget */
   pointBuy:function(){ var COST={7:-4,8:-2,9:-1,10:0,11:1,12:2,13:3,14:5,15:7,16:10,17:13,18:17}, sc={};
@@ -5929,7 +6009,7 @@ var A={
   newChar:function(){ return Promise.resolve(function(){ ch=sanitizeChar(blankChar()); /* the same clean-up a loaded character gets */ ch.name='New character'; hist=[]; redoH=[]; UI.home=false; UI.tab='build'; log('New character. Fill in the Build tab, then Level up.'); }); },
   example:function(el){ var k=el.dataset.k; return Promise.resolve(function(){ ch=sanitizeChar(k==='striker'?exampleStriker():exampleIncanter()); ch.id=uidG(); hist=[]; redoH=[]; UI.home=false; UI.tab='sheet'; log('Loaded the example: '+ch.name+'.'); }); },
   saveFile:function(){ saveFileFlow(); return 'skip'; },
-  exportJson:function(){ save(); download(slug(ch.name||'character')+'-'+stamp()+'.json',JSON.stringify(noLinks(JSON.parse(JSON.stringify(ch)))),'application/json'); return 'skip'; },
+  exportJson:function(){ save(); var nm=slug(ch.name||'character')+'-'+stamp()+'.json'; artWithPics(ch).then(function(x){ download(nm,JSON.stringify(noLinks(x)),'application/json'); }); return 'skip'; },
   importJson:function(){ return pickFile('Import a character','A character exported from this sheet, a sheet saved as a file (.html), or a “Back up all characters” file. You can also drop a file anywhere on the page.',true).then(function(o){ return o?importChar(o):null; }); },
   levelUp:function(){ return levelUpFlow(); },
   planLevel:function(el){ return planLevelFlow(+el.dataset.k); },
@@ -5998,7 +6078,7 @@ function restoreBackup(cs){ var n0c=cs.length; cs=cs.filter(function(c){ return 
   var nw=cs.filter(function(c){ return !(c.id in have); }).length, upd=cs.filter(function(c){ return c.id in have&&(c.savedAt||0)>have[c.id]; }).length, old=cs.length-nw-upd;
   confirmBox('Restore '+plural(cs.length,'character')+'?',plural(nw,'new character')+', '+plural(upd,'newer copy','newer copies')+' replacing what’s here'+(old?', and '+old+' skipped because what you have is the same or newer':'')+'.'+(bad?' '+plural(bad,'entry','entries')+' in the file '+(bad===1?'is':'are')+' damaged and will be left out.':''),'Restore').then(function(ok){ if(!ok) return;
     var todo=cs.filter(function(c){ return !(c.id in have)||(c.savedAt||0)>have[c.id]; });
-    Promise.all(todo.map(function(c){ c.savedAt=c.savedAt||Date.now(); lsSet(KEY+':'+c.id,c); if(ch&&ch.id===c.id){ ch=c; hist=[]; redoH=[]; } if(!CL.user) return; var rec=cloudRec(c); return window.SheetCloud.put(c.id,rec).then(function(){ CL.list=(CL.list||[]).filter(function(x){ return x.id!==c.id; }).concat([listRec(c,rec)]); }); }))
+    Promise.all(todo.map(function(c){ c.savedAt=c.savedAt||Date.now(); artAdopt(c); lsSet(KEY+':'+c.id,c); if(ch&&ch.id===c.id){ ch=c; hist=[]; redoH=[]; } if(!CL.user) return; var rec=cloudRec(c); return window.SheetCloud.put(c.id,rec).then(function(){ CL.list=(CL.list||[]).filter(function(x){ return x.id!==c.id; }).concat([listRec(c,rec)]); }); }))
       .then(function(){ toast('Restored '+plural(todo.length,'character')+'.'); }).catch(function(e){ alertBox('Some characters didn’t reach your account: '+cloudErrMsg(e)); }).then(function(){ UI.home=true; paint(); }); }); }
 function slug(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'sheet'; }
 function download(name,text,type){ try{ var b=new Blob([text],{type:type||'application/octet-stream'}), a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=name; document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); },1500); return true; }catch(e){ return false; } }
@@ -6018,13 +6098,13 @@ function saveFileFlow(){
   if(!PAGE_SRC){ alertBox('This browser can’t read the page’s own source, so it can’t build a file. Use Export instead.'); return; }
   var name=(ch.name||'Character')+' - sheet - '+stamp()+'.html';
   log('Saved “'+name+'” with the character inside. Open it anywhere to pick up where you left off.');
-  save(); var json=JSON.stringify(ch).replace(/</g,'\\u003c');
-  var re=/(<script type="application\/json" id="savedState">)[\s\S]*?(<\/script>)/;
+  save(); var re=/(<script type="application\/json" id="savedState">)[\s\S]*?(<\/script>)/;
   if(!re.test(PAGE_SRC)){ alertBox('Couldn’t find the data slot in the page. Use Export instead.'); return; }
-  var html=PAGE_SRC.replace(re,function(m,a,b){ return a+json+b; });
-  var ok=download(name,html,'text/html');
-  if(!ok){ ch.log.shift(); log('Your browser blocked the download. Use Export instead.'); save(); }
-  paint();
+  var c0=ch; artWithPics(ch).then(function(x){ var json=JSON.stringify(x).replace(/</g,'\\u003c');
+    var html=PAGE_SRC.replace(re,function(m,a,b){ return a+json+b; });
+    var ok=download(name,html,'text/html');
+    if(!ok&&ch===c0){ ch.log.shift(); log('Your browser blocked the download. Use Export instead.'); save(); }
+    paint(); });
 }
 
 /* ===================== LEVEL UP ===================== */
@@ -6422,6 +6502,7 @@ function restoreUI(o){
       if(o.sel&&n.setSelectionRange) n.setSelectionRange(o.sel[0],o.sel[1],o.sel[2]||'none'); else if(o.isNum&&n.select) n.select(); }catch(e){} } }
 }
 function paint(){ if(UI.planning) return; /* a plan dialog is open over a future copy: draw the real character when it closes */
+  if(ch&&!UI.ro){ var artCh=artAdopt(ch); if(artTidy(ch)||artCh) save(); }
   var o=ch&&$('main').firstChild?snapUI():null;
   try{ render(); }catch(e){ renderFailed(e); return; }
   if(o) restoreUI(o);

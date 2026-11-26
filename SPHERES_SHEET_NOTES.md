@@ -328,6 +328,8 @@ Script blocks inside, in order:
   - **Smaller database copies (2026-11-22):** the JSON in `z` (and in share links and party sheets) leaves out base-sphere
     ability text that matches the library, and the portrait goes in `img` as bytes. See "Smaller database copies" in the Changelog.
   - **Characters list:** read from one index document, `users/{uid}/index/chars`, instead of every character.
+  - **Portraits (2026-11-26):** kept apart from the character, in `pics/<id>-c|-b|-f` (and IndexedDB `spheres-pics` on the device);
+    the character holds only the thumbnail and the id. See "Portrait: its own picture store" in the Changelog.
   - Saves are sent about 1.2 seconds after the last change.
   - On sign-in, on opening a character, and when you switch back to the tab, the newer copy
     wins (compared by `savedAt`).
@@ -909,6 +911,38 @@ roughly newest first, as it was kept. Anything still open from these entries is 
     `rules-check.js` (portrait size and type, the index: owner only, its fields, the count), `save-check.js` (the stored documents read
     with the emulator's owner token: no library text, portrait bytes and back, the list read from the index, rebuilt when missing,
     and a delete removing the entry).
+- **Portrait: its own picture store (2026-11-26, owner: pictures out of the sheet so saves get lighter; "anyone who can see the
+  character" sees them; the Play card stays its size).** Code: the block "portrait" before `rNotes` (`pic*` and `art*`), the
+  `paint` hook (`artAdopt`, `artTidy`), `picPut/picGet/picDel` in SheetCloud, `firestore.rules` "pics".
+  - **The character** keeps only `art = {th, p, old}`: the 96 px thumbnail (Characters list, party cards), the picture's id, and the
+    ids it replaced this session (for Undo). A character with a picture is now about 3 KB bigger instead of 20–50 KB, and normal
+    saves, share links and party sheets no longer carry the picture: it's written once, when it's made.
+  - **The picture** has three parts, made on the device by the placing dialog: `c` the card (360×480: Play page, Notes tab), `b`
+    a sharp crop (720×960: the large view) and `f` the whole uncropped picture (up to 1600 px on its longer side: "Whole
+    picture" in the large view, which switches to "Portrait crop"). The Play card is the same size as before.
+  - **Where it's kept:** memory, then IndexedDB on the device (`spheres-pics`, key = id; signed-out players keep it only there),
+    then the account: one document per part, `pics/<id>-c`, `-b`, `-f` (bytes; `picPut`). Uploads and deletes wait in
+    localStorage (`spheres-pics-up`, `spheres-pics-del`) until signed in, and go after sign-in and after each account save
+    (`picSync`, the card first). Read-only viewers (share links, a GM) read from the account and keep the picture in memory only.
+  - **Rules (`pics`):** anyone can `get` a part by id, nobody can list them (like a share link: the id travels only inside the
+    character). Create: signed in, id `<16–40 letters/digits>-c|b|f`, fields `owner` (= the writer), `pic` (bytes under 160,000 /
+    460,000 / 960,000), `updatedAt`; a `-b` or `-f` only if the same id's `-c` exists and is the writer's, so nobody can slip a part
+    into someone else's picture. Update and delete: the owner only. Nothing else changed; no indexes are needed (every read is by id).
+  - **Lifecycle:** Replace/Remove put the old id in `art.old` (Undo brings it back); the first time the character is drawn in a later
+    session (`artTidy`) those are dropped from the device and the account. Deleting a character drops its picture (read from the
+    account first if it's only there). Duplicate and "Save a copy" make their own copy of the picture (`artClone`), so deleting
+    either never takes the other's. A new picture gets a new id, so someone who once saw the character can't follow later ones.
+  - **Older saves and files:** a character with the card inside (`art.img`, from 2026-11-22, also the account's `img` bytes) or a
+    file with the parts inside (`art.pics`) moves them into the store under a new id when opened, stored or imported (`artAdopt`).
+    Export, Save file and Back up put the parts back in (`artWithPics`) and leave the id out.
+  - **Known leftovers (small):** Undo right after Replace leaves the new picture unused (on the device and in the account); a
+    picture replaced on another device stays in this device's IndexedDB. Neither is visible; both are a few hundred KB at most.
+  - Tests: `check.js` portrait section rewritten (30 checks: the store's three parts and sizes, reload from the device, sharp crop
+    and whole picture, Export, Replace/Remove/Undo, dropped on the next session, Duplicate and delete, older saves and files
+    adopted, bad pictures and ids dropped); `rules-check.js` 19 (pics); `party-check.js` 9 (the account parts, the account copy
+    holds only the id, the party card thumbnail, the GM's card and large view, a signed-out share viewer, nothing kept by the
+    viewer, deletion). After it: `engine-check.js` 348, `check.js` 643, `fuzz-check.js` 29, `talents-check.js` 66,
+    `config-check.js` 14, `csp-check.js` 6, `rules-check.js` 132, `party-check.js` 47, `save-check.js` 24 passed.
 - **Portrait: a larger view (2026-11-25, owner: "start with 1", then a separate picture record).** The portrait on the Play page
   and the Notes tab is a button (`artZoom`, `.artzoom`): a click or Enter opens it in a dialog titled with the character's name
   (`artView`, `.artbig`: up to 540 px wide and 72% of the window's height), closed with Close or Escape. Nothing is saved or added to
@@ -916,9 +950,7 @@ roughly newest first, as it was kept. Anything still open from these entries is 
   sharper one comes with the picture record below. Tests: 3 in `check.js` (opens with the name, Escape, the keyboard). After it:
   `engine-check.js` 348, `check.js` 631, `fuzz-check.js` 29 (about 5 minutes on the cloud test machine, not 1), `config-check.js`
   14 passed.
-  - **Planned next (owner chose this order, 2026-11-25):** the pictures move to their own record, written only when the picture
-    changes, so saves get lighter: the character keeps only the thumbnail. The record holds a sharper 720×960 crop for the card
-    and the large view, with room for the whole uncropped picture later.
+  - The picture store followed on 2026-11-26 (see "Portrait: its own picture store").
 - **Portrait (2026-11-22, from a player's review; owner chose "inside the character" over separate storage).** Code: the block
   "portrait" before `rNotes` (`artCard`, `artPick`, `artCrop`, `artEncode`, `artOk`, `artThumb`), actions `artSet artDel`,
   `C.art` in `rSheet`, CSS `.artimg .athumb .artcv`.
