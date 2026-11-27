@@ -102,7 +102,7 @@ async function until(fn, ms = 15000) { const t = Date.now(); for (;;) { try { co
   check('the sheet opens read-only', !!(await until(() => gm.locator('.tag', { hasText: 'Read-only' }).count())), 'true');
   check('it shows Tova', (await gm.locator('#cname').innerText()).trim(), 'Tova Rask');
   check('fields are locked', await gm.locator('#main input:not([disabled])').count(), '0');
-  check('no Level up or Undo', await gm.locator('[data-a="levelUp"], [data-a="undo"]').count(), '0');
+  check('no Level Up or Undo', await gm.locator('[data-a="levelUp"], [data-a="undo"]').count(), '0');
   check('breakdowns still open', await gm.locator('#main [data-a="why"]:not([disabled])').count() > 0, 'true');
   const cardLoaded = p => until(() => p.evaluate(() => { const i = document.querySelector('#play-art img'); return !!i && !i.classList.contains('wait') && i.naturalWidth === 360; }), 15000);
   check('the GM sees the portrait, read from the account', !!(await cardLoaded(gm)), 'true');
