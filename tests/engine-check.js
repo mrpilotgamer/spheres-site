@@ -247,6 +247,24 @@ const T0 = Date.now();
     }
     check('a save with none of the old switches does not turn it on', !!(await S({ rules: { maxFirst: true } })).rules.divCast, false);
 
+    /* Paizo classes saved as "Not a casting class" (before 2026-11-27) get their Sphere conversion's casting, once */
+    {
+      const old = { classes: { w: { name: 'Wizard', cast: 'none', hd: 6, bab: '1/2' }, m: { name: 'Magus', cast: 'none' }, p: { name: 'Paladin', cast: 'none' }, f: { name: 'Fighter', cast: 'none' } },
+        levels: [{ cls: 'w' }, { cls: 'w' }, { cls: 'w' }, { cls: 'w' }, { cls: 'w' }, { cls: 'w' }], resources: [] };
+      const c = await S(old);
+      check('an old save: Wizard, Magus, Paladin get high, mid, low casting; Fighter stays none', ['w', 'm', 'p', 'f'].map(k => c.classes[k].cast).join(' '), 'high mid low none');
+      check('…and a Spell points resource', c.resources.filter(r => r.max === 'spmax').length, 1);
+      const d = await derive(c);
+      check('…so a Wizard 6 has caster level 6 and 6 casting class levels', `${d.cl} ${d.castLv}`, '6 6');
+      check('…marked checked, so loading it again changes nothing', JSON.stringify(await S(c)) === JSON.stringify(c), true);
+      const mine = copy(c); mine.classes.w.cast = 'none';
+      check('a Wizard set to “Not a casting class” after that stays so', (await S(mine)).classes.w.cast, 'none');
+      check('a renamed class finds its casting by its wiki file (Sorcerer)', (await S({ classes: { s: { name: 'Blood Mage', wiki: 'sorcerer', cast: 'none' } } })).classes.s.cast, 'high');
+      check('an old Sorcerer already set to mid keeps mid', (await S({ classes: { s: { name: 'Sorcerer', cast: 'mid' } } })).classes.s.cast, 'mid');
+      check('Druid gets high (its page lacks the line)', (await S({ classes: { s: { name: 'Druid (Sphere Druid)', cast: 'none' } } })).classes.s.cast, 'high');
+      check('an old save that has Spell points already gets no second one', (await S(Object.assign(copy(old), { resources: [{ id: 'r1', name: 'Spell points', max: 'spmax', cur: 3, reset: 'long' }] }))).resources.length, 1);
+    }
+
     /* what goes to the database (cloudPack): library text of base-sphere abilities left out, sanitize puts it back */
     const P = o => page.evaluate(o => window.SheetEngine.cloudPack(o), o);
     const abs = c => { const out = []; (function w(v) { if (Array.isArray(v)) v.forEach(w); else if (v && typeof v === 'object') { if (Array.isArray(v.abilities) && typeof v.sphere === 'string') out.push(...v.abilities); Object.values(v).forEach(w); } })(c); return out; };

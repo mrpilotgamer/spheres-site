@@ -133,7 +133,8 @@ def sheet(e,n):
     return v
 out=[]
 for e in L:
-    if e['c']!='Spheres' and all((e.get(k) or 'none')=='none' for k in ('cast','mart','skill')): continue
+    # Paizo classes' casting comes from their Sphere conversion archetype (SPH_CAST), not a Spheres class table of their own
+    if e['c']!='Spheres' and all((e.get(k) or 'none')=='none' for k in ('mart','skill')): continue
     pg=find_page(e['n'])
     if pg is None: out.append(('NOPAGE',e['n'],'')); continue
     hdr,rows=table(first_tab(pg))

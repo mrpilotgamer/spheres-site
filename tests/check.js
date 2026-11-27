@@ -267,7 +267,7 @@ function check(what, got, want) {
   console.log('Raised undead');
   await home(); await page.click('[data-a="example"][data-k="incanter"]'); await settle();
   await go('Character', 'Talents'); const used0 = parseInt(await tile('Talents used'), 10);
-  check('optional section: no Temporary talents card for Ilyra', await page.locator('h2', { hasText: 'Temporary talents' }).count(), '0');
+  check('optional section: no Temporary Talents card for Ilyra', await page.locator('h2', { hasText: 'Temporary Talents' }).count(), '0');
   await patch(`c.extraPicks = (c.extraPicks || []).concat([
       { id: 'd1', kind: 'talent', name: 'Death', sphere: 'Death', role: 'sphere' }, { id: 'd2', kind: 'talent', name: 'Expanded Necromancy', sphere: 'Death' },
       { id: 'd3', kind: 'talent', name: 'Sustained Necromancy', sphere: 'Death' }, { id: 'd4', kind: 'talent', name: 'Empowered Reanimate', sphere: 'Death' },
@@ -281,7 +281,7 @@ function check(what, got, want) {
   check('taken twice: 4 Death talents + Greater Reanimate ×2 = 6 more used', parseInt(await tile('Talents used'), 10) - used0, '6');
   check('taken twice: shown as ×2', await page.locator('.nm', { hasText: 'Greater Reanimate' }).first().innerText(), 'Greater Reanimate ×2');
   await page.click('[data-a="tabsCfg"]'); await settle(); await page.check('.dlg [name="tab-temp"]'); await page.locator('.dlg button', { hasText: 'Save' }).click(); await settle();
-  check('optional section: turned on in ⚙ Tabs', await page.locator('h2', { hasText: 'Temporary talents' }).count(), '1');
+  check('optional section: turned on in ⚙ Tabs', await page.locator('h2', { hasText: 'Temporary Talents' }).count(), '1');
   await go('Character', 'Companions');
   /* wolf skeleton, bloody burning: 2 HD; Str 13+4 = 17, Dex 15+2+4 = 21, Cha 14 (bloody); hp 9 + 2×2 = 13;
      AC 10+5+4 (2 natural +2 Fortified) = 19; init +5+4 = +9; bite +1+3 = +4, 1d6+4 (1½ Str) plus 1d6 fire */
@@ -745,7 +745,7 @@ function check(what, got, want) {
   await dlg().locator('button', { hasText: 'Next' }).click(); await idle();
   check('level-up: the skills step comes after the talents', /4 · Skills/.test(await dlg().locator('.steps .cur').innerText()), 'true');
   await dlg().locator('button', { hasText: 'Next' }).click(); await idle();
-  await dlg().locator('button', { hasText: 'Level up' }).click(); await idle();
+  await dlg().locator('button', { hasText: 'Level Up' }).click(); await idle();
   const lvl13 = await page.evaluate(() => { const c = JSON.parse(localStorage.getItem('spheres-sheet-v1:' + JSON.parse(localStorage.getItem('spheres-sheet-v1:last')))); const l = c.levels[c.levels.length - 1]; return [c.levels.length].concat(l.picks.filter(p => p.kind === 'talent').map(p => [p.name, p.sphere, p.role || '', p.tkind || ''].join('/'))).join(' | '); });
   check('level-up: saved with the wiki’s type and [utility] role', lvl13, '13 | Gravetongue/Death/utility/magic | Death sphere/Death/sphere/magic');
   await page.unroute(SITE + '**');
@@ -1041,6 +1041,15 @@ function check(what, got, want) {
     check('class list: Professional, bonus talent at 1st and every 4', pick(lib('Professional'), 'tx'), 'f4');
     check('class list: Alternate Justicar, Warleader sphere + 1 talent at 1st, then 1 every level (Righteous Command)', pick(lib('Alternate Justicar'), 'bs', 'bt', 'tx'), 'Warleader/1/all');
     check('class list: Advisor and Scholar, 2 bonus talents at 1st', [pick(lib('Advisor'), 'bt'), pick(lib('Scholar'), 'bt')].join(' '), '2 2');
+    /* Paizo and psionic classes take the casting of their "Sphere X" conversion archetype (2026-11-27), the same values the page's SPH_CAST has */
+    const paizo = n => LIB.find(x => x.n === n && x.c !== 'Spheres');
+    check('class list: Wizard, Sorcerer, Druid high; Magus, Bard mid; Paladin, Ranger low; Fighter none', ['Wizard', 'Sorcerer', 'Druid', 'Magus', 'Bard', 'Paladin', 'Ranger', 'Fighter'].map(n => paizo(n).cast).join(' '), 'high high high mid mid low low none');
+    {
+      const SC = Function('return ' + html.match(/var SPH_CAST=(\{[^}]*\});/)[1])(), slug = n => n.toLowerCase().replace(/\([^)]*\)/g, ' ').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+      const off = LIB.filter(e => e.c !== 'Spheres' && (SC[slug(e.n)] || 'none') !== (e.cast || 'none'));
+      const left = Object.keys(SC).filter(k => !LIB.some(e => e.c !== 'Spheres' && slug(e.n) === k));
+      check('the class list and SPH_CAST agree for every Paizo class', off.map(e => e.n).join(', ') + '|' + left.join(', '), '|');
+    }
 
     /* the talent totals those settings give (Talents used tile: 0 / total, incl. the 2 bonus magic talents for casters) */
     const cases = [
@@ -1266,7 +1275,7 @@ function check(what, got, want) {
     check('one class: no extra trade talent; a class with 8 + Int ranks suggests adroit', [one, /trade rank adroit: Rogue has 8 \+ Int/i.test(await tradeNote())].join(' '), '0 true');
     await page.click('[data-a="tradeRankSet"][data-k="adroit"]'); await settle();
     check('“Set it to adroit” sets it', /Trade rank adroit: Rogue has 8/.test(await tradeNote()), true);
-    await mk({ a: K('Fighter', 2), b: K('Rogue', 8), c: K('Wizard', 2) }, ['a', 'a', 'b', 'c', 'b']); await page.reload(); await settle();
+    await mk({ a: K('Fighter', 2), b: K('Rogue', 8), c: K('Expert', 2) }, ['a', 'a', 'b', 'c', 'b']); await page.reload(); await settle();
     await go('Character', 'Talents');
     check('each class after the first gives a trade talent (2 here)', (await tile('Talents used')).replace(/^\d+ \/ /, ''), '2');
     check('…and a later class with more skill ranks raises the trade rank to adroit', /adroit: Rogue has more skill ranks per level \(8\) than Fighter \(2\)/.test(await tradeNote()), true);
@@ -1761,16 +1770,16 @@ function check(what, got, want) {
     const [form, review] = await lvUp(5, [[4, 'str'], [8, 'con']]);
     check('5 levels from 3rd: the form asks for the increases at 4th and 8th', [/levels, 4 to 8/.test(form), /Level 4: ability increase/.test(form), /Level 8: ability increase/.test(form)].join(' '), 'true true true');
     check('…the review shows what you get and what’s left to choose', [/Level 3 → 8/.test(review), /To choose afterwards:.*talent.*feat.*skill rank/.test(review)].join(' '), 'true true');
-    await page.locator('.dlg-back').last().locator('button', { hasText: 'Level up ×5' }).click(); await settle();
+    await page.locator('.dlg-back').last().locator('button', { hasText: 'Level Up ×5' }).click(); await settle();
     const c = await stored();
-    check('Level up ×5 adds 5 levels with their increases, picks left empty', [c.levels.length, c.levels[3].inc, c.levels[7].inc, c.levels.slice(3).every(l => l.picks.length === 0)].join(' '), '8 str con true');
+    check('Level Up ×5 adds 5 levels with their increases, picks left empty', [c.levels.length, c.levels[3].inc, c.levels[7].inc, c.levels.slice(3).every(l => l.picks.length === 0)].join(' '), '8 str con true');
     check('…using the table’s hit points (average rounded up: d10 → 6)', c.levels.slice(3).map(l => l.hp).join(','), '6,6,6,6,6');
     check('…and says what’s left to choose', /Now level 8\..*To choose:/.test(await page.locator('#toast').innerText().catch(() => '')), true);
     await mkL(20, { rules: { maxFirst: true, hpMethod: 'max' } }); await page.reload(); await settle();
     const incs40 = []; for (let lv = 24; lv <= 40; lv += 4) incs40.push([lv, 'dex']);
     const [, rev40] = await lvUp(20, incs40);
     check('20 more levels from 20th (past 20 is fine)', /Level 20 → 40/.test(rev40), true);
-    await page.locator('.dlg-back').last().locator('button', { hasText: 'Level up ×20' }).click(); await settle();
+    await page.locator('.dlg-back').last().locator('button', { hasText: 'Level Up ×20' }).click(); await settle();
     check('…40 levels, maximum hit points each', [(await stored()).levels.length, (await stored()).levels.slice(20).every(l => l.hp === 10)].join(' '), '40 true');
     await mkL(2); await page.reload(); await settle();
     await page.click('[data-a="levelUp"]'); await settle();
@@ -1799,10 +1808,10 @@ function check(what, got, want) {
       const review = (await dlg().innerText()).replace(/\s+/g, ' ');
       await dlg().locator('button', { hasText: 'Save to plan' }).click(); await settle(); return [title, review]; };
     await mkP(); await page.reload(); await settle();
-    await go('Advanced', 'Level plan');
+    await go('Advanced', 'Level Plan');
     check('Advanced → Level plan: empty to start', /Nothing planned yet/.test(await page.locator('#main').innerText()), true);
     const [t1, rv1] = await planOne('Bash', 'Brute');
-    check('planning level 4 runs the Level up dialog, ending in “Save to plan” with what’s planned', [t1, /Planned:.*Talents.*Bash/.test(rv1), /goes into your level plan/.test(rv1)].join(' | '), 'Plan level 4 | true | true');
+    check('planning level 4 runs the Level Up dialog, ending in “Save to plan” with what’s planned', [t1, /Planned:.*Talents.*Bash/.test(rv1), /goes into your level plan/.test(rv1)].join(' | '), 'Plan Level 4 | true | true');
     let c = await stored();
     check('…nothing changes on the character; the plan has level 4', [c.levels.length, (c.plan || []).length, (c.plan[0].picks || []).some(p => p.name === 'Bash')].join(' '), '3 1 true');
     check('…the page shows it with a preview', /Level 4 · Hero 4.*Bash.*HP \d+/s.test(await page.locator('#main').innerText()), true);
@@ -1823,12 +1832,12 @@ function check(what, got, want) {
     /* levelling up uses the plan */
     await page.click('[data-a="levelUp"]'); await settle();
     const s0 = (await dlg().innerText()).replace(/\s+/g, ' ');
-    check('Level up opens with the plan for level 4', [/Your plan for level 4: Hero 4/.test(s0), /Bash/.test(s0), await dlg().locator('button', { hasText: 'Apply as planned' }).count()].join(' '), 'true true 1');
+    check('Level Up opens with the plan for level 4', [/Your plan for level 4: Hero 4/.test(s0), /Bash/.test(s0), await dlg().locator('button', { hasText: 'Apply as planned' }).count()].join(' '), 'true true 1');
     await dlg().locator('button', { hasText: 'Apply as planned' }).click(); await settle();
     await next();
     const rvA = (await dlg().innerText()).replace(/\s+/g, ' ');
     check('“Apply as planned”: hit points, then the review with what you’re getting', [/What changes/.test(rvA), /You’re getting:.*Bash/.test(rvA)].join(' '), 'true true');
-    await dlg().locator('button', { hasText: /^Level up$/ }).click(); await settle();
+    await dlg().locator('button', { hasText: /^Level Up$/ }).click(); await settle();
     c = await stored();
     check('…level 4 is taken with the planned talent; the plan moves on to level 5', [c.levels.length, c.levels[3].picks.some(p => p.name === 'Bash'), c.plan.length, c.plan[0].picks.some(p => p.name === 'Brute Strength')].join(' '), '4 true 1 true');
 
@@ -1838,7 +1847,7 @@ function check(what, got, want) {
     await dlg().locator('input[name="cnt"]').fill('3'); await next();
     const inc7 = dlg().locator('select[name="inc7"]'); if (await inc7.count()) await inc7.selectOption('str').catch(() => {}); await next();
     check('mass level-up says it’s using the plan', /Using your level plan for level 5/.test(await dlg().innerText()), true);
-    await dlg().locator('button', { hasText: 'Level up ×3' }).click(); await settle();
+    await dlg().locator('button', { hasText: 'Level Up ×3' }).click(); await settle();
     c = await stored();
     check('…level 5 has the planned talent, the others are empty, and the plan is used up', [c.levels.length, c.levels[4].picks.some(p => p.name === 'Brute Strength'), c.levels[5].picks.length, 'plan' in c].join(' '), '7 true 0 false');
 
@@ -1851,16 +1860,16 @@ function check(what, got, want) {
     check('choosing a class other than the planned one asks: keep or drop the plan', /Not the planned class/.test(notPlanned), true);
     await dlg().locator('button', { hasText: 'Drop the plan' }).click(); await settle();
     await dlg().locator('select[name="inc"]').selectOption('dex'); await next(); await next(); await next();
-    await dlg().locator('button', { hasText: /^Level up$/ }).click(); await settle();
+    await dlg().locator('button', { hasText: /^Level Up$/ }).click(); await settle();
     c = await stored();
     check('…“Drop the plan” clears it after the level', [c.levels.length, c.levels[3].cls, 'plan' in c].join(' '), '4 c2 false');
-    await go('Advanced', 'Level plan');
+    await go('Advanced', 'Level Plan');
     check('the page offers to plan level 5 next', (await page.locator('[data-a="planLevel"][data-k="-1"]').innerText()).trim(), 'Plan level 5');
 
     /* feat and class feature rows (2026-11-12): bonus feat, notes, a choice under a feature, effects; planned, then taken */
     await mkP({ levels: [{ cls: 'c1', hp: 10, picks: [{ kind: 'feature', name: 'Arsenal Tricks', subs: [] }] }, { cls: 'c1', hp: 6, picks: [] }, { cls: 'c1', hp: 6, picks: [] }] }); await page.reload(); await settle();
     const hp3 = await page.evaluate(id => window.SheetEngine.derive(window.SheetEngine.sanitize(JSON.parse(localStorage.getItem('spheres-sheet-v1:' + id)))).hpMax, pid);
-    await go('Advanced', 'Level plan');
+    await go('Advanced', 'Level Plan');
     await page.click('[data-a="planLevel"][data-k="-1"]'); await settle(); await next(); await dlg().locator('select[name="inc"]').selectOption('str'); await next();
     check('feats: no row and no slot at an even level', [await dlg().locator('.ft-item').count(), (await dlg().locator('#ftleft').innerText()).trim()].join(' | '), '0 | No feat slot this level.');
     await dlg().locator('#ftMore').click(); const ft = dlg().locator('.ft-item').first();
@@ -1889,7 +1898,7 @@ function check(what, got, want) {
     await cancelOrEsc(dlg().locator('button', { hasText: 'Cancel' }).first()); await settle();
     await page.click('[data-a="levelUp"]'); await settle();
     await dlg().locator('button', { hasText: 'Apply as planned' }).click(); await settle(); await next();
-    await dlg().locator('button', { hasText: /^Level up$/ }).click(); await settle();
+    await dlg().locator('button', { hasText: /^Level Up$/ }).click(); await settle();
     c = await stored();
     check('levelling up: the bonus feat with its notes, the new feature, the choice filed under Arsenal Tricks with its level and notes',
       [c.levels[3].picks.map(p => p.kind + ':' + p.name + ':' + (p.notes || '')).join(','), JSON.stringify(c.levels[0].picks[0].subs)].join(' | '), 'bonus:Toughness:+3 hp\n\n+1 per Hit Die past 3,feature:Martial Flexibility: | [{"name":"Weapon Summon","lvl":4,"notes":"ws notes"}]');
@@ -1919,9 +1928,9 @@ function check(what, got, want) {
     const chRow = dlg().locator('.xr-item').nth(1);
     check('the choice row offers the Striker Art list', [await chRow.locator('.lu-nm').getAttribute('list'), await dlg().locator('datalist#' + await chRow.locator('.lu-nm').getAttribute('list') + ' option[value="Adrenaline Rush"]').count()].join(' '), 'cwo5 1');
     await chRow.locator('.lu-nm').fill('Adrenaline Rush');
-    check('picking a choice shows its wiki text', /Wiki text: Adrenaline Rush/.test(await chRow.locator('.lu-wk').innerText()), true);
+    check('picking a choice shows its wiki text', /Wiki Text: Adrenaline Rush/.test(await chRow.locator('.lu-wk').innerText()), true);
     await dlg().locator('.xr-item').nth(2).locator('.lu-del').click();
-    await next(); await next(); await dlg().locator('button', { hasText: /^Level up$/ }).click(); await idle();
+    await next(); await next(); await dlg().locator('button', { hasText: /^Level Up$/ }).click(); await idle();
     let c = await stored();
     check('levelling up saves the feature with its choice; a removed row is not taken', JSON.stringify(c.levels[1].picks.map(p => [p.name, (p.subs || []).map(x => x.name + '@' + x.lvl)])), '[["Striker Art (Ex)",["Adrenaline Rush@2"]]]');
     /* a feature you have only "improves"; Back to another class takes the untouched rows away */
@@ -1969,7 +1978,7 @@ function check(what, got, want) {
     const luT = (await dlg().innerText()).replace(/\s+/g, ' ');
     check('level up: a replaced feature is left out, an altered one is swapped for the archetype’s version', [/tension boost \(replaced by Black Powder Brawler: Gun Genius \(Ex\)\)/.test(luT), /Striker art \(altered by Black Powder Brawler: now Firearm Fighter \(Ex\)\)/.test(luT)].join(' '), 'true true');
     check('…the altered Striker Art keeps its choice row; the archetype’s level-2 features are rows', await rowsNow(), '>Firearm Fighter (Ex), Striker Art (Ex)>, >Gun Genius (Ex)');
-    check('…with their wiki text', /Wiki text: Gun Genius \(Ex\) \(Black Powder Brawler\)/.test(await dlg().locator('.xr-item').nth(2).locator('.lu-wk').innerText()), true);
+    check('…with their wiki text', /Wiki Text: Gun Genius \(Ex\) \(Black Powder Brawler\)/.test(await dlg().locator('.xr-item').nth(2).locator('.lu-wk').innerText()), true);
     await cancelOrEsc(dlg().locator('button', { hasText: 'Cancel' }).first()); await settle();
     await go('Character', 'Feats & features'); await item('Bare Knuckles').locator('summary').first().click(); await idle();
     await until('the replaced note', () => /Replaced by your archetype/.test(document.querySelector('#main').textContent));
@@ -1979,7 +1988,7 @@ function check(what, got, want) {
     await dlg().locator('input[name="cnt"]').fill('4'); await next(); if (await dlg().locator('select[name="inc3"]').count()) await dlg().locator('select[name="inc3"]').selectOption('str'); await next();
     const mrv = (await dlg().innerText()).replace(/\s+/g, ' ');
     check('mass level-up: the review lists the features from the wiki and the archetype, and the choices left', [/Class features \(from the wiki, with Black Powder Brawler; class level in brackets\): Firearm Fighter \(Ex\) \(2\), Gun Genius \(Ex\) \(2\), Accurate Shooter \(Ex\) \(3\)/.test(mrv), /To choose afterwards:.*2 Striker Art choices/.test(mrv)].join(' '), 'true true');
-    await dlg().locator('button', { hasText: 'Level up ×4' }).click(); await idle();
+    await dlg().locator('button', { hasText: 'Level Up ×4' }).click(); await idle();
     c = await stored();
     check('…each level gets its features (replaced ones left out), and the history keeps one line for the levels', [c.levels.slice(1).map(l => l.picks.map(p => p.name).join('+')).join(' | '), c.history.filter(h => /Gun Genius|Accurate Shooter/.test(h.text)).length].join(' # '),
       'Firearm Fighter (Ex)+Gun Genius (Ex) | Accurate Shooter (Ex) | Desperate Tension (Ex) | Striker Art (Ex)+Tension Training (Ex) # 0'); /* only the art at 2nd is altered: the one at 5th brings Striker Art itself */
@@ -2023,6 +2032,17 @@ function check(what, got, want) {
     await page.locator('#main input[data-v="Dreadnought"]').click(); await idle(); await dlg().locator('button', { hasText: /^Apply$/ }).click(); await idle();
     c = await stored();
     check('unticking it puts the class’s own saves back', [JSON.stringify(c.classes.c1.good), 'archBase' in c.classes.c1].join(' '), '["ref"] false');
+    /* a "Sphere X" conversion archetype makes a class with no casting a caster (2026-11-27): Sphere Wizard is a High-Caster */
+    await mkS({ name: 'Wizard', hd: 6, bab: '1/2', good: ['will'], skills: 2, martial: 'none', cast: 'none', castChk: 1 }, [], { resources: [] }); await page.reload(); await idle(); await go('Character', 'Build');
+    await until('the Wizard archetypes', () => !!document.querySelector('#main input[data-v="Sphere Wizard"]'));
+    await page.locator('details', { has: page.locator('summary', { hasText: /^Archetypes/ }) }).first().locator('summary').click();
+    await page.locator('#main input[data-v="Sphere Wizard"]').click(); await idle();
+    check('ticking Sphere Wizard on a Wizard with no casting shows the change', /Casting: Not a casting class → High-caster/.test((await dlg().innerText()).replace(/\s+/g, ' ')), true);
+    await dlg().locator('button', { hasText: /^Apply$/ }).click(); await idle();
+    c = await stored();
+    check('“Apply”: the Wizard is a high-caster with Spell points', [c.classes.c1.cast, c.classes.c1.archBase.cast, c.resources.filter(r => r.max === 'spmax').length].join(' '), 'high none 1');
+    await page.locator('#main input[data-v="Sphere Wizard"]').click(); await idle(); await dlg().locator('button', { hasText: /^Apply$/ }).click(); await idle();
+    check('unticking it puts “Not a casting class” back', (await stored()).classes.c1.cast, 'none');
     /* two archetypes that rewrite the same number can't be combined, even with no feature in common (Hedgewitch: saves) */
     await mkS({ name: 'Hedgewitch', hd: 6, bab: '1/2', good: ['will'], skills: 2, cast: 'high', martial: 'none', arch: ['Iron Mage'] }, []); await page.reload(); await idle(); await go('Character', 'Build');
     await until('the Hedgewitch archetypes', () => !!document.querySelector('#main input[data-v="Dragonblooded Mortal"]'));
@@ -2034,14 +2054,14 @@ function check(what, got, want) {
     const fromList = async n => { await page.locator('[data-a="levelUp"]').first().click(); await idle(); await dlg().locator('select[name="cls"]').selectOption('__lib'); await dlg().locator('input[name="lib"]').fill(n); await next(); await next(); };
     await freshP(); await fromList('Elementalist');
     check('Elementalist 1: the dialog says Destruction comes free, and fills it in as a base sphere', [/From Elementalist at 1st level: Destruction sphere, free/.test(await dlg().innerText()), await dlg().locator('.talrow').first().locator('.tr-sph').inputValue(), await dlg().locator('.talrow').first().locator('.tr-base').isChecked()].join(' '), 'true Destruction true');
-    await next(); await next(); await dlg().locator('button', { hasText: /^Level up$/ }).click(); await idle();
+    await next(); await next(); await dlg().locator('button', { hasText: /^Level Up$/ }).click(); await idle();
     c = await stored();
     check('…saved as a free base sphere, and the class keeps its presets', [JSON.stringify(c.levels[0].picks.filter(p => p.kind === 'talent').map(p => [p.name, p.role])), c.classes[Object.keys(c.classes)[0]].scl].join(' '), '[["Destruction sphere","basefree"]] Destruction');
     await freshP(); await fromList('Wraith');
     const hp = dlg().locator('.xr-item').filter({ has: page.locator('.xr-under option:checked', { hasText: 'Haunt Path' }) }).first();
     await hp.locator('.lu-nm').fill('Path of the Anima'); await idle();
-    check('Wraith 1: a haunt path row lists the paths, with the path’s text', [!!(await hp.locator('.lu-nm').getAttribute('list')), /Wiki text: Path of the Anima/.test(await hp.locator('.lu-wk').innerText())].join(' '), 'true true');
-    await next(); await next(); await dlg().locator('button', { hasText: /^Level up$/ }).click(); await idle();
+    check('Wraith 1: a haunt path row lists the paths, with the path’s text', [!!(await hp.locator('.lu-nm').getAttribute('list')), /Wiki Text: Path of the Anima/.test(await hp.locator('.lu-wk').innerText())].join(' '), 'true true');
+    await next(); await next(); await dlg().locator('button', { hasText: /^Level Up$/ }).click(); await idle();
     c = await stored(); let kc = c.classes[Object.keys(c.classes)[0]];
     check('…the path applies: Knowledge (nature), Nature free with the class level as its caster level', [JSON.stringify(kc.paths), kc.classSkills.includes('knat'), kc.scl, JSON.stringify(c.levels[0].picks.filter(p => p.kind === 'talent').map(p => [p.name, p.role]))].join(' '), '["Path of the Anima"] true Nature [["Nature sphere","basefree"]]');
     await go('Character', 'Build'); await until('the haunt path picker', () => !!document.querySelector('#main select[data-pthsph="Path of the Anima"]'));
@@ -2053,14 +2073,14 @@ function check(what, got, want) {
     const hps = dlg().locator('.xr-item').filter({ has: page.locator('.xr-under option:checked', { hasText: 'Paths' }) });
     check('Hedgewitch 1: two path rows', await hps.count(), 2);
     await hps.nth(0).locator('.lu-nm').fill('Academia'); await hps.nth(1).locator('.lu-nm').fill('Astrology');
-    await next(); await next(); await dlg().locator('button', { hasText: /^Level up$/ }).click(); await idle();
+    await next(); await next(); await dlg().locator('button', { hasText: /^Level Up$/ }).click(); await idle();
     c = await stored(); kc = c.classes[Object.keys(c.classes)[0]];
     check('…both apply: four class skills, Light (Astrology) free; each path is its own class feature with its 1st-level parts under it', [JSON.stringify(kc.paths), JSON.stringify(kc.pathAdd.cs), JSON.stringify(c.levels[0].picks.filter(p => p.kind === 'talent').map(p => p.name)),
       c.levels[0].picks.filter(p => p.kind === 'feature').map(p => p.name + ((p.subs || []).length ? '{' + p.subs.map(x => x.name).join(',') + '}' : '')).join('+')].join(' '),
       '["Academia","Astrology"] ["kgeo","knat","kpla","perc"] ["Light sphere"] Casting+Paths+Spell Pool+Academia{Path Benefit,Path Power}+Astrology{Path Benefit,Path Power}');
     await page.locator('[data-a="levelUp"]').first().click(); await idle(); await next(); await next();
     const sr = dlg().locator('.xr-item').filter({ has: page.locator('.xr-under option:checked', { hasText: /^Choice under Secret/ }) }).first();
-    check('Hedgewitch 2: no repeated path rows; the Secret list has the paths’ secrets, with their text', [await dlg().locator('.xr-item').filter({ has: page.locator('.xr-under option:checked', { hasText: 'Paths' }) }).count(), await dlg().locator('datalist#' + await sr.locator('.lu-nm').getAttribute('list') + ' option[value="Academic Training"]').count(), await (async () => { await sr.locator('.lu-nm').fill('Academic Training'); await idle(); return /Wiki text: Academic Training/.test(await sr.locator('.lu-wk').innerText()); })()].join(' '), '0 1 true');
+    check('Hedgewitch 2: no repeated path rows; the Secret list has the paths’ secrets, with their text', [await dlg().locator('.xr-item').filter({ has: page.locator('.xr-under option:checked', { hasText: 'Paths' }) }).count(), await dlg().locator('datalist#' + await sr.locator('.lu-nm').getAttribute('list') + ' option[value="Academic Training"]').count(), await (async () => { await sr.locator('.lu-nm').fill('Academic Training'); await idle(); return /Wiki Text: Academic Training/.test(await sr.locator('.lu-wk').innerText()); })()].join(' '), '0 1 true');
     await cancelOrEsc(dlg().locator('button', { hasText: 'Cancel' }).first()); await settle();
     /* the card deck (2026-11-13): a tab under Play with the Card Casting drawback; piles, draw, play, rules */
     await mkS({ name: 'Incanter', hd: 6, bab: '1/2', good: ['will'], skills: 2, cast: 'high', martial: 'none' }, [{ cls: 'c1', hp: 6, picks: [] }], { castAbil: 'cha', abil: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 16 },
@@ -2139,11 +2159,11 @@ function check(what, got, want) {
     /* each chosen path is its own class feature with its parts under it, at their levels */
     await freshP(); await fromList('Wraith');
     await dlg().locator('.xr-item').filter({ has: page.locator('.xr-under option:checked', { hasText: 'Haunt Path' }) }).first().locator('.lu-nm').fill('Path of the Anima');
-    await next(); await next(); await dlg().locator('button', { hasText: /^Level up$/ }).click(); await idle();
+    await next(); await next(); await dlg().locator('button', { hasText: /^Level Up$/ }).click(); await idle();
     await page.locator('[data-a="levelUp"]').first().click(); await idle(); await next(); await next();
     const pp = dlg().locator('.xr-item').filter({ has: page.locator('.xr-under option:checked', { hasText: 'Path of the Anima' }) }).first();
-    check('Wraith 2: Path Possession comes as a choice under the path, with its text', [await pp.locator('.lu-nm').inputValue(), /Wiki text: Path Possession \(Path of the Anima\)/.test(await pp.locator('.lu-wk').innerText())].join(' '), 'Path Possession true');
-    await next(); await next(); await dlg().locator('button', { hasText: /^Level up$/ }).click(); await idle();
+    check('Wraith 2: Path Possession comes as a choice under the path, with its text', [await pp.locator('.lu-nm').inputValue(), /Wiki Text: Path Possession \(Path of the Anima\)/.test(await pp.locator('.lu-wk').innerText())].join(' '), 'Path Possession true');
+    await next(); await next(); await dlg().locator('button', { hasText: /^Level Up$/ }).click(); await idle();
     c = await stored();
     check('…the path is a class feature at 1st with Path Sphere (1) and Path Possession (2) under it; Haunt Path holds no choices', [JSON.stringify((c.levels[0].picks.find(p => p.name === 'Path of the Anima') || {}).subs.map(x => x.name + '@' + x.lvl)), ((c.levels[0].picks.find(p => p.name === 'Haunt Path') || {}).subs || []).length].join(' '), '["Path Sphere@1","Path Possession@2"] 0');
     /* a Paizo class: its sphere conversion fills in its features */

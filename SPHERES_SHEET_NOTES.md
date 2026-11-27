@@ -1013,6 +1013,36 @@ roughly newest first, as it was kept. Anything still open from these entries is 
     the level-up steps). Nothing saved changes. Tests find tabs and cards with `has-text`, which ignores case, so none needed edits.
   - After it: `engine-check.js` 337, `check.js` 592, `fuzz-check.js` 29, `talents-check.js` 66, `config-check.js` 14,
     `csp-check.js` 6, `rules-check.js` 90, `party-check.js` 38, `save-check.js` 12 passed.
+- **Title capitals for short headings (2026-11-27, owner; replaces the rule above for two- and three-word headings).** A heading of
+  two or three words is in title case (small words such as a, the, of, and stay lower case inside it); longer headings read as a
+  sentence and stay as written. "Headings" means card and section headings, `<summary>` lines that name a section, tab names and
+  dialog titles; buttons, row and option labels stay as they were, except the two named features below.
+  - "Spheres abilities" (Build) is now **Sphere Abilities**.
+  - Named features, everywhere they appear (buttons, dialogs, history, help text): **Level Up** (and "Level Up ×N", "Plan Level N"),
+    **Point Buy**.
+  - Tabs: House Rules, Card Deck, Level Plan (and "House Rules tab" in help text); the Temporary Talents card and its ⚙ Tabs entry.
+  - Headings built from lists go through `hCase()` (2–3 words → title case): the Feats & Features kinds ("Bonus Feats", "Class
+    Features"), House Rules groups ("Combat & Advancement"), action frequencies ("At Will", "Other Actions") and Gear categories
+    ("Worn Magic Items"). The data itself (and the selects that use it) is unchanged. The tradition cards: Casting Tradition etc.;
+    the card deck's "Discard Pile".
+  - Tests: `/^Level up$/`, "Plan level 4" and `/Wiki text: …/` matches in `check.js` updated (`has-text` ignores case; regexes don't).
+- **Paizo casting classes (2026-11-27, owner).** Wizard, Sorcerer and the other Paizo (and 3PP psionic) classes came from the class
+  list as "Not a casting class": only Spheres classes had a casting rate. Each now has the casting its "Sphere X" conversion
+  archetype gives ("is considered a High-Caster"; Druid's page lacks the line, owner: High), in the class list and in `SPH_CAST`:
+  - High: Arcanist, Cleric, Druid, Oracle, Psion, Shaman, Sorcerer, Wilder, Witch, Wizard. Mid: Alchemist, Bard, Hunter,
+    Inquisitor, Investigator, Magus, Mesmerist, Skald, Summoner (and Unchained), Warpriest. Low: Antipaladin, Bloodrager, Medium,
+    Paladin, Ranger. The Paizo prestige classes with conversions (Demoniac, Diabolist, Exalted, Mystery Cultist) don't say: unchanged.
+  - **Old saves:** `sanitizeChar` gives a class with "Not a casting class" whose name (or wiki file) is one of these its casting once,
+    plus a Spell points resource if there is none. Classes then carry `castChk: 1` (new classes from the start), so a class set back
+    to "Not a casting class" later stays that way.
+  - **Archetypes:** ticking a "Sphere X" archetype on a class with no casting lists "Casting: Not a casting class → High-caster" under
+    Class changes and sets it (with Spell points); the class's own value is kept in `archBase.cast`, so unticking puts it back.
+  - `tools/verify-classes.py` skips Paizo classes (their casting has no Spheres class table to check against).
+  - Tests: `engine-check.js` (old saves: tiers, Spell points, caster level, loaded twice, kept "none", wiki file, Druid),
+    `check.js` (class list values and agreement with `SPH_CAST`; ticking and unticking Sphere Wizard). The trade-talent test's
+    third class, an old-format "Wizard" used as a non-caster, is now "Expert".
+  - After both: `engine-check.js` 357, `check.js` 648, `fuzz-check.js` 29, `talents-check.js` 66, `config-check.js` 14,
+    `csp-check.js` 6, `rules-check.js` 132, `party-check.js` 47, `save-check.js` 24 passed.
 - **Quick rules fixes (2026-11-19).**
   - **Alternate Justicar, Warleader talents (Righteous Command):** the Warleader sphere and 1 Warleader talent at 1st, then 1
     more at every level. Class list: `bs:'Warleader'` (the sphere goes in the level's talents, like the Commander's), `bt:1`,
